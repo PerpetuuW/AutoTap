@@ -1,12 +1,18 @@
 import os
 
-def apply_template_matcher_repair():
-    print("🚀 Исправление ошибок TemplateMatcher и TemplateRepository v28.16.0 PRO...")
+def write_file(rel_path, content):
+    parts = rel_path.split("/")
+    full_path = os.path.join(*parts)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    with open(full_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"  [✓] Записан файл: {rel_path}")
 
-    # 1. Обновление app/build.gradle.kts
-    gradle_path = os.path.join("app", "build.gradle.kts")
-    if os.path.exists(gradle_path):
-        gradle_code = r"""plugins {
+def apply_overlay_touch_repair():
+    print("🚀 Реставрация тач-событий, оверлеев и кнопок AutoTap v28.18.0 PRO...")
+
+    # 1. app/build.gradle.kts
+    gradle_code = r"""plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -19,8 +25,8 @@ android {
         applicationId = "com.example.autotap"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2339
-        versionName = "28.16.0-PRO"
+        versionCode = 2341
+        versionName = "28.18.0-PRO"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -50,479 +56,890 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
 """
-        with open(gradle_path, "w", encoding="utf-8") as f:
-            f.write(gradle_code)
-        print("  [✓] Обновлен app/build.gradle.kts (versionCode=2339, versionName=28.16.0-PRO)")
+    write_file("app/build.gradle.kts", gradle_code)
 
-    # 2. Обновление TemplateMatcher.kt (Добавлена функция aggregateMultiFrameMask)
-    template_matcher_path = os.path.join("app", "src", "main", "java", "com", "example", "autotap", "TemplateMatcher.kt")
-    if os.path.exists(template_matcher_path):
-        template_matcher_code = r"""package com.example.autotap
-
-import android.graphics.*
-import org.json.JSONObject
-import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
-
-data class MatchCandidate(
-    val rect: Rect,
-    val score: Float,
-    val templateIndex: Int = -1
-) {
-    val point: PointF
-        get() = PointF(rect.centerX().toFloat(), rect.centerY().toFloat())
-}
-
-object TemplateMatcher {
-
-    fun analyzeTemplate(template: Bitmap): JSONObject {
-        return JSONObject().apply {
-            put("width", template.width)
-            put("height", template.height)
-        }
-    }
-
-    fun generateSmartMask(src: Bitmap, isCircle: Boolean): Bitmap {
-        val out = src.copy(Bitmap.Config.ARGB_8888, true)
-        if (isCircle) {
-            applyCircularMask(out)
-        }
-        return out
-    }
-
-    fun aggregateMultiFrameMask(frames: List<Bitmap>, circleShape: Boolean): Bitmap {
-        if (frames.isEmpty()) return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-
-        val w = frames[0].width
-        val h = frames[0].height
-
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-
-                var sumR = 0
-                var sumG = 0
-                var sumB = 0
-                var sumA = 0
-
-                for (bmp in frames) {
-                    val c = bmp.getPixel(x, y)
-                    sumR += Color.red(c)
-                    sumG += Color.green(c)
-                    sumB += Color.blue(c)
-                    sumA += Color.alpha(c)
-                }
-
-                val avgR = sumR / frames.size
-                val avgG = sumG / frames.size
-                val avgB = sumB / frames.size
-                val avgA = sumA / frames.size
-
-                val finalColor = Color.argb(avgA, avgR, avgG, avgB)
-                out.setPixel(x, y, finalColor)
-            }
-        }
-
-        if (circleShape) {
-            applyCircularMask(out)
-        }
-
-        return out
-    }
-
-    fun findCandidatesForCreation(screenBitmap: Bitmap, template: Bitmap): MutableList<MatchCandidate> {
-        val list = ArrayList<MatchCandidate>()
-        list.add(MatchCandidate(Rect(0, 0, template.width, template.height), 1.0f))
-        return list
-    }
-
-    fun findTemplateCandidatesCoarseFine(
-        screen: Bitmap,
-        template: Bitmap,
-        meta: JSONObject?,
-        config: ActionConfig
-    ): List<MatchCandidate> {
-
-        val similarityThreshold = (config.similarityPercent / 100f).coerceIn(0.1f, 0.99f)
-        val shapeOnly = config.shapeOnlyMode
-        val hybridCascade = config.hybridCascadeMode
-        val multiScale = config.multiScaleSearch
-
-        val candidates = ArrayList<MatchCandidate>()
-
-        val searchArea = if (config.customSearchArea) {
-            Rect(
-                (config.searchAreaXNorm * screen.width).toInt().coerceIn(0, screen.width - 1),
-                (config.searchAreaYNorm * screen.height).toInt().coerceIn(0, screen.height - 1),
-                ((config.searchAreaXNorm + config.searchAreaWNorm) * screen.width).toInt().coerceIn(1, screen.width),
-                ((config.searchAreaYNorm + config.searchAreaHNorm) * screen.height).toInt().coerceIn(1, screen.height)
-            )
-        } else {
-            Rect(0, 0, screen.width, screen.height)
-        }
-
-        val coarseStep = 6
-        val fineStep = 2
-
-        val scales = if (multiScale) {
-            floatArrayOf(1.0f, 0.95f, 0.9f, 1.05f)
-        } else {
-            floatArrayOf(1.0f)
-        }
-
-        for (scale in scales) {
-            val scaledTemplate = if (scale != 1.0f) {
-                Bitmap.createScaledBitmap(
-                    template,
-                    (template.width * scale).toInt(),
-                    (template.height * scale).toInt(),
-                    true
-                )
-            } else template
-
-            val tw = scaledTemplate.width
-            val th = scaledTemplate.height
-
-            for (y in searchArea.top until (searchArea.bottom - th).coerceAtLeast(searchArea.top + 1) step coarseStep) {
-                for (x in searchArea.left until (searchArea.right - tw).coerceAtLeast(searchArea.left + 1) step coarseStep) {
-
-                    val score = if (shapeOnly) {
-                        shapeMatch(screen, scaledTemplate, x, y)
-                    } else {
-                        pixelMatch(screen, scaledTemplate, x, y)
-                    }
-
-                    if (score >= similarityThreshold) {
-                        candidates.add(MatchCandidate(Rect(x, y, x + tw, y + th), score))
-                    }
-                }
-            }
-
-            val refined = ArrayList<MatchCandidate>()
-            for (c in candidates) {
-                val cx0 = max(searchArea.left, c.rect.left - coarseStep)
-                val cy0 = max(searchArea.top, c.rect.top - coarseStep)
-                val cx1 = min(searchArea.right - tw, c.rect.left + coarseStep)
-                val cy1 = min(searchArea.bottom - th, c.rect.top + coarseStep)
-
-                var bestScore = c.score
-                var bestRect = c.rect
-
-                for (y in cy0..cy1 step fineStep) {
-                    for (x in cx0..cx1 step fineStep) {
-                        val score = if (shapeOnly) {
-                            shapeMatch(screen, scaledTemplate, x, y)
-                        } else {
-                            pixelMatch(screen, scaledTemplate, x, y)
-                        }
-                        if (score > bestScore) {
-                            bestScore = score
-                            bestRect = Rect(x, y, x + tw, y + th)
-                        }
-                    }
-                }
-
-                refined.add(MatchCandidate(bestRect, bestScore))
-            }
-
-            candidates.clear()
-            candidates.addAll(refined)
-        }
-
-        if (hybridCascade) {
-            return candidates.sortedByDescending { it.score }.take(3)
-        }
-
-        return candidates.sortedByDescending { it.score }
-    }
-
-    private fun pixelMatch(screen: Bitmap, template: Bitmap, sx: Int, sy: Int): Float {
-        val tw = template.width
-        val th = template.height
-
-        var score = 0f
-        var total = 0f
-
-        for (y in 0 until th) {
-            for (x in 0 until tw) {
-                if (sx + x >= screen.width || sy + y >= screen.height) continue
-                val sc = screen.getPixel(sx + x, sy + y)
-                val tc = template.getPixel(x, y)
-
-                val dr = abs(Color.red(sc) - Color.red(tc))
-                val dg = abs(Color.green(sc) - Color.green(tc))
-                val db = abs(Color.blue(sc) - Color.blue(tc))
-
-                val diff = (dr + dg + db) / 765f
-                val sim = 1f - diff
-
-                score += sim
-                total += 1f
-            }
-        }
-
-        return if (total > 0f) score / total else 0f
-    }
-
-    private fun shapeMatch(screen: Bitmap, template: Bitmap, sx: Int, sy: Int): Float {
-        val tw = template.width
-        val th = template.height
-
-        var score = 0f
-        var total = 0f
-
-        for (y in 0 until th step 2) {
-            for (x in 0 until tw step 2) {
-                if (sx + x >= screen.width || sy + y >= screen.height) continue
-                val sc = screen.getPixel(sx + x, sy + y)
-                val tc = template.getPixel(x, y)
-
-                val scA = Color.alpha(sc)
-                val tcA = Color.alpha(tc)
-
-                val sim = if (tcA < 128) {
-                    if (scA < 128) 1f else 0f
-                } else {
-                    if (scA >= 128) 1f else 0f
-                }
-
-                score += sim
-                total += 1f
-            }
-        }
-
-        return if (total > 0f) score / total else 0f
-    }
-
-    private fun applyCircularMask(bmp: Bitmap) {
-        val w = bmp.width
-        val h = bmp.height
-        val cx = w / 2f
-        val cy = h / 2f
-        val r = min(w, h) / 2f
-
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                val dx = x - cx
-                val dy = y - cy
-                if (dx * dx + dy * dy > r * r) {
-                    bmp.setPixel(x, y, Color.TRANSPARENT)
-                }
-            }
-        }
-    }
-}
-"""
-        with open(template_matcher_path, "w", encoding="utf-8") as f:
-            f.write(template_matcher_code)
-        print("  [✓] Обновлен TemplateMatcher.kt (добавлен aggregateMultiFrameMask)")
-
-    # 3. Обновление TemplateRepository.kt (Явная типизация)
-    template_repo_path = os.path.join("app", "src", "main", "java", "com", "example", "autotap", "data", "TemplateRepository.kt")
-    if os.path.exists(template_repo_path):
-        template_repo_code = r"""package com.example.autotap.data
+    # 2. OverlayManager.kt (Использование TYPE_APPLICATION_OVERLAY для 100% кликабельности)
+    overlay_manager_code = r"""package com.example.autotap.ui.base
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.widget.Toast
+import android.graphics.PixelFormat
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.View
+import android.view.WindowManager
 import com.example.autotap.MyAutoClickService
-import com.example.autotap.TemplateMatcher
-import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
 
-class TemplateRepository(private val context: Context) {
+class OverlayManager(private val context: Context) {
 
-    val globalTemplates = ArrayList<Bitmap>()
-    val globalTemplatesNames = ArrayList<String>()
+    private val windowManager: WindowManager =
+        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-    fun getTemplateMetadataFile(maskPath: String): File {
-        val maskFile = File(maskPath)
-        val parent = maskFile.parentFile ?: context.filesDir
-        val name = maskFile.nameWithoutExtension
-        return File(parent, "${name}.json")
-    }
+    private val attachedViews = ConcurrentHashMap<View, Boolean>()
+    private val updateHandler = Handler(Looper.getMainLooper())
+    private val pendingUpdates = ConcurrentHashMap<View, WindowManager.LayoutParams>()
 
-    fun loadTemplateMetadata(maskPath: String): JSONObject? {
+    fun safeAddView(view: View?, params: WindowManager.LayoutParams) {
+        if (view == null) return
+        if (attachedViews[view] == true) return
+
         try {
-            if (maskPath.isEmpty()) return null
-            val metaFile = getTemplateMetadataFile(maskPath)
-            if (metaFile.exists()) {
-                return JSONObject(metaFile.readText())
-            }
-        } catch (_: Exception) {}
-        return null
-    }
-
-    fun loadFullBitmap(maskPath: String): Bitmap? {
-        val maskFile = File(maskPath)
-        val parent = maskFile.parentFile ?: return null
-        val timestamp = maskFile.name.removePrefix("mask_").removeSuffix(".png")
-        val fullFile = File(parent, "full_${timestamp}.png")
-        if (!fullFile.exists()) return null
-        return BitmapFactory.decodeFile(fullFile.absolutePath)
-    }
-
-    fun recordSuccessfulMatch(maskPath: String, matchPatch: Bitmap) {
-        try {
-            val maskFile = File(maskPath)
-            if (!maskFile.exists()) return
-
-            val name = maskFile.nameWithoutExtension
-            val patchDir = File(File(context.filesDir, "templates/patches"), name).apply { mkdirs() }
-            val patchFile = File(patchDir, "patch_${System.currentTimeMillis()}.png")
-
-            FileOutputStream(patchFile).use { out ->
-                matchPatch.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
-
-            val patchFiles = patchDir.listFiles()?.filter { file -> file.name.endsWith(".png") } ?: emptyList()
-            if (patchFiles.size >= 5) {
-                val patchBitmaps = patchFiles.mapNotNull { file -> BitmapFactory.decodeFile(file.absolutePath) }
-                if (patchBitmaps.isNotEmpty()) {
-                    val meta = loadTemplateMetadata(maskPath)
-                    val isCircle = meta?.optBoolean("isCircleShape", true) ?: true
-
-                    val consensusMask = TemplateMatcher.aggregateMultiFrameMask(
-                        patchBitmaps,
-                        isCircle
-                    )
-
-                    FileOutputStream(maskFile).use { out ->
-                        consensusMask.compress(Bitmap.CompressFormat.PNG, 100, out)
-                    }
-
-                    if (meta != null) {
-                        val currentVer = meta.optInt("version", 1)
-                        meta.put("version", currentVer + 1)
-                        val metaFile = getTemplateMetadataFile(maskPath)
-                        FileOutputStream(metaFile).use { out ->
-                            out.write(meta.toString().toByteArray(Charsets.UTF_8))
-                        }
-                    }
-
-                    patchFiles.forEach { it.delete() }
-                    patchDir.delete()
-
-                    MyAutoClickService.logAppEvent(
-                        context,
-                        "SelfLearning",
-                        "🧠 Маска '$name' пересобрана по 5 кадрам!"
-                    )
-                }
-            }
-
+            windowManager.addView(view, params)
+            attachedViews[view] = true
         } catch (e: Exception) {
             MyAutoClickService.logError(context, e)
         }
     }
 
-    fun loadAllTemplatesFromDisk() {
+    fun safeRemoveView(view: View?) {
+        if (view == null) return
+        if (attachedViews[view] != true) return
+
         try {
-            purgeOldTrashTemplates()
-
-            globalTemplates.forEach {
-                try { it.recycle() } catch (_: Exception) {}
-            }
-            globalTemplates.clear()
-            globalTemplatesNames.clear()
-
-            val baseDir = File(context.filesDir, "templates")
-            if (baseDir.exists()) {
-                val allMasks = baseDir.walkTopDown()
-                    .filter { it.isFile && it.name.startsWith("mask_") && it.name.endsWith(".png") }
-                    .sortedBy { it.lastModified() }
-                    .toList()
-
-                allMasks.forEach { file ->
-                    BitmapFactory.decodeFile(file.absolutePath)?.let { bmp ->
-                        globalTemplates.add(bmp)
-                        globalTemplatesNames.add(file.absolutePath)
-                    }
-                }
-            }
-
-            MyAutoClickService.logAppEvent(
-                context,
-                "Templates",
-                "Загружено шаблонов: ${globalTemplates.size}"
-            )
-
+            windowManager.removeView(view)
         } catch (e: Exception) {
             MyAutoClickService.logError(context, e)
+        } finally {
+            attachedViews.remove(view)
         }
     }
 
-    fun moveTemplateToTrash(index: Int) {
-        if (index !in globalTemplatesNames.indices) return
+    fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams) {
+        if (view == null) return
+        if (attachedViews[view] != true) return
 
-        try {
-            val maskPath = globalTemplatesNames[index]
-            val maskFile = File(maskPath)
+        pendingUpdates[view] = params
 
-            if (maskFile.exists()) {
-                val dateFolder = maskFile.parentFile?.name ?: "default"
-                val targetTrashDir = File(File(context.filesDir, "trash_templates"), dateFolder)
-                    .apply { mkdirs() }
-
-                maskFile.renameTo(File(targetTrashDir, maskFile.name))
-
-                val timestamp = maskFile.name.removePrefix("mask_").removeSuffix(".png")
-                val fullFile = File(maskFile.parentFile, "full_${timestamp}.png")
-                if (fullFile.exists()) {
-                    fullFile.renameTo(File(targetTrashDir, fullFile.name))
-                }
-
-                val metaFile = getTemplateMetadataFile(maskPath)
-                if (metaFile.exists()) {
-                    metaFile.renameTo(File(targetTrashDir, metaFile.name))
-                }
+        updateHandler.removeCallbacksAndMessages(null)
+        updateHandler.postDelayed({
+            try {
+                val p = pendingUpdates[view] ?: return@postDelayed
+                windowManager.updateViewLayout(view, p)
+            } catch (e: Exception) {
+                MyAutoClickService.logError(context, e)
+            } finally {
+                pendingUpdates.remove(view)
             }
+        }, 8)
+    }
 
-            globalTemplates.removeAt(index)
-            globalTemplatesNames.removeAt(index)
+    fun dpToPx(dp: Int): Int =
+        (dp * context.resources.displayMetrics.density).toInt()
 
-            Toast.makeText(context, "🗑 Шаблон перемещен в корзину", Toast.LENGTH_SHORT).show()
+    fun dpToPx(dp: Float): Int =
+        (dp * context.resources.displayMetrics.density).toInt()
 
-            MyAutoClickService.logAppEvent(
-                context,
-                "Templates",
-                "Перемещен в корзину: $maskPath"
-            )
-
-        } catch (e: Exception) {
-            MyAutoClickService.logError(context, e)
+    fun getOverlayType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
         }
     }
 
-    private fun purgeOldTrashTemplates() {
-        try {
-            val trashDir = File(context.filesDir, "trash_templates")
-            if (!trashDir.exists()) return
+    fun createOverlayParams(): WindowManager.LayoutParams {
+        return WindowManager.LayoutParams().apply {
+            type = getOverlayType()
+            format = PixelFormat.TRANSLUCENT
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
-            val now = System.currentTimeMillis()
-            val sevenDaysMs = 7L * 24 * 60 * 60 * 1000L
-
-            trashDir.walkTopDown().forEach { file ->
-                if (file.isFile && (now - file.lastModified() > sevenDaysMs)) {
-                    file.delete()
-                }
-            }
-
-        } catch (e: Exception) {
-            MyAutoClickService.logError(context, e)
+            width = WindowManager.LayoutParams.WRAP_CONTENT
+            height = WindowManager.LayoutParams.WRAP_CONTENT
         }
     }
 }
 """
-        with open(template_repo_path, "w", encoding="utf-8") as f:
-            f.write(template_repo_code)
-        print("  [✓] Обновлен TemplateRepository.kt")
+    write_file("app/src/main/java/com/example/autotap/ui/base/OverlayManager.kt", overlay_manager_code)
 
-    print("✨ Ошибки TemplateRepository и TemplateMatcher успешно устранены!")
+    # 3. ControlPanelOverlay.kt (Полное подключение всех 13 кнопок, драга и 3 режимов)
+    control_panel_code = r"""package com.example.autotap.ui.overlays
+
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.ImageButton
+import android.widget.TextView
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+
+class ControlPanelOverlay(private val service: MyAutoClickService) {
+
+    private var panelView: View? = null
+    private var stopButtonView: View? = null
+
+    private var panelState = 0
+
+    fun show() {
+        if (panelView != null) {
+            panelView?.visibility = View.VISIBLE
+            return
+        }
+
+        val inflater = LayoutInflater.from(service)
+        val view = inflater.inflate(R.layout.floating_control_panel, null)
+        panelView = view
+
+        val params = service.overlayManager.createOverlayParams().apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = service.overlayManager.dpToPx(20)
+            y = service.overlayManager.dpToPx(120)
+        }
+
+        bindUi(view)
+        service.overlayManager.safeAddView(view, params)
+    }
+
+    fun hide() {
+        panelView?.let {
+            service.overlayManager.safeRemoveView(it)
+        }
+        panelView = null
+    }
+
+    private fun bindUi(view: View) {
+        val handleDrag = view.findViewById<TextView>(R.id.handleDrag)
+        val layoutMainRow = view.findViewById<View>(R.id.layoutMainRow)
+        val layoutSubMenu = view.findViewById<View>(R.id.layoutSubMenu)
+        val btnSingleBubble = view.findViewById<ImageButton>(R.id.btnSingleBubble)
+
+        val btnPlay = view.findViewById<ImageButton>(R.id.btnPlay)
+        val btnAdd = view.findViewById<ImageButton>(R.id.btnAdd)
+        val btnCapturePool = view.findViewById<ImageButton>(R.id.btnCapturePool)
+        val btnHelpTutorial = view.findViewById<ImageButton>(R.id.btnHelpTutorial)
+        val btnToggleMenu = view.findViewById<ImageButton>(R.id.btnToggleMenu)
+
+        val btnClearAll = view.findViewById<ImageButton>(R.id.btnClearAll)
+        val btnRecord = view.findViewById<ImageButton>(R.id.btnRecord)
+        val btnToggleJoystick = view.findViewById<ImageButton>(R.id.btnToggleJoystick)
+        val btnLoadScript = view.findViewById<ImageButton>(R.id.btnLoadScript)
+        val btnHideNumbers = view.findViewById<ImageButton>(R.id.btnHideNumbers)
+        val btnClose = view.findViewById<ImageButton>(R.id.btnClose)
+
+        var initX = 0
+        var initY = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        handleDrag?.setOnTouchListener { _, event ->
+            val params = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initX = params.x
+                    initY = params.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dm = service.resources.displayMetrics
+                    val maxX = dm.widthPixels - view.width
+                    val maxY = dm.heightPixels - view.height
+                    params.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
+                    params.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, maxY)
+                    service.overlayManager.safeUpdateViewLayout(view, params)
+                    true
+                }
+                else -> false
+            }
+        }
+
+        fun updatePanelState(state: Int) {
+            panelState = state % 3
+            when (panelState) {
+                0 -> {
+                    layoutMainRow?.visibility = View.VISIBLE
+                    layoutSubMenu?.visibility = View.GONE
+                    btnSingleBubble?.visibility = View.GONE
+                }
+                1 -> {
+                    layoutMainRow?.visibility = View.VISIBLE
+                    layoutSubMenu?.visibility = View.VISIBLE
+                    btnSingleBubble?.visibility = View.GONE
+                }
+                2 -> {
+                    layoutMainRow?.visibility = View.GONE
+                    layoutSubMenu?.visibility = View.GONE
+                    btnSingleBubble?.visibility = View.VISIBLE
+                }
+            }
+            view.requestLayout()
+            val params = view.layoutParams as? WindowManager.LayoutParams
+            if (params != null) {
+                params.width = WindowManager.LayoutParams.WRAP_CONTENT
+                params.height = WindowManager.LayoutParams.WRAP_CONTENT
+                service.overlayManager.safeUpdateViewLayout(view, params)
+            }
+        }
+
+        btnToggleMenu?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            updatePanelState(panelState + 1)
+        }
+
+        btnSingleBubble?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            updatePanelState(0)
+        }
+
+        btnPlay?.setOnClickListener {
+            service.vibrateFeedback(30L)
+            if (service.isPlaying) {
+                btnPlay.setImageResource(R.drawable.ic_play)
+                service.stopExecutionLoop()
+            } else {
+                btnPlay.setImageResource(R.drawable.ic_pause)
+                service.startScript("default")
+            }
+        }
+
+        btnAdd?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            service.showAddActionMenu()
+        }
+
+        btnCapturePool?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            service.captureFrameOverlay.show()
+        }
+
+        btnHelpTutorial?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            service.showTutorialCard()
+        }
+
+        btnClearAll?.setOnClickListener {
+            service.vibrateFeedback(30L)
+            service.clearAllActions()
+        }
+
+        btnRecord?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            if (service.isRecording) {
+                service.stopOverlayRecording()
+            } else {
+                service.startOverlayRecording()
+            }
+        }
+
+        btnToggleJoystick?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            if (service.joystickOverlay.rootView != null) {
+                service.joystickOverlay.hide()
+            } else {
+                service.joystickOverlay.show()
+            }
+        }
+
+        btnLoadScript?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            service.showScriptsDialog()
+        }
+
+        btnHideNumbers?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            service.toggleNumbersVisibility()
+        }
+
+        btnClose?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            service.hideControlPanel(openMainApp = true)
+        }
+    }
+
+    fun showFloatingStopButton() {
+        if (stopButtonView != null) return
+
+        val inflater = LayoutInflater.from(service)
+        val view = inflater.inflate(R.layout.floating_stop_button, null)
+        stopButtonView = view
+
+        val params = service.overlayManager.createOverlayParams().apply {
+            gravity = Gravity.CENTER
+        }
+
+        val handleDrag = view.findViewById<TextView>(R.id.handleDragStop)
+        var initX = 0
+        var initY = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        handleDrag?.setOnTouchListener { _, event ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initX = p.x
+                    initY = p.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dm = service.resources.displayMetrics
+                    val maxX = dm.widthPixels - view.width
+                    val maxY = dm.heightPixels - view.height
+                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, maxY)
+                    service.overlayManager.safeUpdateViewLayout(view, p)
+                    true
+                }
+                else -> false
+            }
+        }
+
+        val btnStop = view.findViewById<ImageButton>(R.id.btnFloatingStop)
+        btnStop?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            service.stopExecutionLoop()
+        }
+
+        service.overlayManager.safeAddView(view, params)
+    }
+
+    fun hideFloatingStopButton() {
+        stopButtonView?.let {
+            service.overlayManager.safeRemoveView(it)
+        }
+        stopButtonView = null
+    }
+
+    fun showClickVisualizer(x: Float, y: Float) {
+        val inflater = LayoutInflater.from(service)
+        val view = inflater.inflate(R.layout.floating_beacon_ring, null)
+
+        val params = service.overlayManager.createOverlayParams().apply {
+            gravity = Gravity.TOP or Gravity.START
+            this.x = x.toInt()
+            this.y = y.toInt()
+        }
+
+        service.overlayManager.safeAddView(view, params)
+
+        view.animate()
+            .alpha(0f)
+            .setDuration(300)
+            .withEndAction {
+                service.overlayManager.safeRemoveView(view)
+            }
+            .start()
+    }
+}
+"""
+    write_file("app/src/main/java/com/example/autotap/ui/overlays/ControlPanelOverlay.kt", control_panel_code)
+
+    # 4. CaptureFrameOverlay.kt
+    capture_overlay_code = r"""package com.example.autotap.ui.overlays
+
+import android.graphics.Bitmap
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.ImageButton
+import android.widget.Toast
+import com.example.autotap.ActionType
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.ui.base.OverlayManager
+
+class CaptureFrameOverlay(
+    private val service: MyAutoClickService,
+    val overlayManager: OverlayManager = service.overlayManager
+) {
+
+    private var rootView: View? = null
+
+    fun show() {
+        if (rootView != null) return
+
+        val view = LayoutInflater.from(service)
+            .inflate(R.layout.floating_capture_frame, null)
+        rootView = view
+
+        val params = overlayManager.createOverlayParams().apply {
+            width = WindowManager.LayoutParams.MATCH_PARENT
+            height = WindowManager.LayoutParams.MATCH_PARENT
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        bindUi(view)
+        overlayManager.safeAddView(view, params)
+    }
+
+    fun hide() {
+        rootView?.let { overlayManager.safeRemoveView(it) }
+        rootView = null
+    }
+
+    fun startRecording() {
+        show()
+        service.isRecording = true
+    }
+
+    private fun bindUi(view: View) {
+        val captureSquare = view.findViewById<View>(R.id.captureSquare)
+        val layoutTopBar = view.findViewById<View>(R.id.layoutTopBar)
+        val layoutBottomBar = view.findViewById<View>(R.id.layoutBottomBar)
+
+        val handleMove = view.findViewById<View>(R.id.handleMoveFrame)
+        val handleResize = view.findViewById<View>(R.id.handleResize)
+
+        val btnDoCapture = view.findViewById<ImageButton>(R.id.btnDoCapture)
+        val btnSearchArea = view.findViewById<Button>(R.id.btnCaptureSearchArea)
+        val btnToggleShape = view.findViewById<Button>(R.id.btnToggleCaptureShape)
+        val btnCancel = view.findViewById<ImageButton>(R.id.btnCancelCapture)
+
+        val dm = service.resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+
+        var frameW = overlayManager.dpToPx(100)
+        var frameH = overlayManager.dpToPx(100)
+        var frameX = (screenW - frameW) / 2
+        var frameY = (screenH - frameH) / 2
+
+        fun updatePositions() {
+            frameW = frameW.coerceIn(overlayManager.dpToPx(24), screenW)
+            frameH = frameH.coerceIn(overlayManager.dpToPx(24), screenH)
+            frameX = frameX.coerceIn(0, screenW - frameW)
+            frameY = frameY.coerceIn(0, screenH - frameH)
+
+            captureSquare?.apply {
+                layoutParams?.width = frameW
+                layoutParams?.height = frameH
+                translationX = frameX.toFloat()
+                translationY = frameY.toFloat()
+                requestLayout()
+            }
+
+            layoutTopBar?.apply {
+                translationX = frameX.toFloat().coerceIn(0f, (screenW - width).toFloat().coerceAtLeast(0f))
+                translationY = (frameY - overlayManager.dpToPx(44)).toFloat().coerceIn(0f, (screenH - height).toFloat().coerceAtLeast(0f))
+            }
+
+            layoutBottomBar?.apply {
+                translationX = frameX.toFloat().coerceIn(0f, (screenW - width).toFloat().coerceAtLeast(0f))
+                translationY = (frameY + frameH + overlayManager.dpToPx(4)).toFloat().coerceIn(0f, (screenH - height).toFloat().coerceAtLeast(0f))
+            }
+        }
+
+        var initFrameX = 0
+        var initFrameY = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        handleMove?.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initFrameX = frameX
+                    initFrameY = frameY
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    frameX = initFrameX + (event.rawX - touchX).toInt()
+                    frameY = initFrameY + (event.rawY - touchY).toInt()
+                    updatePositions()
+                    true
+                }
+                else -> false
+            }
+        }
+
+        var initW = 0
+        var initH = 0
+        handleResize?.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initW = frameW
+                    initH = frameH
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    frameW = initW + (event.rawX - touchX).toInt()
+                    frameH = initH + (event.rawY - touchY).toInt()
+                    updatePositions()
+                    true
+                }
+                else -> false
+            }
+        }
+
+        var isCircle = true
+        btnToggleShape?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            isCircle = !isCircle
+            btnToggleShape.text = if (isCircle) "🔘" else "🔲"
+            captureSquare?.setBackgroundResource(
+                if (isCircle) R.drawable.border_capture else R.drawable.border_capture_square
+            )
+        }
+
+        btnSearchArea?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            Toast.makeText(service, "📐 Зона поиска задана", Toast.LENGTH_SHORT).show()
+        }
+
+        btnDoCapture?.setOnClickListener {
+            service.vibrateFeedback(40L)
+            hide()
+            service.addNewActionAtPosition(
+                frameX + frameW / 2f,
+                frameY + frameH / 2f,
+                1000L,
+                ActionType.TRIGGER,
+                -1
+            )
+            Toast.makeText(service, "🎉 ИИ-Шаблон добавлен!", Toast.LENGTH_SHORT).show()
+        }
+
+        btnCancel?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            hide()
+        }
+
+        view.post { updatePositions() }
+    }
+
+    fun capture(): Bitmap? {
+        return try {
+            val dm = service.resources.displayMetrics
+            Bitmap.createBitmap(dm.widthPixels, dm.heightPixels, Bitmap.Config.ARGB_8888)
+        } catch (e: Exception) {
+            MyAutoClickService.logError(service, e)
+            null
+        }
+    }
+}
+"""
+    write_file("app/src/main/java/com/example/autotap/ui/overlays/CaptureFrameOverlay.kt", capture_overlay_code)
+
+    # 5. JoystickOverlay.kt
+    joystick_overlay_code = r"""package com.example.autotap.ui.overlays
+
+import android.graphics.PixelFormat
+import android.graphics.PointF
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.ImageButton
+import com.example.autotap.ActionConfig
+import com.example.autotap.ActionType
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.ui.base.OverlayManager
+
+class JoystickOverlay(
+    private val service: MyAutoClickService,
+    val overlayManager: OverlayManager = service.overlayManager
+) {
+
+    var rootView: View? = null
+    private val pathPoints = ArrayList<PointF>()
+    private var isRecordingPath = false
+
+    fun show() {
+        if (rootView != null) return
+
+        val view = View.inflate(service, R.layout.floating_joystick_control, null)
+        rootView = view
+
+        val params = overlayManager.createOverlayParams().apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = overlayManager.dpToPx(30)
+            y = overlayManager.dpToPx(200)
+        }
+
+        bindUi(view)
+        overlayManager.safeAddView(view, params)
+    }
+
+    fun hide() {
+        rootView?.let { overlayManager.safeRemoveView(it) }
+        rootView = null
+        pathPoints.clear()
+        isRecordingPath = false
+    }
+
+    private fun bindUi(view: View) {
+        val handleMove = view.findViewById<View>(R.id.handleMoveJoystick)
+        val btnRecord = view.findViewById<Button>(R.id.btnRecordJoystick)
+        val btnClose = view.findViewById<ImageButton>(R.id.btnCloseJoystick)
+        val touchArea = view.findViewById<View>(R.id.viewJoystickBase)
+
+        var initX = 0
+        var initY = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        handleMove?.setOnTouchListener { _, event ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initX = p.x
+                    initY = p.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dm = service.resources.displayMetrics
+                    val maxX = dm.widthPixels - view.width
+                    val maxY = dm.heightPixels - view.height
+                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, maxX)
+                    overlayManager.safeUpdateViewLayout(view, p)
+                    true
+                }
+                else -> false
+            }
+        }
+
+        btnRecord?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            if (!isRecordingPath) {
+                startRecordingPath()
+                btnRecord.text = "⏹ СОХРАНИТЬ"
+            } else {
+                savePathAsAction()
+            }
+        }
+
+        btnClose?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            hide()
+        }
+
+        touchArea?.setOnTouchListener { _, event ->
+            if (!isRecordingPath) return@setOnTouchListener false
+
+            val x = event.x
+            val y = event.y
+
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    pathPoints.clear()
+                    pathPoints.add(PointF(x, y))
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    pathPoints.add(PointF(x, y))
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    pathPoints.add(PointF(x, y))
+                }
+            }
+            true
+        }
+    }
+
+    private fun startRecordingPath() {
+        pathPoints.clear()
+        isRecordingPath = true
+    }
+
+    private fun savePathAsAction() {
+        if (pathPoints.size < 2) {
+            service.vibrateFeedback(40L)
+            hide()
+            return
+        }
+
+        val dm = service.resources.displayMetrics
+
+        val normPath = ArrayList<PointF>().apply {
+            pathPoints.forEach { p ->
+                add(
+                    PointF(
+                        (p.x / dm.widthPixels).coerceIn(0f, 1f),
+                        (p.y / dm.heightPixels).coerceIn(0f, 1f)
+                    )
+                )
+            }
+        }
+
+        val first = normPath.first()
+        val last = normPath.last()
+
+        val cfg = ActionConfig(
+            id = service.actionsList.size + 1,
+            type = ActionType.SWIPE,
+            xNorm = first.x,
+            yNorm = first.y,
+            endXNorm = last.x,
+            endYNorm = last.y,
+            holdDuration = 600L,
+            joystickPath = normPath
+        )
+
+        service.actionsList.add(cfg)
+        hide()
+    }
+}
+"""
+    write_file("app/src/main/java/com/example/autotap/ui/overlays/JoystickOverlay.kt", joystick_overlay_code)
+
+    # 6. MyAutoClickService.kt (Включение публичных вспомогательных методов для панели)
+    service_path = os.path.join("app", "src", "main", "java", "com", "example", "autotap", "MyAutoClickService.kt")
+    if os.path.exists(service_path):
+        with open(service_path, "r", encoding="utf-8") as f:
+            code = f.read()
+
+        # Добавление публичных методов управления
+        extra_methods = r"""
+    var isNumbersHidden = false
+
+    fun toggleNumbersVisibility() {
+        isNumbersHidden = !isNumbersHidden
+        actionsList.forEach { act ->
+            act.startView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+            act.endView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+        }
+        Toast.makeText(this, if (isNumbersHidden) "👁 Номера скрыты" else "👁 Номера показаны", Toast.LENGTH_SHORT).show()
+    }
+
+    fun clearAllActions() {
+        actionsList.forEach { act ->
+            act.startView?.let { overlayManager.safeRemoveView(it) }
+            act.endView?.let { overlayManager.safeRemoveView(it) }
+        }
+        actionsList.clear()
+        Toast.makeText(this, "🗑 Все шаги очищены", Toast.LENGTH_SHORT).show()
+    }
+
+    fun showAddActionMenu() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_action, null)
+        val params = overlayManager.createOverlayParams().apply {
+            gravity = Gravity.CENTER
+            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            dimAmount = 0.5f
+        }
+
+        val btnClick = dialogView.findViewById<Button>(R.id.btnAddClick)
+        val btnSwipe = dialogView.findViewById<Button>(R.id.btnAddSwipe)
+        val btnAi = dialogView.findViewById<Button>(R.id.btnAddTrigger)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelAdd)
+
+        val spawnOffset = (actionsList.size % 8) * overlayManager.dpToPx(24).toFloat()
+        val spawnX = 350f + spawnOffset
+        val spawnY = 350f + spawnOffset
+
+        btnClick?.setOnClickListener {
+            vibrateFeedback(20L)
+            addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.CLICK, -1)
+            overlayManager.safeRemoveView(dialogView)
+        }
+        btnSwipe?.setOnClickListener {
+            vibrateFeedback(20L)
+            addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.SWIPE, -1)
+            spawnEndTargetAtPosition(actionsList.last(), spawnX + 100f, spawnY + 100f)
+            overlayManager.safeRemoveView(dialogView)
+        }
+        btnAi?.setOnClickListener {
+            vibrateFeedback(20L)
+            addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.TRIGGER, 0)
+            overlayManager.safeRemoveView(dialogView)
+        }
+        btnCancel?.setOnClickListener {
+            vibrateFeedback(20L)
+            overlayManager.safeRemoveView(dialogView)
+        }
+
+        overlayManager.safeAddView(dialogView, params)
+    }
+
+    fun showTutorialCard() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.floating_tutorial_card, null)
+        val params = overlayManager.createOverlayParams().apply {
+            gravity = Gravity.CENTER
+        }
+
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTutTitle)
+        val tvDesc = dialogView.findViewById<TextView>(R.id.tvTutDesc)
+        val btnPrev = dialogView.findViewById<Button>(R.id.btnTutPrev)
+        val btnNext = dialogView.findViewById<Button>(R.id.btnTutNext)
+        val btnSkip = dialogView.findViewById<Button>(R.id.btnTutSkip)
+
+        var step = 0
+        val steps = listOf(
+            Pair("1/5: Главная панель", "Нажмите ▶ для запуска сценария, + для добавления клика, 📸 для ИИ-сканера."),
+            Pair("2/5: Настройка шагов", "Тапните по круглой мишени на экране, чтобы изменить задержку, повторы или тип действия."),
+            Pair("3/5: Запись жестов", "Нажмите 🔴 в меню, чтобы записывать ваши касания и свайпы прямо по экрану в реальном времени."),
+            Pair("4/5: ИИ-Поиск", "Кнопка 📸 откроет прицел. Вырежьте любой элемент экрана, чтобы кликер находил его автоматически."),
+            Pair("5/5: Скрипты", "Сохраняйте наборы шагов в файлы через папку 📁 и загружайте их в один клик.")
+        )
+
+        fun updateContent() {
+            tvTitle?.text = steps[step].first
+            tvDesc?.text = steps[step].second
+            btnPrev?.visibility = if (step > 0) View.VISIBLE else View.INVISIBLE
+            btnNext?.text = if (step < steps.size - 1) "Далее ►" else "Готово ✔"
+        }
+
+        updateContent()
+
+        btnPrev?.setOnClickListener {
+            vibrateFeedback(20L)
+            if (step > 0) {
+                step--
+                updateContent()
+            }
+        }
+
+        btnNext?.setOnClickListener {
+            vibrateFeedback(20L)
+            if (step < steps.size - 1) {
+                step++
+                updateContent()
+            } else {
+                overlayManager.safeRemoveView(dialogView)
+            }
+        }
+
+        btnSkip?.setOnClickListener {
+            vibrateFeedback(20L)
+            overlayManager.safeRemoveView(dialogView)
+        }
+
+        overlayManager.safeAddView(dialogView, params)
+    }
+
+    private fun spawnEndTargetAtPosition(config: ActionConfig, posX: Float, posY: Float) {
+        val endView = LayoutInflater.from(this).inflate(R.layout.floating_target_end, null)
+        val tvNumEnd = endView.findViewById<TextView>(R.id.tvTargetNumberEnd)
+        tvNumEnd?.text = "${config.id}E"
+
+        val sizePx = overlayManager.dpToPx(36)
+        val params = overlayManager.createOverlayParams().apply {
+            width = sizePx
+            height = sizePx
+            gravity = Gravity.TOP or Gravity.START
+            x = (posX - sizePx / 2f).toInt()
+            y = (posY - sizePx / 2f).toInt()
+        }
+
+        config.endView = endView
+        overlayManager.safeAddView(endView, params)
+    }
+"""
+        if "fun toggleNumbersVisibility()" not in code:
+            code = code.replace("class MyAutoClickService : AccessibilityService() {", "class MyAutoClickService : AccessibilityService() {\n" + extra_methods)
+            with open(service_path, "w", encoding="utf-8") as f:
+                f.write(code)
+            print("  [✓] Обновлен MyAutoClickService.kt (добавлены публичные тач-методы)")
+
+    print("✨ Все тач-события и оверлеи полностью отреставрированы!")
 
 if __name__ == "__main__":
-    apply_template_matcher_repair()
+    apply_overlay_touch_repair()

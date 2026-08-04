@@ -34,6 +34,142 @@ import java.util.zip.ZipOutputStream
 
 class MyAutoClickService : AccessibilityService() {
 
+    var isNumbersHidden = false
+
+    fun toggleNumbersVisibility() {
+        isNumbersHidden = !isNumbersHidden
+        actionsList.forEach { act ->
+            act.startView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+            act.endView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+        }
+        Toast.makeText(this, if (isNumbersHidden) "👁 Номера скрыты" else "👁 Номера показаны", Toast.LENGTH_SHORT).show()
+    }
+
+    fun clearAllActions() {
+        actionsList.forEach { act ->
+            act.startView?.let { overlayManager.safeRemoveView(it) }
+            act.endView?.let { overlayManager.safeRemoveView(it) }
+        }
+        actionsList.clear()
+        Toast.makeText(this, "🗑 Все шаги очищены", Toast.LENGTH_SHORT).show()
+    }
+
+    fun showAddActionMenu() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_action, null)
+        val params = overlayManager.createOverlayParams().apply {
+            gravity = Gravity.CENTER
+            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            dimAmount = 0.5f
+        }
+
+        val btnClick = dialogView.findViewById<Button>(R.id.btnAddClick)
+        val btnSwipe = dialogView.findViewById<Button>(R.id.btnAddSwipe)
+        val btnAi = dialogView.findViewById<Button>(R.id.btnAddTrigger)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelAdd)
+
+        val spawnOffset = (actionsList.size % 8) * overlayManager.dpToPx(24).toFloat()
+        val spawnX = 350f + spawnOffset
+        val spawnY = 350f + spawnOffset
+
+        btnClick?.setOnClickListener {
+            vibrateFeedback(20L)
+            addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.CLICK, -1)
+            overlayManager.safeRemoveView(dialogView)
+        }
+        btnSwipe?.setOnClickListener {
+            vibrateFeedback(20L)
+            addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.SWIPE, -1)
+            spawnEndTargetAtPosition(actionsList.last(), spawnX + 100f, spawnY + 100f)
+            overlayManager.safeRemoveView(dialogView)
+        }
+        btnAi?.setOnClickListener {
+            vibrateFeedback(20L)
+            addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.TRIGGER, 0)
+            overlayManager.safeRemoveView(dialogView)
+        }
+        btnCancel?.setOnClickListener {
+            vibrateFeedback(20L)
+            overlayManager.safeRemoveView(dialogView)
+        }
+
+        overlayManager.safeAddView(dialogView, params)
+    }
+
+    fun showTutorialCard() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.floating_tutorial_card, null)
+        val params = overlayManager.createOverlayParams().apply {
+            gravity = Gravity.CENTER
+        }
+
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTutTitle)
+        val tvDesc = dialogView.findViewById<TextView>(R.id.tvTutDesc)
+        val btnPrev = dialogView.findViewById<Button>(R.id.btnTutPrev)
+        val btnNext = dialogView.findViewById<Button>(R.id.btnTutNext)
+        val btnSkip = dialogView.findViewById<Button>(R.id.btnTutSkip)
+
+        var step = 0
+        val steps = listOf(
+            Pair("1/5: Главная панель", "Нажмите ▶ для запуска сценария, + для добавления клика, 📸 для ИИ-сканера."),
+            Pair("2/5: Настройка шагов", "Тапните по круглой мишени на экране, чтобы изменить задержку, повторы или тип действия."),
+            Pair("3/5: Запись жестов", "Нажмите 🔴 в меню, чтобы записывать ваши касания и свайпы прямо по экрану в реальном времени."),
+            Pair("4/5: ИИ-Поиск", "Кнопка 📸 откроет прицел. Вырежьте любой элемент экрана, чтобы кликер находил его автоматически."),
+            Pair("5/5: Скрипты", "Сохраняйте наборы шагов в файлы через папку 📁 и загружайте их в один клик.")
+        )
+
+        fun updateContent() {
+            tvTitle?.text = steps[step].first
+            tvDesc?.text = steps[step].second
+            btnPrev?.visibility = if (step > 0) View.VISIBLE else View.INVISIBLE
+            btnNext?.text = if (step < steps.size - 1) "Далее ►" else "Готово ✔"
+        }
+
+        updateContent()
+
+        btnPrev?.setOnClickListener {
+            vibrateFeedback(20L)
+            if (step > 0) {
+                step--
+                updateContent()
+            }
+        }
+
+        btnNext?.setOnClickListener {
+            vibrateFeedback(20L)
+            if (step < steps.size - 1) {
+                step++
+                updateContent()
+            } else {
+                overlayManager.safeRemoveView(dialogView)
+            }
+        }
+
+        btnSkip?.setOnClickListener {
+            vibrateFeedback(20L)
+            overlayManager.safeRemoveView(dialogView)
+        }
+
+        overlayManager.safeAddView(dialogView, params)
+    }
+
+    private fun spawnEndTargetAtPosition(config: ActionConfig, posX: Float, posY: Float) {
+        val endView = LayoutInflater.from(this).inflate(R.layout.floating_target_end, null)
+        val tvNumEnd = endView.findViewById<TextView>(R.id.tvTargetNumberEnd)
+        tvNumEnd?.text = "${config.id}E"
+
+        val sizePx = overlayManager.dpToPx(36)
+        val params = overlayManager.createOverlayParams().apply {
+            width = sizePx
+            height = sizePx
+            gravity = Gravity.TOP or Gravity.START
+            x = (posX - sizePx / 2f).toInt()
+            y = (posY - sizePx / 2f).toInt()
+        }
+
+        config.endView = endView
+        overlayManager.safeAddView(endView, params)
+    }
+
+
     companion object {
         var instance: MyAutoClickService? = null
 

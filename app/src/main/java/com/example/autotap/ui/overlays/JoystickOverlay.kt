@@ -16,10 +16,10 @@ import com.example.autotap.ui.base.OverlayManager
 
 class JoystickOverlay(
     private val service: MyAutoClickService,
-    private val overlayManager: OverlayManager = service.overlayManager
+    val overlayManager: OverlayManager = service.overlayManager
 ) {
 
-    private var rootView: View? = null
+    var rootView: View? = null
     private val pathPoints = ArrayList<PointF>()
     private var isRecordingPath = false
 
@@ -29,16 +29,10 @@ class JoystickOverlay(
         val view = View.inflate(service, R.layout.floating_joystick_control, null)
         rootView = view
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            overlayManager.getOverlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
+        val params = overlayManager.createOverlayParams().apply {
             gravity = Gravity.TOP or Gravity.START
+            x = overlayManager.dpToPx(30)
+            y = overlayManager.dpToPx(200)
         }
 
         bindUi(view)
@@ -53,9 +47,38 @@ class JoystickOverlay(
     }
 
     private fun bindUi(view: View) {
+        val handleMove = view.findViewById<View>(R.id.handleMoveJoystick)
         val btnRecord = view.findViewById<Button>(R.id.btnRecordJoystick)
         val btnClose = view.findViewById<ImageButton>(R.id.btnCloseJoystick)
         val touchArea = view.findViewById<View>(R.id.viewJoystickBase)
+
+        var initX = 0
+        var initY = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        handleMove?.setOnTouchListener { _, event ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initX = p.x
+                    initY = p.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dm = service.resources.displayMetrics
+                    val maxX = dm.widthPixels - view.width
+                    val maxY = dm.heightPixels - view.height
+                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, maxX)
+                    overlayManager.safeUpdateViewLayout(view, p)
+                    true
+                }
+                else -> false
+            }
+        }
 
         btnRecord?.setOnClickListener {
             service.vibrateFeedback(20L)

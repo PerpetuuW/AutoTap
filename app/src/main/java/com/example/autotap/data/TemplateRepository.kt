@@ -57,7 +57,7 @@ class TemplateRepository(private val context: Context) {
 
             val patchFiles = patchDir.listFiles()?.filter { file -> file.name.endsWith(".png") } ?: emptyList()
             if (patchFiles.size >= 5) {
-                val patchBitmaps = patchFiles.mapNotNull { file -> BitmapFactory.decodeFile(file.absolutePath) }
+                val patchBitmaps = patchFiles.mapNotNull<File, Bitmap> { file -> BitmapFactory.decodeFile(file.absolutePath) }
                 if (patchBitmaps.isNotEmpty()) {
                     val meta = loadTemplateMetadata(maskPath)
                     val isCircle = meta?.optBoolean("isCircleShape", true) ?: true

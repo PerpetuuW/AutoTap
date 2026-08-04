@@ -15,16 +15,10 @@ class OverlayManager(private val context: Context) {
     private val windowManager: WindowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-    // предотвращает двойное добавление/удаление
     private val attachedViews = ConcurrentHashMap<View, Boolean>()
-
-    // анти‑мерцание при частых updateViewLayout
     private val updateHandler = Handler(Looper.getMainLooper())
     private val pendingUpdates = ConcurrentHashMap<View, WindowManager.LayoutParams>()
 
-    // ---------------------------------------------------------
-    //  ADD VIEW (ускоренный + безопасный)
-    // ---------------------------------------------------------
     fun safeAddView(view: View?, params: WindowManager.LayoutParams) {
         if (view == null) return
         if (attachedViews[view] == true) return
@@ -37,9 +31,6 @@ class OverlayManager(private val context: Context) {
         }
     }
 
-    // ---------------------------------------------------------
-    //  REMOVE VIEW (без двойного удаления)
-    // ---------------------------------------------------------
     fun safeRemoveView(view: View?) {
         if (view == null) return
         if (attachedViews[view] != true) return
@@ -53,9 +44,6 @@ class OverlayManager(private val context: Context) {
         }
     }
 
-    // ---------------------------------------------------------
-    //  UPDATE VIEW (анти‑мерцание + анти‑ANR)
-    // ---------------------------------------------------------
     fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams) {
         if (view == null) return
         if (attachedViews[view] != true) return
@@ -72,40 +60,31 @@ class OverlayManager(private val context: Context) {
             } finally {
                 pendingUpdates.remove(view)
             }
-        }, 8) // анти‑мерцание: 8–12 мс
+        }, 8)
     }
 
-    // ---------------------------------------------------------
-    //  DPI
-    // ---------------------------------------------------------
     fun dpToPx(dp: Int): Int =
         (dp * context.resources.displayMetrics.density).toInt()
 
     fun dpToPx(dp: Float): Int =
         (dp * context.resources.displayMetrics.density).toInt()
 
-    // ---------------------------------------------------------
-    //  OVERLAY TYPE (оптимальный)
-    // ---------------------------------------------------------
     fun getOverlayType(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
+            @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
     }
 
-    // ---------------------------------------------------------
-    //  Быстрое создание стандартных LayoutParams
-    // ---------------------------------------------------------
     fun createOverlayParams(): WindowManager.LayoutParams {
         return WindowManager.LayoutParams().apply {
             type = getOverlayType()
             format = PixelFormat.TRANSLUCENT
-            flags =
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
             width = WindowManager.LayoutParams.WRAP_CONTENT
             height = WindowManager.LayoutParams.WRAP_CONTENT

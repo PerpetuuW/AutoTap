@@ -83,7 +83,19 @@ class AiScannerEngine(private val service: MyAutoClickService) {
             config
         )
 
-        return candidates.firstOrNull()
+        val match = candidates.firstOrNull()
+        if (match != null && screenBitmap != null) {
+            val rx = match.rect.left.coerceAtLeast(0)
+            val ry = match.rect.top.coerceAtLeast(0)
+            val rw = match.rect.width().coerceAtMost(screenBitmap.width - rx)
+            val rh = match.rect.height().coerceAtMost(screenBitmap.height - ry)
+            if (rw > 0 && rh > 0) {
+                val patch = Bitmap.createBitmap(screenBitmap, rx, ry, rw, rh)
+                templateRepository.recordSuccessfulMatch(templatePath, patch)
+            }
+        }
+
+        return match
     }
 
     fun scanMultiTemplates(
@@ -94,6 +106,7 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         if (config.multiTemplateIndices.isEmpty()) return null
 
         var best: MatchCandidate? = null
+        var bestPath: String? = null
 
         for (idx in config.multiTemplateIndices) {
             if (idx !in templateRepository.globalTemplates.indices) continue
@@ -113,7 +126,19 @@ class AiScannerEngine(private val service: MyAutoClickService) {
             if (candidate != null) {
                 if (best == null || candidate.score > best!!.score) {
                     best = candidate
+                    bestPath = templatePath
                 }
+            }
+        }
+
+        if (best != null && bestPath != null && screenBitmap != null) {
+            val rx = best.rect.left.coerceAtLeast(0)
+            val ry = best.rect.top.coerceAtLeast(0)
+            val rw = best.rect.width().coerceAtMost(screenBitmap.width - rx)
+            val rh = best.rect.height().coerceAtMost(screenBitmap.height - ry)
+            if (rw > 0 && rh > 0) {
+                val patch = Bitmap.createBitmap(screenBitmap, rx, ry, rw, rh)
+                templateRepository.recordSuccessfulMatch(bestPath, patch)
             }
         }
 
