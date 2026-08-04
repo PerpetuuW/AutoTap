@@ -120,32 +120,6 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         return best
     }
 
-    fun scanWithTimeout(
-        screenBitmap: Bitmap?,
-        config: ActionConfig,
-        timeoutMs: Long,
-        callback: (MatchCandidate?) -> Unit
-    ) {
-        if (screenBitmap == null) {
-            callback(null)
-            return
-        }
-
-        val startTime = System.currentTimeMillis()
-
-        bgExecutor.execute {
-            var result: MatchCandidate? = null
-
-            while (System.currentTimeMillis() - startTime < timeoutMs) {
-                result = scanForMatch(screenBitmap, config)
-                if (result != null) break
-                Thread.sleep(50)
-            }
-
-            uiHandler.post { callback(result) }
-        }
-    }
-
     fun executeAiTriggerSequence(config: ActionConfig): Int {
         try {
             val screen = service.captureScreenBitmap() ?: return -1

@@ -38,7 +38,9 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                 when (action.type) {
 
                     ActionType.CLICK -> {
-                        val (x, y) = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val x = pt.first
+                        val y = pt.second
                         val jitter = service.randomOffset(action.randomRadius)
                         val fx = x + jitter.x
                         val fy = y + jitter.y
@@ -55,7 +57,9 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                     }
 
                     ActionType.LONG_PRESS -> {
-                        val (x, y) = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val x = pt.first
+                        val y = pt.second
 
                         uiHandler.post {
                             service.showClickVisualizer(x, y)
@@ -69,13 +73,17 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                     }
 
                     ActionType.SWIPE -> {
-                        val (sx, sy) = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
-                        val (ex, ey) = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
+                        val startPt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val endPt = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
+                        val sx = startPt.first
+                        val sy = startPt.second
+                        val ex = endPt.first
+                        val ey = endPt.second
 
                         if (action.joystickPath.isNotEmpty()) {
                             val path = action.joystickPath.map { p ->
-                                val (px, py) = service.resolveNormalizedPoint(p.x, p.y)
-                                PointF(px, py)
+                                val normP = service.resolveNormalizedPoint(p.x, p.y)
+                                PointF(normP.first, normP.second)
                             }
 
                             service.gestureExecutor.performPathSwipeWithCallback(

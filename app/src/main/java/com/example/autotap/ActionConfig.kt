@@ -14,54 +14,33 @@ enum class ActionType {
 }
 
 data class ActionConfig(
-
-    // ---------------------------------------------------------
-    // БАЗОВЫЕ ПОЛЯ (сериализуемые)
-    // ---------------------------------------------------------
     var id: Int = 0,
     var type: ActionType = ActionType.CLICK,
 
-    // координаты старта (нормализованные 0..1)
     var xNorm: Float = 0f,
     var yNorm: Float = 0f,
 
-    // координаты конца (для SWIPE)
     var endXNorm: Float = 0f,
     var endYNorm: Float = 0f,
 
-    // задержка перед шагом
     var delay: Long = 500L,
-
-    // количество повторов
     var repeatCount: Int = 1,
-
-    // радиус рандомизации
     var randomRadius: Int = 0,
-
-    // длительность удержания
     var holdDuration: Long = 1000L,
 
-    // ---------------------------------------------------------
-    // ШАБЛОНЫ
-    // ---------------------------------------------------------
     var selectedTemplateIndex: Int = -1,
     var multiTemplateIndices: ArrayList<Int> = ArrayList(),
     var clickAiTarget: Boolean = true,
     var targetScriptToLoad: String = "",
     var jumpToStepOnMatch: Int = -1,
 
-    // ---------------------------------------------------------
-    // AI‑параметры
-    // ---------------------------------------------------------
     var aiTimeoutSeconds: Int = 15,
     var similarityPercent: Int = 70,
     var scanIntervalSeconds: Int = 5,
     var postMatchDelaySeconds: Int = 3,
     var playAudioOnMatch: Boolean = false,
+    var isFastMode: Boolean = true,
 
-    // ---------------------------------------------------------
-    // РЕЖИМЫ ПОИСКА
-    // ---------------------------------------------------------
     var shapeOnlyMode: Boolean = false,
     var hybridCascadeMode: Boolean = true,
     var multiScaleSearch: Boolean = false,
@@ -69,35 +48,18 @@ data class ActionConfig(
     var exactMatchOnly: Boolean = false,
     var showSearchVisualizer: Boolean = true,
 
-    // ---------------------------------------------------------
-    // ЗОНА ПОИСКА
-    // ---------------------------------------------------------
     var customSearchArea: Boolean = false,
     var searchAreaXNorm: Float = 0f,
     var searchAreaYNorm: Float = 0f,
     var searchAreaWNorm: Float = 1f,
     var searchAreaHNorm: Float = 1f,
 
-    // ---------------------------------------------------------
-    // ДЖОЙСТИК
-    // ---------------------------------------------------------
     var joystickPath: ArrayList<PointF> = ArrayList(),
-
-    // ---------------------------------------------------------
-    // КАЛИБРОВКА
-    // ---------------------------------------------------------
     var calibratedRectNorm: Rect? = null,
 
-    // ---------------------------------------------------------
-    // RUNTIME‑ПОЛЯ (НЕ сериализуются)
-    // ---------------------------------------------------------
     @Transient var startView: View? = null,
     @Transient var endView: View? = null
 ) {
-
-    // ---------------------------------------------------------
-    // JSON → ActionConfig
-    // ---------------------------------------------------------
     companion object {
         fun fromJson(obj: JSONObject): ActionConfig {
             val cfg = ActionConfig()
@@ -131,6 +93,7 @@ data class ActionConfig(
             cfg.scanIntervalSeconds = obj.optInt("scanIntervalSeconds", 5)
             cfg.postMatchDelaySeconds = obj.optInt("postMatchDelaySeconds", 3)
             cfg.playAudioOnMatch = obj.optBoolean("playAudioOnMatch", false)
+            cfg.isFastMode = obj.optBoolean("isFastMode", true)
 
             cfg.shapeOnlyMode = obj.optBoolean("shapeOnlyMode", false)
             cfg.hybridCascadeMode = obj.optBoolean("hybridCascadeMode", true)
@@ -160,9 +123,6 @@ data class ActionConfig(
         }
     }
 
-    // ---------------------------------------------------------
-    // ActionConfig → JSON
-    // ---------------------------------------------------------
     fun toJson(): JSONObject {
         val obj = JSONObject()
 
@@ -191,6 +151,7 @@ data class ActionConfig(
         obj.put("scanIntervalSeconds", scanIntervalSeconds)
         obj.put("postMatchDelaySeconds", postMatchDelaySeconds)
         obj.put("playAudioOnMatch", playAudioOnMatch)
+        obj.put("isFastMode", isFastMode)
 
         obj.put("shapeOnlyMode", shapeOnlyMode)
         obj.put("hybridCascadeMode", hybridCascadeMode)

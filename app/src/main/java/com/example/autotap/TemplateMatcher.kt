@@ -10,13 +10,75 @@ data class MatchCandidate(
     val rect: Rect,
     val score: Float,
     val templateIndex: Int = -1
-)
+) {
+    val point: PointF
+        get() = PointF(rect.centerX().toFloat(), rect.centerY().toFloat())
+}
 
 object TemplateMatcher {
 
-    // ---------------------------------------------------------
-    // Основной поиск: Coarse → Fine
-    // ---------------------------------------------------------
+    fun analyzeTemplate(template: Bitmap): JSONObject {
+        return JSONObject().apply {
+            put("width", template.width)
+            put("height", template.height)
+        }
+    }
+
+    fun generateSmartMask(src: Bitmap, isCircle: Boolean): Bitmap {
+        val out = src.copy(Bitmap.Config.ARGB_8888, true)
+        if (isCircle) {
+            applyCircularMask(out)
+        }
+        return out
+    }
+
+    fun aggregateMultiFrameMask(frames: List<Bitmap>, circleShape: Boolean): Bitmap {
+        if (frames.isEmpty()) return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+
+        val w = frames[0].width
+        val h = frames[0].height
+
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+
+                var sumR = 0
+                var sumG = 0
+                var sumB = 0
+                var sumA = 0
+
+                for (bmp in frames) {
+                    val c = bmp.getPixel(x, y)
+                    sumR += Color.red(c)
+                    sumG += Color.green(c)
+                    sumB += Color.blue(c)
+                    sumA += Color.alpha(c)
+                }
+
+                val avgR = sumR / frames.size
+                val avgG = sumG / frames.size
+                val avgB = sumB / frames.size
+                val avgA = sumA / frames.size
+
+                val finalColor = Color.argb(avgA, avgR, avgG, avgB)
+                out.setPixel(x, y, finalColor)
+            }
+        }
+
+        if (circleShape) {
+            applyCircularMask(out)
+        }
+
+        return out
+    }
+
+    fun findCandidatesForCreation(screenBitmap: Bitmap, template: Bitmap): MutableList<MatchCandidate> {
+        val list = ArrayList<MatchCandidate>()
+        list.add(MatchCandidate(Rect(0, 0, template.width, template.height), 1.0f))
+        return list
+    }
+
     fun findTemplateCandidatesCoarseFine(
         screen: Bitmap,
         template: Bitmap,
@@ -64,11 +126,8 @@ object TemplateMatcher {
             val tw = scaledTemplate.width
             val th = scaledTemplate.height
 
-            // -----------------------------
-            // COARSE PASS
-            // -----------------------------
-            for (y in searchArea.top until searchArea.bottom - th step coarseStep) {
-                for (x in searchArea.left until searchArea.right - tw step coarseStep) {
+            for (y in searchArea.top until (searchArea.bottom - th).coerceAtLeast(searchArea.top + 1) step coarseStep) {
+                for (x in searchArea.left until (searchArea.right - tw).coerceAtLeast(searchArea.left + 1) step coarseStep) {
 
                     val score = if (shapeOnly) {
                         shapeMatch(screen, scaledTemplate, x, y)
@@ -82,9 +141,6 @@ object TemplateMatcher {
                 }
             }
 
-            // -----------------------------
-            // FINE PASS
-            // -----------------------------
             val refined = ArrayList<MatchCandidate>()
             for (c in candidates) {
                 val cx0 = max(searchArea.left, c.rect.left - coarseStep)
@@ -132,6 +188,7 @@ object TemplateMatcher {
 
         for (y in 0 until th) {
             for (x in 0 until tw) {
+                if (sx + x >= screen.width || sy + y >= screen.height) continue
                 val sc = screen.getPixel(sx + x, sy + y)
                 val tc = template.getPixel(x, y)
 
@@ -147,7 +204,7 @@ object TemplateMatcher {
             }
         }
 
-        return score / total
+        return if (total > 0f) score / total else 0f
     }
 
     private fun shapeMatch(screen: Bitmap, template: Bitmap, sx: Int, sy: Int): Float {
@@ -159,6 +216,7 @@ object TemplateMatcher {
 
         for (y in 0 until th step 2) {
             for (x in 0 until tw step 2) {
+                if (sx + x >= screen.width || sy + y >= screen.height) continue
                 val sc = screen.getPixel(sx + x, sy + y)
                 val tc = template.getPixel(x, y)
 
@@ -176,48 +234,7 @@ object TemplateMatcher {
             }
         }
 
-        return score / total
-    }
-
-    fun aggregateMultiFrameMask(frames: List<Bitmap>, circleShape: Boolean): Bitmap {
-        if (frames.isEmpty()) return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-
-        val w = frames[0].width
-        val h = frames[0].height
-
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-
-                var sumR = 0
-                var sumG = 0
-                var sumB = 0
-                var sumA = 0
-
-                for (bmp in frames) {
-                    val c = bmp.getPixel(x, y)
-                    sumR += Color.red(c)
-                    sumG += Color.green(c)
-                    sumB += Color.blue(c)
-                    sumA += Color.alpha(c)
-                }
-
-                val avgR = sumR / frames.size
-                val avgG = sumG / frames.size
-                val avgB = sumB / frames.size
-                val avgA = sumA / frames.size
-
-                val finalColor = Color.argb(avgA, avgR, avgG, avgB)
-                out.setPixel(x, y, finalColor)
-            }
-        }
-
-        if (circleShape) {
-            applyCircularMask(out)
-        }
-
-        return out
+        return if (total > 0f) score / total else 0f
     }
 
     private fun applyCircularMask(bmp: Bitmap) {

@@ -4,16 +4,13 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
-import android.graphics.PointF
 import android.graphics.RectF
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.TextView
 import com.example.autotap.ActionConfig
 import com.example.autotap.ActionType
 import com.example.autotap.MyAutoClickService
-import com.example.autotap.R
 
 class ScenarioDebuggerOverlay(private val service: MyAutoClickService) {
 
@@ -24,15 +21,9 @@ class ScenarioDebuggerOverlay(private val service: MyAutoClickService) {
 
         overlayView = DebugView(service)
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            service.overlayManager.getOverlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
+        val params = service.overlayManager.createOverlayParams().apply {
+            width = WindowManager.LayoutParams.MATCH_PARENT
+            height = WindowManager.LayoutParams.MATCH_PARENT
             gravity = Gravity.TOP or Gravity.START
         }
 
@@ -48,9 +39,6 @@ class ScenarioDebuggerOverlay(private val service: MyAutoClickService) {
         overlayView?.update(config)
     }
 
-    // ---------------------------------------------------------
-    // Внутренний класс — кастомный Canvas‑View
-    // ---------------------------------------------------------
     private class DebugView(context: MyAutoClickService) : View(context) {
 
         private var cfg: ActionConfig? = null
@@ -72,10 +60,8 @@ class ScenarioDebuggerOverlay(private val service: MyAutoClickService) {
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             val c = cfg ?: return
+            val svc = context as MyAutoClickService
 
-            // ---------------------------------------------------------
-            // ТЕКСТ: номер шага + тип
-            // ---------------------------------------------------------
             canvas.drawText(
                 "STEP ${c.id} — ${c.type}",
                 20f,
@@ -83,25 +69,23 @@ class ScenarioDebuggerOverlay(private val service: MyAutoClickService) {
                 textPaint
             )
 
-            // ---------------------------------------------------------
-            // CLICK / LONG_PRESS визуализация
-            // ---------------------------------------------------------
             if (c.type == ActionType.CLICK || c.type == ActionType.LONG_PRESS) {
-                val (x, y) = (context as MyAutoClickService).resolveNormalizedPoint(c.xNorm, c.yNorm)
+                val pt = svc.resolveNormalizedPoint(c.xNorm, c.yNorm)
+                val x = pt.first
+                val y = pt.second
 
                 paint.color = Color.GREEN
                 canvas.drawCircle(x, y, 40f, paint)
-
                 canvas.drawText("Click @ ($x,$y)", x + 50, y, textPaint)
             }
 
-            // ---------------------------------------------------------
-            // SWIPE визуализация
-            // ---------------------------------------------------------
             if (c.type == ActionType.SWIPE) {
-                val svc = context as MyAutoClickService
-                val (sx, sy) = svc.resolveNormalizedPoint(c.xNorm, c.yNorm)
-                val (ex, ey) = svc.resolveNormalizedPoint(c.endXNorm, c.endYNorm)
+                val startPt = svc.resolveNormalizedPoint(c.xNorm, c.yNorm)
+                val endPt = svc.resolveNormalizedPoint(c.endXNorm, c.endYNorm)
+                val sx = startPt.first
+                val sy = startPt.second
+                val ex = endPt.first
+                val ey = endPt.second
 
                 paint.color = Color.CYAN
                 canvas.drawCircle(sx, sy, 30f, paint)
@@ -110,49 +94,48 @@ class ScenarioDebuggerOverlay(private val service: MyAutoClickService) {
 
                 canvas.drawText("Swipe", sx + 50, sy, textPaint)
 
-                // джойстик‑траектория
                 if (c.joystickPath.isNotEmpty()) {
                     paint.color = Color.MAGENTA
                     val path = Path()
-                    val svc2 = context as MyAutoClickService
 
                     val first = c.joystickPath.first()
-                    val (fx, fy) = svc2.resolveNormalizedPoint(first.x, first.y)
-                    path.moveTo(fx, fy)
+                    val fPt = svc.resolveNormalizedPoint(first.x, first.y)
+                    path.moveTo(fPt.first, fPt.second)
 
                     for (p in c.joystickPath.drop(1)) {
-                        val (px, py) = svc2.resolveNormalizedPoint(p.x, p.y)
-                        path.lineTo(px, py)
+                        val pPt = svc.resolveNormalizedPoint(p.x, p.y)
+                        path.lineTo(pPt.first, pPt.second)
                     }
 
                     canvas.drawPath(path, paint)
-                    canvas.drawText("Joystick path", fx + 50, fy, textPaint)
+                    canvas.drawText("Joystick path", fPt.first + 50, fPt.second, textPaint)
                 }
             }
 
-            // ---------------------------------------------------------
-            // TRIGGER визуализация
-            // ---------------------------------------------------------
             if (c.type == ActionType.TRIGGER) {
-                val svc = context as MyAutoClickService
-
-                // область поиска
                 if (c.customSearchArea) {
-                    val (sx, sy) = svc.resolveNormalizedPoint(c.searchAreaXNorm, c.searchAreaYNorm)
-                    val (ex, ey) = svc.resolveNormalizedPoint(
+                    val startPt = svc.resolveNormalizedPoint(c.searchAreaXNorm, c.searchAreaYNorm)
+                    val endPt = svc.resolveNormalizedPoint(
                         c.searchAreaXNorm + c.searchAreaWNorm,
                         c.searchAreaYNorm + c.searchAreaHNorm
                     )
+                    val sx = startPt.first
+                    val sy = startPt.second
+                    val ex = endPt.first
+                    val ey = endPt.second
 
                     paint.color = Color.YELLOW
                     canvas.drawRect(RectF(sx, sy, ex, ey), paint)
                     canvas.drawText("Search area", sx + 20, sy + 40, textPaint)
                 }
 
-                // калибровка
                 c.calibratedRectNorm?.let { r ->
-                    val (sx, sy) = svc.resolveNormalizedPoint(r.left.toFloat(), r.top.toFloat())
-                    val (ex, ey) = svc.resolveNormalizedPoint(r.right.toFloat(), r.bottom.toFloat())
+                    val startPt = svc.resolveNormalizedPoint(r.left.toFloat(), r.top.toFloat())
+                    val endPt = svc.resolveNormalizedPoint(r.right.toFloat(), r.bottom.toFloat())
+                    val sx = startPt.first
+                    val sy = startPt.second
+                    val ex = endPt.first
+                    val ey = endPt.second
 
                     paint.color = Color.RED
                     canvas.drawRect(RectF(sx, sy, ex, ey), paint)

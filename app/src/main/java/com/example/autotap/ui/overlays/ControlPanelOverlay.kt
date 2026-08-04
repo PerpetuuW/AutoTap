@@ -24,15 +24,7 @@ class ControlPanelOverlay(private val service: MyAutoClickService) {
         val view = inflater.inflate(R.layout.floating_control_panel, null)
         panelView = view
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            service.overlayManager.getOverlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
+        val params = service.overlayManager.createOverlayParams().apply {
             gravity = Gravity.TOP or Gravity.START
             x = service.overlayManager.dpToPx(20)
             y = service.overlayManager.dpToPx(120)
@@ -89,15 +81,7 @@ class ControlPanelOverlay(private val service: MyAutoClickService) {
         val view = inflater.inflate(R.layout.floating_stop_button, null)
         stopButtonView = view
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            service.overlayManager.getOverlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
+        val params = service.overlayManager.createOverlayParams().apply {
             gravity = Gravity.CENTER
         }
 
@@ -121,15 +105,7 @@ class ControlPanelOverlay(private val service: MyAutoClickService) {
         val inflater = LayoutInflater.from(service)
         val view = inflater.inflate(R.layout.floating_beacon_ring, null)
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            service.overlayManager.getOverlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
+        val params = service.overlayManager.createOverlayParams().apply {
             gravity = Gravity.TOP or Gravity.START
             this.x = x.toInt()
             this.y = y.toInt()

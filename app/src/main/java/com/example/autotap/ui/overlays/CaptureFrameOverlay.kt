@@ -13,7 +13,7 @@ import com.example.autotap.ui.base.OverlayManager
 
 class CaptureFrameOverlay(
     private val service: MyAutoClickService,
-    private val overlayManager: OverlayManager = service.overlayManager
+    val overlayManager: OverlayManager = service.overlayManager
 ) {
 
     private var rootView: View? = null
@@ -39,15 +39,9 @@ class CaptureFrameOverlay(
             hide()
         }
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            overlayManager.getOverlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
+        val params = overlayManager.createOverlayParams().apply {
+            width = WindowManager.LayoutParams.MATCH_PARENT
+            height = WindowManager.LayoutParams.MATCH_PARENT
             gravity = Gravity.TOP or Gravity.START
         }
 

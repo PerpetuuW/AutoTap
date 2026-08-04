@@ -11,21 +11,17 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
-import org.json.JSONArray
 import java.io.File
 
 class ScriptsDialog(private val service: MyAutoClickService) {
 
     fun show() {
         val dialogView = LayoutInflater.from(service).inflate(R.layout.dialog_scripts, null)
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            service.overlayManager.getOverlayType(),
-            WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
-        ).apply {
+        val params = service.overlayManager.createOverlayParams().apply {
+            width = WindowManager.LayoutParams.WRAP_CONTENT
+            height = WindowManager.LayoutParams.WRAP_CONTENT
             gravity = Gravity.CENTER
+            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
             dimAmount = 0.5f
         }
 

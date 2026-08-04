@@ -3,7 +3,6 @@ package com.example.autotap.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.PixelFormat
 import android.widget.Toast
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.TemplateMatcher
@@ -16,9 +15,6 @@ class TemplateRepository(private val context: Context) {
     val globalTemplates = ArrayList<Bitmap>()
     val globalTemplatesNames = ArrayList<String>()
 
-    // ---------------------------------------------------------
-    // ПУТЬ К МЕТАФАЙЛУ
-    // ---------------------------------------------------------
     fun getTemplateMetadataFile(maskPath: String): File {
         val maskFile = File(maskPath)
         val parent = maskFile.parentFile ?: context.filesDir
@@ -26,9 +22,6 @@ class TemplateRepository(private val context: Context) {
         return File(parent, "${name}.json")
     }
 
-    // ---------------------------------------------------------
-    // ЗАГРУЗКА МЕТА
-    // ---------------------------------------------------------
     fun loadTemplateMetadata(maskPath: String): JSONObject? {
         try {
             if (maskPath.isEmpty()) return null
@@ -40,9 +33,6 @@ class TemplateRepository(private val context: Context) {
         return null
     }
 
-    // ---------------------------------------------------------
-    // ЗАГРУЗКА ПОЛНОГО СКРИНА (full_*.png)
-    // ---------------------------------------------------------
     fun loadFullBitmap(maskPath: String): Bitmap? {
         val maskFile = File(maskPath)
         val parent = maskFile.parentFile ?: return null
@@ -52,9 +42,6 @@ class TemplateRepository(private val context: Context) {
         return BitmapFactory.decodeFile(fullFile.absolutePath)
     }
 
-    // ---------------------------------------------------------
-    // САМООБУЧЕНИЕ МАСКИ ПО 5 КАДРАМ
-    // ---------------------------------------------------------
     fun recordSuccessfulMatch(maskPath: String, matchPatch: Bitmap) {
         try {
             val maskFile = File(maskPath)
@@ -68,12 +55,10 @@ class TemplateRepository(private val context: Context) {
                 matchPatch.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
 
-            val patchFiles = patchDir.listFiles()?.filter { it.name.endsWith(".png") } ?: emptyList()
+            val patchFiles = patchDir.listFiles()?.filter { file -> file.name.endsWith(".png") } ?: emptyList()
             if (patchFiles.size >= 5) {
-
-                val patchBitmaps = patchFiles.mapNotNull { BitmapFactory.decodeFile(it.absolutePath) }
+                val patchBitmaps = patchFiles.mapNotNull { file -> BitmapFactory.decodeFile(file.absolutePath) }
                 if (patchBitmaps.isNotEmpty()) {
-
                     val meta = loadTemplateMetadata(maskPath)
                     val isCircle = meta?.optBoolean("isCircleShape", true) ?: true
 
@@ -91,7 +76,7 @@ class TemplateRepository(private val context: Context) {
                         meta.put("version", currentVer + 1)
                         val metaFile = getTemplateMetadataFile(maskPath)
                         FileOutputStream(metaFile).use { out ->
-                            out.write(meta.toString().toByteArray())
+                            out.write(meta.toString().toByteArray(Charsets.UTF_8))
                         }
                     }
 
@@ -111,9 +96,6 @@ class TemplateRepository(private val context: Context) {
         }
     }
 
-    // ---------------------------------------------------------
-    // ЗАГРУЗКА ВСЕХ МАСОК
-    // ---------------------------------------------------------
     fun loadAllTemplatesFromDisk() {
         try {
             purgeOldTrashTemplates()
@@ -150,9 +132,6 @@ class TemplateRepository(private val context: Context) {
         }
     }
 
-    // ---------------------------------------------------------
-    // ПЕРЕМЕЩЕНИЕ В КОРЗИНУ
-    // ---------------------------------------------------------
     fun moveTemplateToTrash(index: Int) {
         if (index !in globalTemplatesNames.indices) return
 
@@ -195,9 +174,6 @@ class TemplateRepository(private val context: Context) {
         }
     }
 
-    // ---------------------------------------------------------
-    // АВТО‑ОЧИСТКА КОРЗИНЫ (7 дней)
-    // ---------------------------------------------------------
     private fun purgeOldTrashTemplates() {
         try {
             val trashDir = File(context.filesDir, "trash_templates")

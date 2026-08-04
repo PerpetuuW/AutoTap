@@ -1,4 +1,3 @@
-
 package com.example.autotap.ui.overlays
 
 import android.graphics.Color
