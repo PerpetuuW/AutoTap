@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
-        tvVersion.text = "AutoTap v28.13.0 PRO"
+        tvVersion.text = "AutoTap v28.14.0 PRO"
 
         val btnAppDetails = findViewById<Button>(R.id.btnAppDetails)
         val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
         val btnShowLogs = findViewById<Button>(R.id.btnShowLogs)
         val btnManageTemplates = findViewById<Button>(R.id.btnManageTemplates)
         val btnPermissionsHelp = findViewById<Button>(R.id.btnPermissionsHelp)
+        val btnInfoHelp = findViewById<Button>(R.id.btnInfoHelp)
 
         btnAppDetails.setOnClickListener {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -67,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         btnShowLogs.setOnClickListener { showLogsDialog() }
         btnManageTemplates.setOnClickListener { showTemplatesManagerDialog() }
         btnPermissionsHelp.setOnClickListener { showPermissionsHelpDialog() }
+        btnInfoHelp.setOnClickListener { showInfoHelpDialog() }
 
         btnStartPanel.setOnClickListener {
             val service = MyAutoClickService.instance
@@ -140,6 +142,20 @@ class MainActivity : AppCompatActivity() {
     private fun showExportDialog() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_export_select, null)
         val ad = AlertDialog.Builder(this).setView(dialogView).create()
+
+        dialogView.findViewById<Button>(R.id.btnExpSingleScript)?.setOnClickListener {
+            ad.dismiss()
+            MyAutoClickService.instance?.showScriptPickerDialog("Выберите сценарий для экспорта") { name ->
+                if (name.isNotEmpty()) {
+                    MyAutoClickService.instance?.exportScriptWithTemplates(this, name)
+                }
+            }
+        }
+
+        dialogView.findViewById<Button>(R.id.btnExpChainScripts)?.setOnClickListener {
+            ad.dismiss()
+            exportFullBackup()
+        }
 
         dialogView.findViewById<Button>(R.id.btnExpTemplatesOnly)?.setOnClickListener {
             ad.dismiss()
@@ -267,12 +283,35 @@ class MainActivity : AppCompatActivity() {
     private fun showLogsDialog() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_logs, null)
         val tvLogs = dialogView.findViewById<TextView>(R.id.tvLogsContent)
+        val btnShare = dialogView.findViewById<Button>(R.id.btnShareLogs)
+        val btnClear = dialogView.findViewById<Button>(R.id.btnClearLogs)
         val btnClose = dialogView.findViewById<Button>(R.id.btnCloseLogs)
 
         val logFile = File(filesDir, "error_log.txt")
-        tvLogs.text = if (logFile.exists()) logFile.readText() else "Логи отсутствуют"
+        tvLogs.text = if (logFile.exists() && logFile.length() > 0) logFile.readText() else "Логи отсутствуют."
 
         val ad = AlertDialog.Builder(this).setView(dialogView).create()
+
+        btnShare?.setOnClickListener {
+            if (logFile.exists() && logFile.length() > 0) {
+                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", logFile)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(intent, "Поделиться логами"))
+            } else {
+                Toast.makeText(this, "Логи пусты", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnClear?.setOnClickListener {
+            if (logFile.exists()) logFile.delete()
+            tvLogs.text = "Логи очищены."
+            Toast.makeText(this, "Логи очищены", Toast.LENGTH_SHORT).show()
+        }
+
         btnClose?.setOnClickListener { ad.dismiss() }
         ad.show()
     }
@@ -327,6 +366,47 @@ class MainActivity : AppCompatActivity() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_permissions, null)
         val ad = AlertDialog.Builder(this).setView(dialogView).create()
         dialogView.findViewById<Button>(R.id.btnClosePermissionsDialog)?.setOnClickListener { ad.dismiss() }
+        ad.show()
+    }
+
+    private fun showInfoHelpDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_info, null)
+        val ad = AlertDialog.Builder(this).setView(dialogView).create()
+
+        val tvContent = dialogView.findViewById<TextView>(R.id.tvTabContent)
+        val tabClick = dialogView.findViewById<Button>(R.id.tabClick)
+        val tabSwipe = dialogView.findViewById<Button>(R.id.tabSwipe)
+        val tabAi = dialogView.findViewById<Button>(R.id.tabAi)
+        val btnClose = dialogView.findViewById<Button>(R.id.btnCloseInfoDialog)
+
+        val clickInfo = "• Клики (Click):\nТочечное нажатие по координатам с регулируемой задержкой, повторами и случайным разбросом (рандомизацией).\n\n• Зажатие (Hold):\nУдержание точки на заданное время (в мс)."
+        val swipeInfo = "• Свайпы (Swipe):\nПлавное перемещение от начальной точки (S) к конечной (E) с заданной длительностью жеста.\n\n• Траектория Джойстика:\nЗапись сложных многоточечных свайпов через плавающий джойстик."
+        val aiInfo = "• ИИ-Сканер (AI Trigger):\nПоиск заданного изображения/маски на экране с помощью умного сканера.\n\n• Настройки:\nКалибровка маски, порог совпадения (%), звуковые уведомления, переход к шагу при совпадении и эстафета сценариев."
+
+        tvContent?.text = clickInfo
+
+        tabClick?.setOnClickListener {
+            tvContent?.text = clickInfo
+            tabClick.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
+            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+        }
+
+        tabSwipe?.setOnClickListener {
+            tvContent?.text = swipeInfo
+            tabClick?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+            tabSwipe.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
+            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+        }
+
+        tabAi?.setOnClickListener {
+            tvContent?.text = aiInfo
+            tabClick?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+            tabAi.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
+        }
+
+        btnClose?.setOnClickListener { ad.dismiss() }
         ad.show()
     }
 }
