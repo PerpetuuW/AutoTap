@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layoutStopContainer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/panel_background"
+    android:padding="4dp"
+    android:elevation="16dp">
+
+    <TextView
+        android:id="@+id/handleDragStop"
+        android:layout_width="16dp"
+        android:layout_height="38dp"
+        android:gravity="center"
+        android:text="⁝⁝"
+        android:textColor="#58A6FF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:background="@drawable/drag_handle_bg"
+        android:layout_marginEnd="4dp" />
+
+    <ImageButton
+        android:id="@+id/btnFloatingStop"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:src="@drawable/ic_pause"
+        android:scaleType="centerInside"
+        android:background="@drawable/btn_premium_record"
+        android:padding="8dp"
+        android:contentDescription="Stop" />
+</LinearLayout>

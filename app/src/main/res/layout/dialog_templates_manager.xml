@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="320dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/panel_background"
+    android:padding="16dp"
+    android:elevation="18dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📁 Менеджер ИИ-шаблонов"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/btnOpenTrashBin"
+        android:layout_width="match_parent"
+        android:layout_height="38dp"
+        android:text="🗑 Корзина масок (Архив 7 дней)"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#21262D"
+        android:textSize="11sp"
+        android:layout_marginBottom="10dp"/>
+
+    <ScrollView
+        android:overScrollMode="never"
+        android:layout_width="match_parent"
+        android:layout_height="320dp"
+        android:background="@color/bg_dark_blue"
+        android:padding="6dp"
+        android:layout_marginBottom="14dp">
+
+        <LinearLayout
+            android:id="@+id/layoutTemplatesList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"/>
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnCloseTemplatesManager"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:text="Закрыть"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:backgroundTint="@color/accent_blue"/>
+</LinearLayout>

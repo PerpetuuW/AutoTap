@@ -1,0 +1,145 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="300dp"
+    android:layout_height="wrap_content"
+    android:background="@color/panel_blue"
+    android:padding="16dp"
+    android:elevation="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚙ Глобальные настройки"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- 1. Длительность клика -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Длительность клика (мс):"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Рекомендуется: 80 - 250 мс (0.08 - 0.25 сек)"
+            android:textColor="#00B4D8"
+            android:textSize="10sp"
+            android:layout_marginBottom="2dp"/>
+        <EditText
+            android:selectAllOnFocus="true"
+            android:id="@+id/etGlobalClickDuration"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="@color/bg_dark_blue"
+            android:textColor="#FFFFFF"
+            android:inputType="number"
+            android:padding="8dp"
+            android:text="120"/>
+        <TextView
+            android:id="@+id/tvSecClickDuration"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="= 0.12 сек"
+            android:textColor="#8D99AE"
+            android:textSize="11sp"
+            android:layout_marginBottom="10dp"/>
+
+        <!-- 2. Длительность свайпа -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Длительность свайпа (мс):"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Рекомендуется: 200 - 800 мс (0.20 - 0.80 сек)"
+            android:textColor="#00B4D8"
+            android:textSize="10sp"
+            android:layout_marginBottom="2dp"/>
+        <EditText
+            android:selectAllOnFocus="true"
+            android:id="@+id/etGlobalSwipeDuration"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="@color/bg_dark_blue"
+            android:textColor="#FFFFFF"
+            android:inputType="number"
+            android:padding="8dp"
+            android:text="300"/>
+        <TextView
+            android:id="@+id/tvSecSwipeDuration"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="= 0.30 сек"
+            android:textColor="#8D99AE"
+            android:textSize="11sp"
+            android:layout_marginBottom="10dp"/>
+
+        <!-- 3. Пауза перед скриншотом -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Пауза пред-скриншота (мс):"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Рекомендуется: 150 - 400 мс (0.15 - 0.40 сек)"
+            android:textColor="#00B4D8"
+            android:textSize="10sp"
+            android:layout_marginBottom="2dp"/>
+        <EditText
+            android:selectAllOnFocus="true"
+            android:id="@+id/etGlobalPreScreenshot"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="@color/bg_dark_blue"
+            android:textColor="#FFFFFF"
+            android:inputType="number"
+            android:padding="8dp"
+            android:text="250"/>
+        <TextView
+            android:id="@+id/tvSecPreScreenshot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="= 0.25 сек"
+            android:textColor="#8D99AE"
+            android:textSize="11sp"
+            android:layout_marginBottom="14dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/btnSaveGlobalSettings"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="42dp"
+                android:text="Сохранить"
+                android:backgroundTint="@color/accent_blue"/>
+            <View
+                android:layout_width="8dp"
+                android:layout_height="match_parent"/>
+            <Button
+                android:id="@+id/btnCancelGlobalSettings"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="42dp"
+                android:text="Отмена"
+                android:backgroundTint="@color/red_close"/>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>
