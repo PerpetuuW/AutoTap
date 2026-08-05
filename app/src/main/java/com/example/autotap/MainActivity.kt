@@ -7,7 +7,9 @@ import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.StrictMode
 import android.provider.Settings
 import android.view.LayoutInflater
@@ -31,7 +33,7 @@ class MainActivity : AppCompatActivity() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
-        tvVersion?.text = "AutoTap v37.3.0-PRO"
+        tvVersion?.text = "AutoTap v40.0.0-PRO"
 
         val btnAppDetails = findViewById<Button>(R.id.btnAppDetails)
         val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
@@ -82,6 +84,8 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            requestBatteryOptimizationExemption()
+
             service.showControlPanel()
             moveTaskToBack(true)
         }
@@ -97,6 +101,20 @@ class MainActivity : AppCompatActivity() {
         if ((!isServiceRunning || !isOverlayGranted) && !hasAutoShownPermissions) {
             hasAutoShownPermissions = true
             showPermissionsHelpDialog()
+        }
+    }
+
+    private fun requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -186,7 +204,7 @@ class MainActivity : AppCompatActivity() {
             if (templatesDir.exists()) zipDirToZip(filesDir, templatesDir, zos)
 
             zos.close()
-            shareZip(zipFile, "Полный бэкап AutoTap v37.3")
+            shareZip(zipFile, "Полный бэкап AutoTap v40.0")
         } catch (e: Exception) {
             MyAutoClickService.logError(this, e)
             Toast.makeText(this, "Ошибка бэкапа!", Toast.LENGTH_SHORT).show()
@@ -215,9 +233,15 @@ class MainActivity : AppCompatActivity() {
             val zis = ZipInputStream(BufferedInputStream(input))
 
             var entry: ZipEntry?
+            val canonicalBase = filesDir.canonicalPath
+
             while (zis.nextEntry.also { entry = it } != null) {
                 val name = entry!!.name
                 val outFile = File(filesDir, name)
+
+                if (!outFile.canonicalPath.startsWith(canonicalBase)) {
+                    throw SecurityException("Заблокирована попытка записи Zip Slip файла вне каталога!")
+                }
 
                 outFile.parentFile?.mkdirs()
                 BufferedOutputStream(FileOutputStream(outFile)).use { bos ->
@@ -367,7 +391,7 @@ class MainActivity : AppCompatActivity() {
 
         val clickInfo = "• Клики (Click):\nТочечное нажатие по координатам с регулируемой задержкой, повторами и случайным разбросом.\n\n• Зажатие (Hold):\nУдержание точки на заданное время (в мс)."
         val swipeInfo = "• Свайпы (Swipe):\nПлавное перемещение от точки (S) к (E).\n\n• Траектория Джойстика:\nЗапись сложных свайпов через плавающий джойстик."
-        val aiInfo = "• ИИ-Сканер (AI Trigger v37):\nПоиск заданного изображения на экране с калибровкой, выбором порога (%) и эстафетой сценариев."
+        val aiInfo = "• ИИ-Сканер (AI Trigger v40):\nПоиск заданного изображения на экране с калибровкой, выбором порога (%) и эстафетой сценариев."
 
         tvContent?.text = clickInfo
 

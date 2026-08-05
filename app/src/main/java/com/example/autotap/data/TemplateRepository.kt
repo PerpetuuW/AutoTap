@@ -127,7 +127,6 @@ class TemplateRepository private constructor(private val context: Context) {
 
     fun loadAllTemplatesFromDisk() {
         try {
-            globalTemplates.forEach { try { it.recycle() } catch (_: Exception) {} }
             globalTemplates.clear()
             globalTemplatesNames.clear()
 
