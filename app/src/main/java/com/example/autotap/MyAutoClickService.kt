@@ -142,7 +142,7 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        Toast.makeText(this, "AutoTap v36.7.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "AutoTap v35.0.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
@@ -302,8 +302,8 @@ class MyAutoClickService : AccessibilityService() {
                 if (file.name.endsWith(".json")) {
                     val btn = Button(this).apply {
                         text = file.nameWithoutExtension
-                        setTextColor(Color.WHITE)
-                        setBackgroundColor(Color.parseColor("#1C2541"))
+                        setTextColor(android.graphics.Color.WHITE)
+                        setBackgroundColor(android.graphics.Color.parseColor("#1C2541"))
                         setOnClickListener {
                             onSelected(file.nameWithoutExtension)
                             overlayManager.safeRemoveView(dialogView)
@@ -345,9 +345,59 @@ class MyAutoClickService : AccessibilityService() {
 
     fun showTutorialCard() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.floating_tutorial_card, null)
-        val params = overlayManager.createOverlayParams().apply { gravity = Gravity.CENTER }
+        val params = overlayManager.createOverlayParams().apply {
+            gravity = Gravity.CENTER
+            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            dimAmount = 0.5f
+        }
+
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTutTitle)
+        val tvDesc = dialogView.findViewById<TextView>(R.id.tvTutDesc)
+        val btnPrev = dialogView.findViewById<Button>(R.id.btnTutPrev)
+        val btnNext = dialogView.findViewById<Button>(R.id.btnTutNext)
         val btnSkip = dialogView.findViewById<Button>(R.id.btnTutSkip)
-        btnSkip?.setOnClickListener { vibrateFeedback(20L); overlayManager.safeRemoveView(dialogView) }
+
+        var step = 0
+        val steps = listOf(
+            Pair("1/5: Панель управления", "Кнопка ▶ запускает сценарий, + добавляет шаги, 📸 включает ИИ-прицел."),
+            Pair("2/5: Настройка шагов", "Тапните по мишени на экране, чтобы изменить задержку, разброс или калибровку ИИ."),
+            Pair("3/5: Живая запись", "Кнопка 🔴 в меню включает мгновенную запись ваших кликов и свайпов прямо по экрану."),
+            Pair("4/5: ИИ-Сканер масок", "Кнопка 📸 вырезает любой элемент экрана. Кликер будет находить его автоматически!"),
+            Pair("5/5: Менеджер сценариев", "Папка 📁 сохраняет наборы шагов в файлы, делает авто-бэкапы и экспортирует в ZIP.")
+        )
+
+        fun updateContent() {
+            tvTitle?.text = steps[step].first
+            tvDesc?.text = steps[step].second
+            btnPrev?.visibility = if (step > 0) View.VISIBLE else View.INVISIBLE
+            btnNext?.text = if (step < steps.size - 1) "Далее ►" else "Готово ✔"
+        }
+
+        updateContent()
+
+        btnPrev?.setOnClickListener {
+            vibrateFeedback(20L)
+            if (step > 0) {
+                step--
+                updateContent()
+            }
+        }
+
+        btnNext?.setOnClickListener {
+            vibrateFeedback(20L)
+            if (step < steps.size - 1) {
+                step++
+                updateContent()
+            } else {
+                overlayManager.safeRemoveView(dialogView)
+            }
+        }
+
+        btnSkip?.setOnClickListener {
+            vibrateFeedback(20L)
+            overlayManager.safeRemoveView(dialogView)
+        }
+
         overlayManager.safeAddView(dialogView, params)
     }
 

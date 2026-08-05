@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <string name="app_name">AutoTap</string>
-    <string name="accessibility_description">Служба автоматизации AutoTap v28.5.0 PRO: нативные тапы, свайпы по траектории, авто-калибровка ИИ-масок и непрерывный циклический мультипоиск.</string>
+    <string name="accessibility_description">Служба автоматизации AutoTap v35 Enterprise: нативные тапы, траектории жестов, ИИ-сканер с калибровкой и авто-обучением масок.</string>
 </resources>
