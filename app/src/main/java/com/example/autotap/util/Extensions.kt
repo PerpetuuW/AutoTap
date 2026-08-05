@@ -47,7 +47,7 @@ fun Context.createOverlayParams(
         width,
         height,
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
         else
             @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -61,36 +61,33 @@ fun Context.createOverlayParams(
     return params
 }
 
-fun WindowManager.safeAddView(view: View, params: android.view.ViewGroup.LayoutParams): Boolean {
+fun WindowManager.safeAddView(view: View?, params: android.view.ViewGroup.LayoutParams): Boolean {
+    if (view == null || view.parent != null) return false
     return try {
-        if (view.parent == null) {
-            this.addView(view, params)
-            true
-        } else false
+        this.addView(view, params)
+        true
     } catch (e: Exception) {
         android.util.Log.e("AutoTap", "Failed safeAddView: ${e.message}", e)
         false
     }
 }
 
-fun WindowManager.safeRemoveView(view: View): Boolean {
+fun WindowManager.safeRemoveView(view: View?): Boolean {
+    if (view == null || view.parent == null) return false
     return try {
-        if (view.parent != null) {
-            this.removeView(view)
-            true
-        } else false
+        this.removeView(view)
+        true
     } catch (e: Exception) {
         android.util.Log.e("AutoTap", "Failed safeRemoveView: ${e.message}", e)
         false
     }
 }
 
-fun WindowManager.safeUpdateViewLayout(view: View, params: android.view.ViewGroup.LayoutParams): Boolean {
+fun WindowManager.safeUpdateViewLayout(view: View?, params: android.view.ViewGroup.LayoutParams): Boolean {
+    if (view == null || view.parent == null) return false
     return try {
-        if (view.parent != null) {
-            this.updateViewLayout(view, params)
-            true
-        } else false
+        this.updateViewLayout(view, params)
+        true
     } catch (e: Exception) {
         android.util.Log.e("AutoTap", "Failed safeUpdateViewLayout: ${e.message}", e)
         false

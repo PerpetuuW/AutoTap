@@ -1,10 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AutoTap</string>
-    <string name="accessibility_service_description">AutoTap требует доступ к Accessibility API для эмуляции нажатий, свайпов и захвата экрана в фоновом режиме без ROOT прав.</string>
-    <string name="btn_enable_accessibility">1. Включить Accessibility Service</string>
-    <string name="btn_enable_overlay">2. Разрешить поверх всех окон</string>
-    <string name="btn_ignore_battery">3. Отключить оптимизацию батареи</string>
-    <string name="btn_show_panel">Запустить плавающую панель</string>
-    <string name="title_status">Статус компонентов AutoTap</string>
+    <string name="accessibility_description">Служба автоматизации AutoTap PRO: нативные тапы, свайпы по траектории, ИИ-каскадный поиск и запись сценариев.</string>
 </resources>
