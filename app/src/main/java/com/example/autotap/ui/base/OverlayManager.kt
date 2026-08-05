@@ -17,6 +17,8 @@ class OverlayManager(private val context: Context) {
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     private val attachedViews = ConcurrentHashMap<View, Boolean>()
+    private val viewPool = ConcurrentHashMap<Int, MutableList<View>>()
+    private val activeOverlays = ConcurrentHashMap<OverlayLayer, MutableList<OverlayBase>>()
     private val updateHandler = Handler(Looper.getMainLooper())
     private val pendingUpdates = ConcurrentHashMap<View, WindowManager.LayoutParams>()
 
@@ -55,6 +57,59 @@ class OverlayManager(private val context: Context) {
                 pendingUpdates.remove(view)
             }
         }, 8)
+    }
+
+    fun getViewFromReusePool(layoutResId: Int): View? {
+        val pool = viewPool[layoutResId]
+        return if (!pool.isNullOrEmpty()) pool.removeAt(0) else null
+    }
+
+    fun recycleViewToPool(layoutResId: Int, view: View) {
+        val pool = viewPool.getOrPut(layoutResId) { mutableListOf() }
+        if (pool.size < 5 && !pool.contains(view)) {
+            pool.add(view)
+        }
+    }
+
+    fun pushOverlay(overlay: OverlayBase) {
+        val list = activeOverlays.getOrPut(overlay.layer) { mutableListOf() }
+        list.add(overlay)
+        overlay.show()
+    }
+
+    fun popOverlay(layer: OverlayLayer) {
+        val list = activeOverlays[layer]
+        if (!list.isNullOrEmpty()) {
+            val overlay = list.removeAt(list.size - 1)
+            overlay.hide()
+        }
+    }
+
+    fun clearLayer(layer: OverlayLayer) {
+        activeOverlays[layer]?.forEach { it.hide() }
+        activeOverlays[layer]?.clear()
+    }
+
+    fun detachOnStop() {
+        clearLayer(OverlayLayer.DEBUG)
+        clearLayer(OverlayLayer.CAPTURE)
+        clearLayer(OverlayLayer.JOYSTICK)
+        clearLayer(OverlayLayer.CANDIDATE)
+        clearLayer(OverlayLayer.VISUALIZER)
+    }
+
+    fun detachOnScriptChange() {
+        detachOnStop()
+    }
+
+    fun detachOnError() {
+        detachOnStop()
+    }
+
+    fun detachOnOrientationChange() {
+        activeOverlays.values.forEach { list ->
+            list.forEach { if (it.isShowing) { it.hide(); it.show() } }
+        }
     }
 
     fun dpToPx(dp: Int): Int = (dp * context.resources.displayMetrics.density).toInt()

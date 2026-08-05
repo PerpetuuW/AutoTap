@@ -34,13 +34,53 @@ class TemplateRepository private constructor(private val context: Context) {
         return File(parent, "${maskFile.nameWithoutExtension}.json")
     }
 
+    fun validateMetadataJson(jsonStr: String): Boolean {
+        return try {
+            JSONObject(jsonStr)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun loadTemplateMetadata(maskPath: String): JSONObject? {
         try {
             if (maskPath.isEmpty()) return null
             val metaFile = getTemplateMetadataFile(maskPath)
-            if (metaFile.exists()) return JSONObject(metaFile.readText())
+            val bakFile = File(metaFile.parentFile, "${metaFile.name}.bak")
+
+            if (metaFile.exists() && metaFile.length() > 0) {
+                val content = metaFile.readText()
+                if (validateMetadataJson(content)) return JSONObject(content)
+            }
+
+            if (bakFile.exists() && bakFile.length() > 0) {
+                val bakContent = bakFile.readText()
+                if (validateMetadataJson(bakContent)) return JSONObject(bakContent)
+            }
         } catch (_: Exception) {}
         return null
+    }
+
+    fun saveTemplateMetadataAtomic(maskPath: String, meta: JSONObject) {
+        try {
+            val metaFile = getTemplateMetadataFile(maskPath)
+            val tmpFile = File(metaFile.parentFile, "${metaFile.name}.tmp")
+            val bakFile = File(metaFile.parentFile, "${metaFile.name}.bak")
+
+            if (metaFile.exists() && metaFile.length() > 0) {
+                metaFile.copyTo(bakFile, overwrite = true)
+            }
+
+            val jsonStr = meta.toString(2)
+            tmpFile.writeText(jsonStr)
+            if (validateMetadataJson(tmpFile.readText())) {
+                tmpFile.copyTo(metaFile, overwrite = true)
+                tmpFile.delete()
+            }
+        } catch (e: Exception) {
+            MyAutoClickService.logError(context, e)
+        }
     }
 
     fun loadFullBitmap(maskPath: String): Bitmap? {
@@ -67,18 +107,14 @@ class TemplateRepository private constructor(private val context: Context) {
             if (patchFiles.size >= 5) {
                 val patchBitmaps = patchFiles.mapNotNull<File, Bitmap> { file -> BitmapFactory.decodeFile(file.absolutePath) }
                 if (patchBitmaps.isNotEmpty()) {
-                    val meta = loadTemplateMetadata(maskPath)
-                    val isCircle = meta?.optBoolean("isCircleShape", true) ?: true
+                    val meta = loadTemplateMetadata(maskPath) ?: JSONObject()
+                    val isCircle = meta.optBoolean("isCircleShape", true)
                     val consensusMask = TemplateMatcher.aggregateMultiFrameMask(patchBitmaps, isCircle)
 
                     FileOutputStream(maskFile).use { out -> consensusMask.compress(Bitmap.CompressFormat.PNG, 100, out) }
 
-                    if (meta != null) {
-                        meta.put("version", meta.optInt("version", 1) + 1)
-                        FileOutputStream(getTemplateMetadataFile(maskPath)).use { out ->
-                            out.write(meta.toString().toByteArray(Charsets.UTF_8))
-                        }
-                    }
+                    meta.put("version", meta.optInt("version", 1) + 1)
+                    saveTemplateMetadataAtomic(maskPath, meta)
 
                     patchFiles.forEach { it.delete() }
                     patchDir.delete()

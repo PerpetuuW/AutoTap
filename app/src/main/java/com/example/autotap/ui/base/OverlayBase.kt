@@ -7,7 +7,9 @@ import com.example.autotap.MyAutoClickService
 
 abstract class OverlayBase(
     protected val service: MyAutoClickService,
-    protected val layoutResId: Int
+    val layoutResId: Int,
+    val layer: OverlayLayer = OverlayLayer.PANEL,
+    val priority: OverlayPriority = OverlayPriority.MEDIUM
 ) {
     var rootView: View? = null
         protected set
@@ -15,18 +17,52 @@ abstract class OverlayBase(
     val isShowing: Boolean
         get() = rootView != null && rootView?.parent != null
 
+    open fun onAttach() {}
+    open fun onDetach() {}
+    open fun onUpdate() {}
+    open fun onVisibilityChanged(visible: Boolean) {}
+
     open fun show() {
-        if (isShowing) return
-        val view = LayoutInflater.from(service).inflate(layoutResId, null)
+        if (isShowing) {
+            rootView?.visibility = View.VISIBLE
+            onVisibilityChanged(true)
+            return
+        }
+
+        val view = service.overlayManager.getViewFromReusePool(layoutResId)
+            ?: LayoutInflater.from(service).inflate(layoutResId, null)
+
         rootView = view
         val params = createParams()
         onViewInflated(view)
         service.overlayManager.safeAddView(view, params)
+        onAttach()
+        fadeIn()
     }
 
     open fun hide() {
-        rootView?.let { service.overlayManager.safeRemoveView(it) }
-        rootView = null
+        if (!isShowing) return
+        fadeOut {
+            rootView?.let {
+                service.overlayManager.safeRemoveView(it)
+                service.overlayManager.recycleViewToPool(layoutResId, it)
+            }
+            onDetach()
+            rootView = null
+        }
+    }
+
+    protected open fun fadeIn(duration: Long = 180L) {
+        rootView?.let { v ->
+            v.alpha = 0f
+            v.animate().alpha(1f).setDuration(duration).start()
+        }
+    }
+
+    protected open fun fadeOut(onEnd: () -> Unit) {
+        rootView?.let { v ->
+            v.animate().alpha(0f).setDuration(150L).withEndAction { onEnd() }.start()
+        } ?: onEnd()
     }
 
     protected open fun createParams(): WindowManager.LayoutParams {

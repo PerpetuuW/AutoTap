@@ -31,17 +31,47 @@ class ScriptRepository private constructor(private val context: Context) {
         return dir
     }
 
+    fun validateJson(jsonStr: String): Boolean {
+        return try {
+            JSONArray(jsonStr)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun loadScriptByName(name: String): List<ActionConfig> {
         val list = ArrayList<ActionConfig>()
         try {
             val file = File(getScriptsDir(), "$name.json")
             val bakFile = File(getScriptsDir(), "$name.json.bak")
-            val targetFile = if (file.exists() && file.length() > 0) file else bakFile
 
-            if (targetFile != null && targetFile.exists()) {
-                val jsonArray = JSONArray(targetFile.readText())
+            var targetContent: String? = null
+
+            if (file.exists() && file.length() > 0) {
+                val content = file.readText()
+                if (validateJson(content)) {
+                    targetContent = content
+                }
+            }
+
+            if (targetContent == null && bakFile.exists() && bakFile.length() > 0) {
+                val bakContent = bakFile.readText()
+                if (validateJson(bakContent)) {
+                    targetContent = bakContent
+                    MyAutoClickService.logAppEvent(context, "ScriptRepo", "Восстановлен сценарий '$name' из бэкапа .bak!")
+                }
+            }
+
+            if (targetContent != null) {
+                val jsonArray = JSONArray(targetContent)
                 for (i in 0 until jsonArray.length()) {
-                    list.add(ActionConfig.fromJson(jsonArray.getJSONObject(i)))
+                    val cfg = ActionConfig.fromJson(jsonArray.getJSONObject(i))
+                    if (cfg.version < 35) {
+                        cfg.version = 35
+                        cfg.updatedAt = System.currentTimeMillis()
+                    }
+                    list.add(cfg)
                 }
             }
         } catch (e: Exception) {
@@ -52,14 +82,30 @@ class ScriptRepository private constructor(private val context: Context) {
 
     fun saveScriptByName(name: String, actions: List<ActionConfig>) {
         try {
-            val file = File(getScriptsDir(), "$name.json")
-            val bakFile = File(getScriptsDir(), "$name.json.bak")
-            if (file.exists()) file.copyTo(bakFile, overwrite = true)
+            val dir = getScriptsDir()
+            val file = File(dir, "$name.json")
+            val tmpFile = File(dir, "$name.tmp")
+            val bakFile = File(dir, "$name.json.bak")
+
+            if (file.exists() && file.length() > 0) {
+                file.copyTo(bakFile, overwrite = true)
+            }
 
             val jsonArray = JSONArray()
-            actions.forEach { jsonArray.put(it.toJson()) }
+            actions.forEach { cfg ->
+                cfg.updatedAt = System.currentTimeMillis()
+                jsonArray.put(cfg.toJson())
+            }
 
-            file.writeText(jsonArray.toString(2))
+            val jsonStr = jsonArray.toString(2)
+
+            tmpFile.writeText(jsonStr)
+            if (validateJson(tmpFile.readText())) {
+                tmpFile.copyTo(file, overwrite = true)
+                tmpFile.delete()
+            }
+
+            MyAutoClickService.logAppEvent(context, "ScriptRepo", "Atomic-Save: Сценарий '$name' сохранен (${actions.size} шагов).")
         } catch (e: Exception) {
             MyAutoClickService.logError(context, e)
         }

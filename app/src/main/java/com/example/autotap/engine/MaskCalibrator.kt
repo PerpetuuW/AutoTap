@@ -1,31 +1,45 @@
 package com.example.autotap.engine
 
 import android.graphics.*
+import com.example.autotap.data.TemplateMetadata
+
+data class CalibratedMask(
+    val originalMask: Bitmap,
+    val downscaledMask: Bitmap,
+    val downscaledFrame: Bitmap,
+    val multiScaleMasks: List<Pair<Float, Bitmap>>,
+    val contourPoints: List<PointF>,
+    val metadata: TemplateMetadata
+)
 
 object MaskCalibrator {
-    fun normalizeDpi(bmp: Bitmap, sourceDpi: Int, targetDpi: Int): Bitmap {
-        if (sourceDpi == targetDpi || sourceDpi <= 0 || targetDpi <= 0) return bmp
-        val factor = targetDpi.toFloat() / sourceDpi.toFloat()
-        val nw = (bmp.width * factor).toInt().coerceAtLeast(1)
-        val nh = (bmp.height * factor).toInt().coerceAtLeast(1)
-        return Bitmap.createScaledBitmap(bmp, nw, nh, true)
-    }
 
-    fun adjustBrightnessContrast(bmp: Bitmap, brightness: Float = 0f, contrast: Float = 1f): Bitmap {
-        val cm = ColorMatrix(floatArrayOf(
-            contrast, 0f, 0f, 0f, brightness,
-            0f, contrast, 0f, 0f, brightness,
-            0f, 0f, contrast, 0f, brightness,
-            0f, 0f, 0f, 1f, 0f
-        ))
-        val out = Bitmap.createBitmap(bmp.width, bmp.height, bmp.config ?: Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter = ColorMatrixColorFilter(cm) }
-        canvas.drawBitmap(bmp, 0f, 0f, paint)
-        return out
-    }
+    fun calibrateMask(
+        bitmap: Bitmap,
+        frame: Bitmap,
+        sourceDpi: Int = 480,
+        targetDpi: Int = 480,
+        isCircle: Boolean = true
+    ): CalibratedMask {
+        val downMask = Bitmap.createScaledBitmap(bitmap, (bitmap.width * 0.5f).toInt().coerceAtLeast(1), (bitmap.height * 0.5f).toInt().coerceAtLeast(1), true)
+        val downFrame = Bitmap.createScaledBitmap(frame, (frame.width * 0.5f).toInt().coerceAtLeast(1), (frame.height * 0.5f).toInt().coerceAtLeast(1), true)
 
-    fun adaptMask(bmp: Bitmap): Bitmap {
-        return adjustBrightnessContrast(bmp, 10f, 1.1f)
+        val metadata = TemplateMetadata(
+            width = bitmap.width,
+            height = bitmap.height,
+            dpi = targetDpi,
+            scale = 1.0f,
+            boundingBox = Rect(0, 0, bitmap.width, bitmap.height),
+            isCircleShape = isCircle
+        )
+
+        return CalibratedMask(
+            originalMask = bitmap,
+            downscaledMask = downMask,
+            downscaledFrame = downFrame,
+            multiScaleMasks = listOf(Pair(1.0f, bitmap), Pair(0.5f, downMask)),
+            contourPoints = emptyList(),
+            metadata = metadata
+        )
     }
 }

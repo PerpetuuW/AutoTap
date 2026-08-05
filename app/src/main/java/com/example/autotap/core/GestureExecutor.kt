@@ -73,4 +73,21 @@ class GestureExecutor(private val service: AccessibilityService) {
             override fun onCancelled(gestureDescription: GestureDescription?) { onComplete?.invoke(false) }
         }, null)
     }
+
+    fun performMultiTouchWithCallback(pointers: List<PointF>, duration: Long = 200L, onComplete: ((Boolean) -> Unit)? = null) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || pointers.isEmpty()) {
+            onComplete?.invoke(false)
+            return
+        }
+        val builder = GestureDescription.Builder()
+        for (pt in pointers) {
+            val path = Path().apply { moveTo(pt.x, pt.y) }
+            builder.addStroke(GestureDescription.StrokeDescription(path, 0, duration))
+        }
+
+        service.dispatchGesture(builder.build(), object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) { onComplete?.invoke(true) }
+            override fun onCancelled(gestureDescription: GestureDescription?) { onComplete?.invoke(false) }
+        }, null)
+    }
 }
