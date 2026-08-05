@@ -93,7 +93,7 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        Toast.makeText(this, "AutoTap v35.5.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "AutoTap v35.6.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
@@ -201,7 +201,12 @@ class MyAutoClickService : AccessibilityService() {
         return Pair((nx * w).coerceIn(0f, w.toFloat()), (ny * h).coerceIn(0f, h.toFloat()))
     }
 
-    fun randomOffset(radius: Int): PointF = gestureExecutor.randomOffset(radius)
+    fun randomOffset(radius: Int): PointF {
+        if (radius <= 0) return PointF(0f, 0f)
+        val dx = (-radius..radius).random().toFloat()
+        val dy = (-radius..radius).random().toFloat()
+        return PointF(dx, dy)
+    }
 
     fun showClickVisualizer(x: Float, y: Float) = controlPanelOverlay.showClickVisualizer(x, y)
 

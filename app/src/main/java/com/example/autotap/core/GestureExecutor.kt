@@ -25,6 +25,13 @@ class GestureExecutor(private val service: AccessibilityService) {
         } catch (_: Exception) {}
     }
 
+    fun randomOffset(radius: Int): PointF {
+        if (radius <= 0) return PointF(0f, 0f)
+        val dx = (-radius..radius).random().toFloat()
+        val dy = (-radius..radius).random().toFloat()
+        return PointF(dx, dy)
+    }
+
     fun performClickWithCallback(x: Float, y: Float, duration: Long = 100L, onComplete: ((Boolean) -> Unit)? = null) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             onComplete?.invoke(false)
