@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.autotap"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2530
-        versionName = "36.10.0-PRO"
+        versionCode = 2540
+        versionName = "37.1.0-PRO"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

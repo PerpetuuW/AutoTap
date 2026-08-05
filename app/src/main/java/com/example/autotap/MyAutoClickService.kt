@@ -189,8 +189,8 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        logAppEvent(this, "SERVICE", "🚀 Служба AutoTap v37.0.0-PRO успешно подключена к системе")
-        Toast.makeText(this, "AutoTap v37.0.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        logAppEvent(this, "SERVICE", "🚀 Служба AutoTap v37.1.0-PRO запущен")
+        Toast.makeText(this, "AutoTap v37.1.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
 
     override fun onInterrupt() {}
@@ -407,6 +407,7 @@ class MyAutoClickService : AccessibilityService() {
         isTutorialActive = true
         if (tutorialCardView != null) {
             tutorialCardView?.visibility = View.VISIBLE
+            updateTutorialContent()
             return
         }
 
@@ -414,17 +415,178 @@ class MyAutoClickService : AccessibilityService() {
         tutorialCardView = view
 
         val params = overlayManager.createOverlayParams().apply {
-            gravity = Gravity.CENTER
-            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            dimAmount = 0.5f
+            gravity = Gravity.TOP or Gravity.START
         }
 
+        val btnPrev = view.findViewById<Button>(R.id.btnTutPrev)
+        val btnNext = view.findViewById<Button>(R.id.btnTutNext)
         val btnSkip = view.findViewById<Button>(R.id.btnTutSkip)
-        btnSkip?.setOnClickListener { vibrateFeedback(20L); hideTutorial() }
+
+        btnPrev?.setOnClickListener {
+            vibrateFeedback(20L)
+            if (currentTutorialStep > 0) {
+                currentTutorialStep--
+                updateTutorialContent()
+            }
+        }
+
+        btnNext?.setOnClickListener {
+            vibrateFeedback(20L)
+            if (currentTutorialStep < 10) {
+                currentTutorialStep++
+                updateTutorialContent()
+            } else {
+                hideTutorial()
+            }
+        }
+
+        btnSkip?.setOnClickListener {
+            vibrateFeedback(20L)
+            hideTutorial()
+        }
+
         overlayManager.safeAddView(view, params)
+        updateTutorialContent()
+    }
+
+    private fun updateTutorialContent() {
+        if (tutorialCardView == null) return
+
+        if (currentTutorialStep >= 5) {
+            controlPanelOverlay.ensureSubMenuVisible()
+        }
+
+        val targetButton: View? = controlPanelOverlay.getButtonForStep(currentTutorialStep)
+        highlightButton(targetButton)
+
+        uiHandler.post {
+            positionTutorialCardAnchored(targetButton)
+        }
+
+        val tvTitle = tutorialCardView?.findViewById<TextView>(R.id.tvTutTitle)
+        val tvDesc = tutorialCardView?.findViewById<TextView>(R.id.tvTutDesc)
+        val btnNext = tutorialCardView?.findViewById<Button>(R.id.btnTutNext)
+
+        when (currentTutorialStep) {
+            0 -> {
+                tvTitle?.text = "1/11: Запуск [▶]"
+                tvDesc?.text = "Запускает и останавливает выполнение всех созданных шагов."
+                btnNext?.text = "Далее ►"
+            }
+            1 -> {
+                tvTitle?.text = "2/11: Добавить [+]"
+                tvDesc?.text = "Добавляет новый обычный клик, свайп или ИИ-триггер."
+                btnNext?.text = "Далее ►"
+            }
+            2 -> {
+                tvTitle?.text = "3/11: ИИ-Сканер [📸]"
+                tvDesc?.text = "Открывает прицел для вырезания картинки с экрана и создания ИИ-маски."
+                btnNext?.text = "Далее ►"
+            }
+            3 -> {
+                tvTitle?.text = "4/11: Справка [❓]"
+                tvDesc?.text = "Повторный вызов этого интерактивного обучения по кнопкам."
+                btnNext?.text = "Далее ►"
+            }
+            4 -> {
+                tvTitle?.text = "5/11: Меню [☰]"
+                tvDesc?.text = "Разворачивает и сворачивает дополнительную панель инструментов."
+                btnNext?.text = "Далее ►"
+            }
+            5 -> {
+                tvTitle?.text = "6/11: Очистить [🗑]"
+                tvDesc?.text = "Удаляет абсолютно все мишени и шаги с экрана."
+                btnNext?.text = "Далее ►"
+            }
+            6 -> {
+                tvTitle?.text = "7/11: Запись [🔴]"
+                tvDesc?.text = "Включает живую запись ваших кликов и свайпов прямо по экрану!"
+                btnNext?.text = "Далее ►"
+            }
+            7 -> {
+                tvTitle?.text = "8/11: Джойстик [🕹]"
+                tvDesc?.text = "Включает плавающий джойстик для записи жестов свайпа."
+                btnNext?.text = "Далее ►"
+            }
+            8 -> {
+                tvTitle?.text = "9/11: Скрипты [📁]"
+                tvDesc?.text = "Сохранение текущей схемы шагов в файл и загрузка сохраненных."
+                btnNext?.text = "Далее ►"
+            }
+            9 -> {
+                tvTitle?.text = "10/11: Глаз [👁]"
+                tvDesc?.text = "Скрывает или показывает бейджи с номерами поверх шагов."
+                btnNext?.text = "Далее ►"
+            }
+            10 -> {
+                tvTitle?.text = "11/11: Закрыть [❌]"
+                tvDesc?.text = "Выход из панели кликера и возвращение в главное меню."
+                btnNext?.text = "Завершить ✔"
+            }
+        }
+    }
+
+    private fun positionTutorialCardAnchored(targetButton: View?) {
+        val card = tutorialCardView ?: return
+        val panel = controlPanelOverlay.rootView ?: return
+
+        val (screenW, screenH) = overlayManager.getRealScreenSize()
+        val loc = IntArray(2)
+        if (targetButton != null && targetButton.width > 0) {
+            targetButton.getLocationOnScreen(loc)
+        } else {
+            panel.getLocationOnScreen(loc)
+        }
+
+        val anchorX = loc[0]
+        val anchorY = loc[1]
+
+        val cardW = dpToPx(240)
+        val cardH = dpToPx(150)
+
+        var cardX = anchorX + dpToPx(50)
+        var cardY = anchorY + dpToPx(50)
+
+        if (cardX + cardW > screenW - dpToPx(16)) {
+            cardX = anchorX - cardW - dpToPx(10)
+        }
+        if (cardY + cardH > screenH - dpToPx(16)) {
+            cardY = anchorY - cardH - dpToPx(10)
+        }
+
+        cardX = cardX.coerceIn(dpToPx(10), (screenW - cardW - dpToPx(10)).coerceAtLeast(dpToPx(10)))
+        cardY = cardY.coerceIn(dpToPx(40), (screenH - cardH - dpToPx(10)).coerceAtLeast(dpToPx(40)))
+
+        val params = card.layoutParams as? WindowManager.LayoutParams ?: return
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = cardX
+        params.y = cardY
+        overlayManager.safeUpdateViewLayout(card, params)
+    }
+
+    private fun highlightButton(button: View?) {
+        clearButtonHighlights()
+        if (button == null) return
+
+        highlightedButtonAnim = ObjectAnimator.ofPropertyValuesHolder(
+            button,
+            PropertyValuesHolder.ofFloat(View.SCALE_X, 1.0f, 1.25f, 1.0f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.0f, 1.25f, 1.0f)
+        ).apply {
+            duration = 600
+            repeatCount = ObjectAnimator.INFINITE
+            start()
+        }
+    }
+
+    private fun clearButtonHighlights() {
+        highlightedButtonAnim?.cancel()
+        highlightedButtonAnim = null
+        controlPanelOverlay.resetAllButtonScales()
     }
 
     fun hideTutorial() {
+        clearButtonHighlights()
         isTutorialActive = false
         tutorialCardView?.let {
             overlayManager.safeRemoveView(it)

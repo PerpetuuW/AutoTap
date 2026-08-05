@@ -69,10 +69,12 @@ class ControlPanelOverlay(service: MyAutoClickService) :
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val (screenW, screenH) = service.overlayManager.getRealScreenSize()
-                    val w = if (view.width > 0) view.width else service.overlayManager.dpToPx(180)
-                    val h = if (view.height > 0) view.height else service.overlayManager.dpToPx(50)
-                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, (screenW - w).coerceAtLeast(0))
-                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, (screenH - h).coerceAtLeast(0))
+                    val w = if (view.width > 0) view.width else service.dpToPx(180)
+                    val h = if (view.height > 0) view.height else service.dpToPx(50)
+                    val maxX = (screenW - w).coerceAtLeast(0)
+                    val maxY = (screenH - h).coerceAtLeast(0)
+                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, maxY)
                     service.overlayManager.safeUpdateViewLayout(view, p)
                     true
                 }
