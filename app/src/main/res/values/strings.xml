@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">AutoTap</string>
-    <string name="accessibility_description">Служба автоматизации AutoTap v35 Enterprise: нативные тапы, траектории жестов, ИИ-сканер с калибровкой и авто-обучением масок.</string>
+    <string name="accessibility_description">Служба авто-кликера AutoTap v36.9 Enterprise: полноэкранные жесты, траектории джойстика, ИИ-сканер с локальным обучением масок.</string>
 </resources>

@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import com.example.autotap.MyAutoClickService
 import java.util.ArrayDeque
 
 class GestureExecutor(private val service: AccessibilityService) {
@@ -54,26 +55,33 @@ class GestureExecutor(private val service: AccessibilityService) {
     fun performClickWithCallback(x: Float, y: Float, duration: Long = 100L, onComplete: ((Boolean) -> Unit)? = null) {
         gestureQueue.add(Runnable {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                MyAutoClickService.logAppEvent(service, "GESTURE", "❌ Ошибка: API Android < 24 не поддерживает жесты")
                 onComplete?.invoke(false)
                 finishGestureTask()
                 return@Runnable
             }
+
+            MyAutoClickService.logAppEvent(service, "GESTURE", "📤 Отправка клика в ОС: pos=($x, $y) | duration=${duration}ms")
+
             val path = Path().apply { moveTo(x, y) }
             val stroke = GestureDescription.StrokeDescription(path, 0, duration)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
             val res = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
+                    MyAutoClickService.logAppEvent(service, "GESTURE", "✅ Клик выполнен ОС Android: ($x, $y)")
                     onComplete?.invoke(true)
                     finishGestureTask()
                 }
                 override fun onCancelled(gestureDescription: GestureDescription?) {
+                    MyAutoClickService.logAppEvent(service, "GESTURE", "⚠️ Клик отменен ОС Android: ($x, $y)")
                     onComplete?.invoke(false)
                     finishGestureTask()
                 }
             }, null)
 
             if (!res) {
+                MyAutoClickService.logAppEvent(service, "GESTURE", "❌ dispatchGesture вернул false для клика ($x, $y)")
                 onComplete?.invoke(false)
                 finishGestureTask()
             }
@@ -94,6 +102,8 @@ class GestureExecutor(private val service: AccessibilityService) {
             }
 
             val smoothed = smoothPath(pathPoints)
+            val pointCount = if (smoothed.isNotEmpty()) smoothed.size else 2
+            MyAutoClickService.logAppEvent(service, "GESTURE", "📤 Отправка свайпа в ОС: ($startX, $startY) -> ($endX, $endY) | точек=$pointCount | duration=${duration}ms")
 
             val path = Path().apply {
                 if (smoothed.size >= 2) {
@@ -112,48 +122,19 @@ class GestureExecutor(private val service: AccessibilityService) {
 
             val res = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
+                    MyAutoClickService.logAppEvent(service, "GESTURE", "✅ Свайп выполнен ОС Android")
                     onComplete?.invoke(true)
                     finishGestureTask()
                 }
                 override fun onCancelled(gestureDescription: GestureDescription?) {
+                    MyAutoClickService.logAppEvent(service, "GESTURE", "⚠️ Свайп отменен ОС Android")
                     onComplete?.invoke(false)
                     finishGestureTask()
                 }
             }, null)
 
             if (!res) {
-                onComplete?.invoke(false)
-                finishGestureTask()
-            }
-        })
-        processNextGesture()
-    }
-
-    fun performMultiTouchWithCallback(pointers: List<PointF>, duration: Long = 200L, onComplete: ((Boolean) -> Unit)? = null) {
-        gestureQueue.add(Runnable {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || pointers.isEmpty()) {
-                onComplete?.invoke(false)
-                finishGestureTask()
-                return@Runnable
-            }
-            val builder = GestureDescription.Builder()
-            for (pt in pointers) {
-                val path = Path().apply { moveTo(pt.x, pt.y) }
-                builder.addStroke(GestureDescription.StrokeDescription(path, 0, duration))
-            }
-
-            val res = service.dispatchGesture(builder.build(), object : AccessibilityService.GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription?) {
-                    onComplete?.invoke(true)
-                    finishGestureTask()
-                }
-                override fun onCancelled(gestureDescription: GestureDescription?) {
-                    onComplete?.invoke(false)
-                    finishGestureTask()
-                }
-            }, null)
-
-            if (!res) {
+                MyAutoClickService.logAppEvent(service, "GESTURE", "❌ dispatchGesture вернул false для свайпа")
                 onComplete?.invoke(false)
                 finishGestureTask()
             }

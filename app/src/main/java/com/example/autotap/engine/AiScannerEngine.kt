@@ -32,12 +32,12 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         if (config.selectedTemplateIndex !in templateRepository.globalTemplates.indices) return
 
         isCalibrating = true
+        MyAutoClickService.logAppEvent(service, "AI_SCANNER", "🔍 Запуск калибровки маски v35 шага #${config.id}")
 
         bgExecutor.execute {
             try {
                 val template = templateRepository.globalTemplates[config.selectedTemplateIndex]
                 val templatePath = templateRepository.globalTemplatesNames[config.selectedTemplateIndex]
-                val meta = templateRepository.loadTemplateMetadata(templatePath)
 
                 val fullBitmap = templateRepository.loadFullBitmap(templatePath)
                 if (fullBitmap == null) {
@@ -67,13 +67,16 @@ class AiScannerEngine(private val service: MyAutoClickService) {
                 val best = CandidateSelector.selectBest(candidates)
 
                 if (best != null) {
+                    val pct = (best.score * 100).toInt()
+                    MyAutoClickService.logAppEvent(service, "AI_SCANNER", "🎯 Калибровка v35 завершена: точность=$pct% | rect=${best.rect}")
                     uiHandler.post {
                         config.calibratedRectNorm = best.rect
                         service.vibrateFeedback(40L)
                     }
                 }
 
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                MyAutoClickService.logError(service, e)
             } finally {
                 finishCalibration()
             }
@@ -107,10 +110,15 @@ class AiScannerEngine(private val service: MyAutoClickService) {
             )
         } else null
 
-        val frames = listOf(screenBitmap)
-        val match = MultiFrameMatcher.matchMultiFrame(frames, calibrated.originalMask, templateRepository.loadTemplateMetadata(templatePath), config)
+        val candidates = HybridCascadeMatcher.match(screenBitmap, calibrated, searchArea, modes)
+        val match = CandidateSelector.selectBest(candidates)
 
         if (match != null) {
+            val scorePct = (match.score * 100).toInt()
+            val cx = match.rect.centerX()
+            val cy = match.rect.centerY()
+            MyAutoClickService.logAppEvent(service, "AI_SCANNER", "🎯 МАТЧ V35 НАЙДЕН! Порог=${config.similarityPercent}% | Итог=$scorePct% | pos=($cx, $cy)")
+
             val rx = match.rect.left.coerceAtLeast(0)
             val ry = match.rect.top.coerceAtLeast(0)
             val rw = match.rect.width().coerceAtMost(screenBitmap.width - rx)

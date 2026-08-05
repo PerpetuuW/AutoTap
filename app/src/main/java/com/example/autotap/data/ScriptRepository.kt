@@ -59,7 +59,7 @@ class ScriptRepository private constructor(private val context: Context) {
                 val bakContent = bakFile.readText()
                 if (validateJson(bakContent)) {
                     targetContent = bakContent
-                    MyAutoClickService.logAppEvent(context, "ScriptRepo", "Восстановлен сценарий '$name' из бэкапа .bak!")
+                    MyAutoClickService.logAppEvent(context, "SCRIPT_REPO", "⚠️ Файл '$name.json' поврежден. Восстановлен бэкап из '$name.json.bak'")
                 }
             }
 
@@ -67,12 +67,11 @@ class ScriptRepository private constructor(private val context: Context) {
                 val jsonArray = JSONArray(targetContent)
                 for (i in 0 until jsonArray.length()) {
                     val cfg = ActionConfig.fromJson(jsonArray.getJSONObject(i))
-                    if (cfg.version < 35) {
-                        cfg.version = 35
-                        cfg.updatedAt = System.currentTimeMillis()
-                    }
                     list.add(cfg)
                 }
+                MyAutoClickService.logAppEvent(context, "SCRIPT_REPO", "📂 Сценарий '$name' успешно загружен (${list.size} шагов)")
+            } else {
+                MyAutoClickService.logAppEvent(context, "SCRIPT_REPO", "⚠️ Файл сценария '$name' не найден")
             }
         } catch (e: Exception) {
             MyAutoClickService.logError(context, e)
@@ -105,7 +104,7 @@ class ScriptRepository private constructor(private val context: Context) {
                 tmpFile.delete()
             }
 
-            MyAutoClickService.logAppEvent(context, "ScriptRepo", "Atomic-Save: Сценарий '$name' сохранен (${actions.size} шагов).")
+            MyAutoClickService.logAppEvent(context, "SCRIPT_REPO", "💾 Atomic-Save: Сценарий '$name' сохранен (${actions.size} шагов). Бэкап создан.")
         } catch (e: Exception) {
             MyAutoClickService.logError(context, e)
         }
@@ -123,13 +122,15 @@ class ScriptRepository private constructor(private val context: Context) {
             zos.closeEntry()
             zos.close()
 
+            MyAutoClickService.logAppEvent(context, "EXPORT", "📦 Экспортирован ZIP-бэкап сценария: ${zipFile.absolutePath}")
+
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", zipFile)
             val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                 type = "application/zip"
                 putExtra(android.content.Intent.EXTRA_STREAM, uri)
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(android.content.Intent.createChooser(shareIntent, "Экспорт сценария v35"))
+            context.startActivity(android.content.Intent.createChooser(shareIntent, "Экспорт сценария v37"))
         } catch (e: Exception) {
             MyAutoClickService.logError(context, e)
         }

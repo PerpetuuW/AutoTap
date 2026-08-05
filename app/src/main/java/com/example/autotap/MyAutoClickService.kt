@@ -3,6 +3,8 @@ package com.example.autotap
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -55,6 +57,10 @@ import com.example.autotap.ui.overlays.JoystickOverlay
 import com.example.autotap.ui.overlays.ScriptsDialog
 import java.io.File
 import java.io.FileOutputStream
+import java.io.PrintWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.zip.ZipEntry
@@ -65,19 +71,50 @@ class MyAutoClickService : AccessibilityService() {
 
     companion object {
         var instance: MyAutoClickService? = null
+        private val logLock = Any()
 
+        @JvmStatic
         fun logError(ctx: Context, e: Throwable) {
-            try {
-                val file = File(ctx.filesDir, "error_log.txt")
-                file.appendText("\n\n${System.currentTimeMillis()}:\n${e.stackTraceToString()}")
-            } catch (_: Exception) {}
+            android.util.Log.e("AutoTap", "Caught Exception", e)
+            synchronized(logLock) {
+                try {
+                    val logFile = File(ctx.filesDir, "error_log.txt")
+                    if (logFile.exists() && logFile.length() > 512 * 1024) {
+                        val tailContent = logFile.readText().takeLast(256 * 1024)
+                        logFile.writeText("...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + tailContent)
+                    }
+
+                    FileOutputStream(logFile, true).use { out ->
+                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                        val writer = PrintWriter(out)
+                        writer.println("=== [${sdf.format(Date())}] [ERROR] ===")
+                        e.printStackTrace(writer)
+                        writer.println()
+                        writer.flush()
+                    }
+                } catch (_: Exception) {}
+            }
         }
 
+        @JvmStatic
         fun logAppEvent(ctx: Context, tag: String, msg: String) {
-            try {
-                val file = File(ctx.filesDir, "app_events.txt")
-                file.appendText("\n[$tag] $msg")
-            } catch (_: Exception) {}
+            android.util.Log.d("AutoTap", "[$tag] $msg")
+            synchronized(logLock) {
+                try {
+                    val logFile = File(ctx.filesDir, "error_log.txt")
+                    if (logFile.exists() && logFile.length() > 512 * 1024) {
+                        val tailContent = logFile.readText().takeLast(256 * 1024)
+                        logFile.writeText("...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + tailContent)
+                    }
+
+                    FileOutputStream(logFile, true).use { out ->
+                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+                        val writer = PrintWriter(out)
+                        writer.println("[${sdf.format(Date())}] [$tag] $msg")
+                        writer.flush()
+                    }
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -97,6 +134,12 @@ class MyAutoClickService : AccessibilityService() {
     lateinit var debuggerOverlay: ScenarioDebuggerOverlay
     lateinit var clickVisualizerOverlay: ClickVisualizerOverlay
 
+    // --- TUTORIAL STATE ---
+    private var tutorialCardView: View? = null
+    private var currentTutorialStep = 0
+    private var isTutorialActive = false
+    private var highlightedButtonAnim: ObjectAnimator? = null
+
     // --- STATE ---
     val actionsList = ArrayList<ActionConfig>()
     var isPlaying = false
@@ -113,6 +156,10 @@ class MyAutoClickService : AccessibilityService() {
 
     val globalTemplatesNames: ArrayList<String>
         get() = templateRepository.globalTemplatesNames
+
+    private val uiHandler = Handler(Looper.getMainLooper())
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -142,10 +189,9 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        Toast.makeText(this, "AutoTap v35.0.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        logAppEvent(this, "SERVICE", "🚀 Служба AutoTap v37.0.0-PRO успешно подключена к системе")
+        Toast.makeText(this, "AutoTap v37.0.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {}
 
@@ -155,9 +201,13 @@ class MyAutoClickService : AccessibilityService() {
     fun dpToPx(dp: Int): Int = overlayManager.dpToPx(dp)
     fun dpToPx(dp: Float): Int = overlayManager.dpToPx(dp)
 
-    fun showControlPanel() = controlPanelOverlay.show()
+    fun showControlPanel() {
+        logAppEvent(this, "OVERLAY", "Показ главной панели управления")
+        controlPanelOverlay.show()
+    }
 
     fun hideControlPanel(openMainApp: Boolean = false) {
+        hideTutorial()
         controlPanelOverlay.hide()
         if (openMainApp) {
             try {
@@ -176,18 +226,22 @@ class MyAutoClickService : AccessibilityService() {
         actionsList.clear()
         actionsList.addAll(scriptRepository.loadScriptByName(name))
         if (actionsList.isEmpty()) {
+            logAppEvent(this, "SCRIPT", "⚠️ Попытка запуска пустого сценария '$name'")
             Toast.makeText(this, "Сценарий пуст!", Toast.LENGTH_SHORT).show()
             return
         }
+        logAppEvent(this, "SCRIPT", "▶️ Запуск сценария '$name' (${actionsList.size} шагов)")
         scenarioRunner.start()
     }
 
     fun stopExecutionLoop() {
+        logAppEvent(this, "SCRIPT", "⏹ Остановка выполнения сценария")
         scenarioRunner.stop()
     }
 
     fun startOverlayRecording() {
         isRecording = true
+        logAppEvent(this, "RECORDING", "🔴 Запуск живой записи жестов по экрану")
         actionsList.forEach { act ->
             act.startView?.visibility = View.INVISIBLE
             act.endView?.visibility = View.INVISIBLE
@@ -198,6 +252,7 @@ class MyAutoClickService : AccessibilityService() {
 
     fun stopOverlayRecording() {
         isRecording = false
+        logAppEvent(this, "RECORDING", "⏹ Запись жестов завершена. Всего записано шагов: ${actionsList.size}")
         controlPanelOverlay.show()
         hideFloatingStopButton()
         actionsList.forEach { act ->
@@ -208,6 +263,7 @@ class MyAutoClickService : AccessibilityService() {
 
     fun toggleNumbersVisibility() {
         isNumbersHidden = !isNumbersHidden
+        logAppEvent(this, "UI", "Переключение видимости бейджей: isHidden=$isNumbersHidden")
         actionsList.forEach { act ->
             act.startView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
             act.endView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
@@ -216,6 +272,7 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun clearAllActions() {
+        logAppEvent(this, "SCRIPT", "🗑 Очистка всех шагов сценария (${actionsList.size} шагов было)")
         actionsList.forEach { act ->
             act.startView?.let { overlayManager.safeRemoveView(it) }
             act.endView?.let { overlayManager.safeRemoveView(it) }
@@ -225,8 +282,11 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun addNewActionAtPosition(x: Float, y: Float, delay: Long, type: ActionType, id: Int) {
+        val actionId = if (id == -1) (actionsList.size + 1) else id
+        logAppEvent(this, "STEP_ADD", "Добавлен шаг #$actionId [$type] в ($x, $y) с задержкой ${delay}мс")
+
         val cfg = ActionConfig(
-            id = if (id == -1) (actionsList.size + 1) else id,
+            id = actionId,
             type = type,
             xNorm = normalizeX(x),
             yNorm = normalizeY(y),
@@ -344,61 +404,32 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun showTutorialCard() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.floating_tutorial_card, null)
+        isTutorialActive = true
+        if (tutorialCardView != null) {
+            tutorialCardView?.visibility = View.VISIBLE
+            return
+        }
+
+        val view = LayoutInflater.from(this).inflate(R.layout.floating_tutorial_card, null)
+        tutorialCardView = view
+
         val params = overlayManager.createOverlayParams().apply {
             gravity = Gravity.CENTER
             flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
             dimAmount = 0.5f
         }
 
-        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTutTitle)
-        val tvDesc = dialogView.findViewById<TextView>(R.id.tvTutDesc)
-        val btnPrev = dialogView.findViewById<Button>(R.id.btnTutPrev)
-        val btnNext = dialogView.findViewById<Button>(R.id.btnTutNext)
-        val btnSkip = dialogView.findViewById<Button>(R.id.btnTutSkip)
+        val btnSkip = view.findViewById<Button>(R.id.btnTutSkip)
+        btnSkip?.setOnClickListener { vibrateFeedback(20L); hideTutorial() }
+        overlayManager.safeAddView(view, params)
+    }
 
-        var step = 0
-        val steps = listOf(
-            Pair("1/5: Панель управления", "Кнопка ▶ запускает сценарий, + добавляет шаги, 📸 включает ИИ-прицел."),
-            Pair("2/5: Настройка шагов", "Тапните по мишени на экране, чтобы изменить задержку, разброс или калибровку ИИ."),
-            Pair("3/5: Живая запись", "Кнопка 🔴 в меню включает мгновенную запись ваших кликов и свайпов прямо по экрану."),
-            Pair("4/5: ИИ-Сканер масок", "Кнопка 📸 вырезает любой элемент экрана. Кликер будет находить его автоматически!"),
-            Pair("5/5: Менеджер сценариев", "Папка 📁 сохраняет наборы шагов в файлы, делает авто-бэкапы и экспортирует в ZIP.")
-        )
-
-        fun updateContent() {
-            tvTitle?.text = steps[step].first
-            tvDesc?.text = steps[step].second
-            btnPrev?.visibility = if (step > 0) View.VISIBLE else View.INVISIBLE
-            btnNext?.text = if (step < steps.size - 1) "Далее ►" else "Готово ✔"
+    fun hideTutorial() {
+        isTutorialActive = false
+        tutorialCardView?.let {
+            overlayManager.safeRemoveView(it)
+            tutorialCardView = null
         }
-
-        updateContent()
-
-        btnPrev?.setOnClickListener {
-            vibrateFeedback(20L)
-            if (step > 0) {
-                step--
-                updateContent()
-            }
-        }
-
-        btnNext?.setOnClickListener {
-            vibrateFeedback(20L)
-            if (step < steps.size - 1) {
-                step++
-                updateContent()
-            } else {
-                overlayManager.safeRemoveView(dialogView)
-            }
-        }
-
-        btnSkip?.setOnClickListener {
-            vibrateFeedback(20L)
-            overlayManager.safeRemoveView(dialogView)
-        }
-
-        overlayManager.safeAddView(dialogView, params)
     }
 
     fun loadScriptByName(name: String): List<ActionConfig> = scriptRepository.loadScriptByName(name)
@@ -409,6 +440,7 @@ class MyAutoClickService : AccessibilityService() {
     fun exportScriptWithTemplates(context: Context, scriptName: String) = scriptRepository.exportScriptWithTemplates(scriptName)
 
     override fun onDestroy() {
+        logAppEvent(this, "SERVICE", "🛑 Служба AutoTap остановлена")
         stopExecutionLoop()
         hideControlPanel()
         instance = null

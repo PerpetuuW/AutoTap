@@ -9,92 +9,74 @@ import android.widget.ImageButton
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayPriority
 
-class ControlPanelOverlay(private val service: MyAutoClickService) {
+class ControlPanelOverlay(service: MyAutoClickService) :
+    OverlayBase(service, R.layout.floating_control_panel, OverlayLayer.PANEL, OverlayPriority.MEDIUM) {
 
-    private var panelView: View? = null
     private var stopButtonView: View? = null
     private var panelState = 0
 
-    fun show() {
-        if (panelView != null) {
-            panelView?.visibility = View.VISIBLE
-            return
-        }
+    private var btnPlay: ImageButton? = null
+    private var btnAdd: ImageButton? = null
+    private var btnCapturePool: ImageButton? = null
+    private var btnHelpTutorial: ImageButton? = null
+    private var btnToggleMenu: ImageButton? = null
 
-        val view = LayoutInflater.from(service).inflate(R.layout.floating_control_panel, null)
-        panelView = view
+    private var btnClearAll: ImageButton? = null
+    private var btnRecord: ImageButton? = null
+    private var btnToggleJoystick: ImageButton? = null
+    private var btnLoadScript: ImageButton? = null
+    private var btnHideNumbers: ImageButton? = null
+    private var btnClose: ImageButton? = null
+    private var btnSingleBubble: ImageButton? = null
 
-        val params = service.overlayManager.createOverlayParams().apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = service.overlayManager.dpToPx(20)
-            y = service.overlayManager.dpToPx(120)
-        }
+    private var layoutMainRow: View? = null
+    private var layoutSubMenu: View? = null
 
-        bindUi(view)
-        service.overlayManager.safeAddView(view, params)
-    }
-
-    fun hide() {
-        panelView?.let { service.overlayManager.safeRemoveView(it) }
-        panelView = null
-    }
-
-    private fun bindUi(view: View) {
+    override fun onViewInflated(view: View) {
         val handleDrag = view.findViewById<TextView>(R.id.handleDrag)
-        val layoutMainRow = view.findViewById<View>(R.id.layoutMainRow)
-        val layoutSubMenu = view.findViewById<View>(R.id.layoutSubMenu)
-        val btnSingleBubble = view.findViewById<ImageButton>(R.id.btnSingleBubble)
+        layoutMainRow = view.findViewById(R.id.layoutMainRow)
+        layoutSubMenu = view.findViewById(R.id.layoutSubMenu)
+        btnSingleBubble = view.findViewById(R.id.btnSingleBubble)
 
-        val btnPlay = view.findViewById<ImageButton>(R.id.btnPlay)
-        val btnAdd = view.findViewById<ImageButton>(R.id.btnAdd)
-        val btnCapturePool = view.findViewById<ImageButton>(R.id.btnCapturePool)
-        val btnHelpTutorial = view.findViewById<ImageButton>(R.id.btnHelpTutorial)
-        val btnToggleMenu = view.findViewById<ImageButton>(R.id.btnToggleMenu)
+        btnPlay = view.findViewById(R.id.btnPlay)
+        btnAdd = view.findViewById(R.id.btnAdd)
+        btnCapturePool = view.findViewById(R.id.btnCapturePool)
+        btnHelpTutorial = view.findViewById(R.id.btnHelpTutorial)
+        btnToggleMenu = view.findViewById(R.id.btnToggleMenu)
 
-        val btnClearAll = view.findViewById<ImageButton>(R.id.btnClearAll)
-        val btnRecord = view.findViewById<ImageButton>(R.id.btnRecord)
-        val btnToggleJoystick = view.findViewById<ImageButton>(R.id.btnToggleJoystick)
-        val btnLoadScript = view.findViewById<ImageButton>(R.id.btnLoadScript)
-        val btnHideNumbers = view.findViewById<ImageButton>(R.id.btnHideNumbers)
-        val btnClose = view.findViewById<ImageButton>(R.id.btnClose)
+        btnClearAll = view.findViewById(R.id.btnClearAll)
+        btnRecord = view.findViewById(R.id.btnRecord)
+        btnToggleJoystick = view.findViewById(R.id.btnToggleJoystick)
+        btnLoadScript = view.findViewById(R.id.btnLoadScript)
+        btnHideNumbers = view.findViewById(R.id.btnHideNumbers)
+        btnClose = view.findViewById(R.id.btnClose)
 
         var initX = 0; var initY = 0; var touchX = 0f; var touchY = 0f
 
         handleDrag?.setOnTouchListener { _, event ->
-            val params = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    initX = params.x; initY = params.y
-                    touchX = event.rawX; touchY = event.rawY
+                    initX = p.x
+                    initY = p.y
+                    touchX = event.rawX
+                    touchY = event.rawY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val (screenW, screenH) = service.overlayManager.getRealScreenSize()
                     val w = if (view.width > 0) view.width else service.overlayManager.dpToPx(180)
                     val h = if (view.height > 0) view.height else service.overlayManager.dpToPx(50)
-                    params.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, (screenW - w).coerceAtLeast(0))
-                    params.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, (screenH - h).coerceAtLeast(0))
-                    service.overlayManager.safeUpdateViewLayout(view, params)
+                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, (screenW - w).coerceAtLeast(0))
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, (screenH - h).coerceAtLeast(0))
+                    service.overlayManager.safeUpdateViewLayout(view, p)
                     true
                 }
                 else -> false
-            }
-        }
-
-        fun updatePanelState(state: Int) {
-            panelState = state % 3
-            when (panelState) {
-                0 -> { layoutMainRow?.visibility = View.VISIBLE; layoutSubMenu?.visibility = View.GONE; btnSingleBubble?.visibility = View.GONE }
-                1 -> { layoutMainRow?.visibility = View.VISIBLE; layoutSubMenu?.visibility = View.VISIBLE; btnSingleBubble?.visibility = View.GONE }
-                2 -> { layoutMainRow?.visibility = View.GONE; layoutSubMenu?.visibility = View.GONE; btnSingleBubble?.visibility = View.VISIBLE }
-            }
-            view.requestLayout()
-            val p = view.layoutParams as? WindowManager.LayoutParams
-            if (p != null) {
-                p.width = WindowManager.LayoutParams.WRAP_CONTENT
-                p.height = WindowManager.LayoutParams.WRAP_CONTENT
-                service.overlayManager.safeUpdateViewLayout(view, p)
             }
         }
 
@@ -104,10 +86,10 @@ class ControlPanelOverlay(private val service: MyAutoClickService) {
         btnPlay?.setOnClickListener {
             service.vibrateFeedback(30L)
             if (service.isPlaying) {
-                btnPlay.setImageResource(R.drawable.ic_play)
+                btnPlay?.setImageResource(R.drawable.ic_play)
                 service.stopExecutionLoop()
             } else {
-                btnPlay.setImageResource(R.drawable.ic_pause)
+                btnPlay?.setImageResource(R.drawable.ic_pause)
                 service.startScript("default")
             }
         }
@@ -124,6 +106,56 @@ class ControlPanelOverlay(private val service: MyAutoClickService) {
         btnLoadScript?.setOnClickListener { service.vibrateFeedback(20L); service.showScriptsDialog() }
         btnHideNumbers?.setOnClickListener { service.vibrateFeedback(20L); service.toggleNumbersVisibility() }
         btnClose?.setOnClickListener { service.vibrateFeedback(20L); service.hideControlPanel(openMainApp = true) }
+    }
+
+    fun ensureSubMenuVisible() {
+        if (panelState != 1) {
+            updatePanelState(1)
+        }
+    }
+
+    fun getButtonForStep(step: Int): View? {
+        return when (step) {
+            0 -> btnPlay
+            1 -> btnAdd
+            2 -> btnCapturePool
+            3 -> btnHelpTutorial
+            4 -> btnToggleMenu
+            5 -> btnClearAll
+            6 -> btnRecord
+            7 -> btnToggleJoystick
+            8 -> btnLoadScript
+            9 -> btnHideNumbers
+            10 -> btnClose
+            else -> null
+        }
+    }
+
+    fun resetAllButtonScales() {
+        val buttons = listOf(
+            btnPlay, btnAdd, btnCapturePool, btnHelpTutorial, btnToggleMenu,
+            btnClearAll, btnRecord, btnToggleJoystick, btnLoadScript, btnHideNumbers, btnClose
+        )
+        buttons.forEach { btn ->
+            btn?.scaleX = 1.0f
+            btn?.scaleY = 1.0f
+        }
+    }
+
+    fun updatePanelState(state: Int) {
+        panelState = state % 3
+        when (panelState) {
+            0 -> { layoutMainRow?.visibility = View.VISIBLE; layoutSubMenu?.visibility = View.GONE; btnSingleBubble?.visibility = View.GONE }
+            1 -> { layoutMainRow?.visibility = View.VISIBLE; layoutSubMenu?.visibility = View.VISIBLE; btnSingleBubble?.visibility = View.GONE }
+            2 -> { layoutMainRow?.visibility = View.GONE; layoutSubMenu?.visibility = View.GONE; btnSingleBubble?.visibility = View.VISIBLE }
+        }
+        rootView?.requestLayout()
+        val p = rootView?.layoutParams as? WindowManager.LayoutParams
+        if (p != null && rootView != null) {
+            p.width = WindowManager.LayoutParams.WRAP_CONTENT
+            p.height = WindowManager.LayoutParams.WRAP_CONTENT
+            service.overlayManager.safeUpdateViewLayout(rootView, p)
+        }
     }
 
     fun showFloatingStopButton() {
