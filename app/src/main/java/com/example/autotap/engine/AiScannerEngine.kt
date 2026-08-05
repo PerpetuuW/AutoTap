@@ -1,25 +1,31 @@
 package com.example.autotap.engine
 
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import com.example.autotap.ActionConfig
 import com.example.autotap.MatchCandidate
 import com.example.autotap.MyAutoClickService
-import com.example.autotap.TemplateMatcher
 import com.example.autotap.data.TemplateRepository
 import java.util.concurrent.Executors
+
+data class ScanResult(
+    val match: MatchCandidate? = null,
+    val score: Float = 0f,
+    val jumpToStep: Int = -1,
+    val targetScript: String = ""
+)
 
 class AiScannerEngine(private val service: MyAutoClickService) {
 
     private val templateRepository: TemplateRepository
-        get() = service.templateRepository
+        get() = TemplateRepository.instance
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private val bgExecutor = Executors.newSingleThreadExecutor()
 
-    @Volatile
-    private var isCalibrating = false
+    @Volatile private var isCalibrating = false
 
     fun startTemplateCalibration(config: ActionConfig) {
         if (isCalibrating) return
@@ -39,14 +45,31 @@ class AiScannerEngine(private val service: MyAutoClickService) {
                     return@execute
                 }
 
-                val calibrated = MaskCalibrator.calibrateMask(template, config.dpi, config.dpi, true)
-                val candidates = HybridCascadeMatcher.fineMatch(fullBitmap, calibrated.primaryMask, config)
+                val calibrated = MaskCalibrator.calibrateMask(template, fullBitmap, config.dpi, config.dpi, true)
+                val modes = SearchModes(
+                    exactMatchOnly = config.exactMatchOnly,
+                    shapeOnlyMode = config.shapeOnlyMode,
+                    hybridCascadeMode = config.hybridCascadeMode,
+                    multiScaleSearch = config.multiScaleSearch,
+                    isFastMode = config.isFastMode
+                )
 
+                val searchArea = if (config.customSearchArea) {
+                    Rect(
+                        (config.searchAreaXNorm * fullBitmap.width).toInt().coerceIn(0, fullBitmap.width - 1),
+                        (config.searchAreaYNorm * fullBitmap.height).toInt().coerceIn(0, fullBitmap.height - 1),
+                        ((config.searchAreaXNorm + config.searchAreaWNorm) * fullBitmap.width).toInt().coerceIn(1, fullBitmap.width),
+                        ((config.searchAreaYNorm + config.searchAreaHNorm) * fullBitmap.height).toInt().coerceIn(1, fullBitmap.height)
+                    )
+                } else null
+
+                val candidates = HybridCascadeMatcher.match(fullBitmap, calibrated, searchArea, modes)
                 val best = CandidateSelector.selectBest(candidates)
+
                 if (best != null) {
                     uiHandler.post {
                         config.calibratedRectNorm = best.rect
-                        service.gestureExecutor.vibrateFeedback(40L)
+                        service.vibrateFeedback(40L)
                     }
                 }
 
@@ -57,33 +80,37 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         }
     }
 
-    private fun finishCalibration() {
-        isCalibrating = false
-    }
+    private fun finishCalibration() { isCalibrating = false }
 
-    fun scanForMatch(
-        screenBitmap: Bitmap?,
-        config: ActionConfig
-    ): MatchCandidate? {
+    fun scanForMatch(screenBitmap: Bitmap?, config: ActionConfig): MatchCandidate? {
         if (screenBitmap == null) return null
         if (config.selectedTemplateIndex !in templateRepository.globalTemplates.indices) return null
 
         val template = templateRepository.globalTemplates[config.selectedTemplateIndex]
         val templatePath = templateRepository.globalTemplatesNames[config.selectedTemplateIndex]
-        val meta = templateRepository.loadTemplateMetadata(templatePath)
 
-        val calibrated = MaskCalibrator.calibrateMask(template, config.dpi, config.dpi, true)
-        val candidates = TemplateMatcher.findTemplateCandidatesCoarseFine(
-            screenBitmap,
-            calibrated.primaryMask,
-            meta,
-            config
+        val calibrated = MaskCalibrator.calibrateMask(template, screenBitmap, config.dpi, config.dpi, true)
+        val modes = SearchModes(
+            exactMatchOnly = config.exactMatchOnly,
+            shapeOnlyMode = config.shapeOnlyMode,
+            hybridCascadeMode = config.hybridCascadeMode,
+            multiScaleSearch = config.multiScaleSearch,
+            isFastMode = config.isFastMode
         )
 
-        val validated = HeatmapValidator.validate(candidates, screenBitmap)
-        val match = CandidateSelector.selectBest(validated)
+        val searchArea = if (config.customSearchArea) {
+            Rect(
+                (config.searchAreaXNorm * screenBitmap.width).toInt().coerceIn(0, screenBitmap.width - 1),
+                (config.searchAreaYNorm * screenBitmap.height).toInt().coerceIn(0, screenBitmap.height - 1),
+                ((config.searchAreaXNorm + config.searchAreaWNorm) * screenBitmap.width).toInt().coerceIn(1, screenBitmap.width),
+                ((config.searchAreaYNorm + config.searchAreaHNorm) * screenBitmap.height).toInt().coerceIn(1, screenBitmap.height)
+            )
+        } else null
 
-        if (match != null && screenBitmap != null) {
+        val frames = listOf(screenBitmap)
+        val match = MultiFrameMatcher.matchMultiFrame(frames, calibrated.originalMask, templateRepository.loadTemplateMetadata(templatePath), config)
+
+        if (match != null) {
             val rx = match.rect.left.coerceAtLeast(0)
             val ry = match.rect.top.coerceAtLeast(0)
             val rw = match.rect.width().coerceAtMost(screenBitmap.width - rx)
@@ -97,90 +124,36 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         return match
     }
 
-    fun scanMultiTemplates(
-        screenBitmap: Bitmap?,
-        config: ActionConfig
-    ): MatchCandidate? {
-        if (screenBitmap == null) return null
-        if (config.multiTemplateIndices.isEmpty()) return null
-
-        var best: MatchCandidate? = null
-        var bestPath: String? = null
-
-        for (idx in config.multiTemplateIndices) {
-            if (idx !in templateRepository.globalTemplates.indices) continue
-
-            val template = templateRepository.globalTemplates[idx]
-            val templatePath = templateRepository.globalTemplatesNames[idx]
-            val meta = templateRepository.loadTemplateMetadata(templatePath)
-
-            val candidates = TemplateMatcher.findTemplateCandidatesCoarseFine(
-                screenBitmap,
-                template,
-                meta,
-                config
-            )
-
-            val candidate = CandidateSelector.selectBest(candidates)
-            if (candidate != null) {
-                if (best == null || candidate.score > best!!.score) {
-                    best = candidate
-                    bestPath = templatePath
-                }
-            }
-        }
-
-        if (best != null && bestPath != null && screenBitmap != null) {
-            val rx = best.rect.left.coerceAtLeast(0)
-            val ry = best.rect.top.coerceAtLeast(0)
-            val rw = best.rect.width().coerceAtMost(screenBitmap.width - rx)
-            val rh = best.rect.height().coerceAtMost(screenBitmap.height - ry)
-            if (rw > 0 && rh > 0) {
-                val patch = Bitmap.createBitmap(screenBitmap, rx, ry, rw, rh)
-                templateRepository.recordSuccessfulMatch(bestPath, patch)
-            }
-        }
-
-        return best
-    }
-
-    fun executeAiTriggerSequence(config: ActionConfig): Int {
+    fun executeAiTriggerSequence(config: ActionConfig): ScanResult {
         try {
-            val screen = service.captureScreenBitmap() ?: return -1
-
-            val match = if (config.multiTemplateIndices.isNotEmpty()) {
-                scanMultiTemplates(screen, config)
-            } else {
-                scanForMatch(screen, config)
-            }
+            val screen = service.captureScreenBitmap() ?: return ScanResult()
+            val match = scanForMatch(screen, config)
 
             if (match != null) {
                 service.debuggerOverlay.update(config)
 
                 if (config.playAudioOnMatch) {
-                    service.gestureExecutor.vibrateFeedback(40L)
+                    service.vibrateFeedback(40L)
                 }
 
                 if (config.clickAiTarget) {
                     val cx = match.rect.centerX().toFloat()
                     val cy = match.rect.centerY().toFloat()
-                    service.gestureExecutor.performClickWithCallback(cx, cy, service.globalClickDurationMs)
+                    service.performClickWithCallback(cx, cy, service.globalClickDurationMs)
                 }
 
-                if (config.jumpToStepOnMatch > 0) {
-                    return config.jumpToStepOnMatch
-                }
-
-                if (config.targetScriptToLoad.isNotEmpty()) {
-                    service.loadScriptByName(config.targetScriptToLoad)
-                    return -999
-                }
+                return ScanResult(
+                    match = match,
+                    score = match.score,
+                    jumpToStep = config.jumpToStepOnMatch,
+                    targetScript = config.targetScriptToLoad
+                )
             }
 
         } catch (e: Exception) {
             MyAutoClickService.logError(service, e)
         }
 
-        return -1
+        return ScanResult()
     }
 }

@@ -33,9 +33,9 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                 when (action.type) {
                     ActionType.CLICK -> {
                         val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
-                        val x = pt.first; val y = pt.second
                         val jitter = service.randomOffset(action.randomRadius)
-                        val fx = x + jitter.x; val fy = y + jitter.y
+                        val fx = pt.first + jitter.x
+                        val fy = pt.second + jitter.y
 
                         uiHandler.post {
                             service.showClickVisualizer(fx, fy)
@@ -45,24 +45,18 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                         service.gestureExecutor.performClickWithCallback(fx, fy, service.globalClickDurationMs)
                     }
 
-                    ActionType.LONG_PRESS -> {
+                    ActionType.LONG_PRESS, ActionType.HOLD -> {
                         val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
-                        val x = pt.first; val y = pt.second
-
                         uiHandler.post {
-                            service.showClickVisualizer(x, y)
+                            service.showClickVisualizer(pt.first, pt.second)
                             service.debuggerOverlay.update(action)
                         }
-
-                        service.gestureExecutor.performClickWithCallback(x, y, action.holdDuration)
+                        service.gestureExecutor.performClickWithCallback(pt.first, pt.second, action.holdDuration)
                     }
 
                     ActionType.SWIPE -> {
                         val startPt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
                         val endPt = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
-                        val sx = startPt.first; val sy = startPt.second
-                        val ex = endPt.first; val ey = endPt.second
-
                         uiHandler.post { service.debuggerOverlay.update(action) }
 
                         if (action.joystickPath.isNotEmpty()) {
@@ -70,21 +64,68 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                                 val normP = service.resolveNormalizedPoint(p.x, p.y)
                                 PointF(normP.first, normP.second)
                             }
-                            service.gestureExecutor.performPathSwipeWithCallback(path, sx, sy, ex, ey, action.holdDuration)
+                            service.gestureExecutor.performPathSwipeWithCallback(path, startPt.first, startPt.second, endPt.first, endPt.second, action.holdDuration)
                         } else {
-                            service.gestureExecutor.performSwipeWithCallback(sx, sy, ex, ey, action.holdDuration)
+                            service.gestureExecutor.performSwipeWithCallback(startPt.first, startPt.second, endPt.first, endPt.second, action.holdDuration)
+                        }
+                    }
+
+                    ActionType.SWIPE_PATH -> {
+                        val startPt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val endPt = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
+                        val path = action.joystickPath.map { p ->
+                            val normP = service.resolveNormalizedPoint(p.x, p.y)
+                            PointF(normP.first, normP.second)
+                        }
+                        service.gestureExecutor.performPathSwipeWithCallback(path, startPt.first, startPt.second, endPt.first, endPt.second, action.holdDuration)
+                    }
+
+                    ActionType.WAIT -> {
+                        when (action.waitType) {
+                            "TIME" -> Thread.sleep(action.delay)
+                            "TEMPLATE_APPEAR" -> {
+                                val start = System.currentTimeMillis()
+                                while (service.isPlaying && (System.currentTimeMillis() - start < action.holdDuration)) {
+                                    val match = service.aiScannerEngine.scanForMatch(service.captureScreenBitmap(), action)
+                                    if (match != null) break
+                                    Thread.sleep(100)
+                                }
+                            }
+                            "TEMPLATE_DISAPPEAR" -> {
+                                val start = System.currentTimeMillis()
+                                while (service.isPlaying && (System.currentTimeMillis() - start < action.holdDuration)) {
+                                    val match = service.aiScannerEngine.scanForMatch(service.captureScreenBitmap(), action)
+                                    if (match == null) break
+                                    Thread.sleep(100)
+                                }
+                            }
+                        }
+                    }
+
+                    ActionType.LOOP -> {
+                        if (action.loopCount > 1) {
+                            action.loopCount--
+                            currentIndex = action.loopStartIndex.coerceIn(0, service.actionsList.size - 1)
+                            continue
                         }
                     }
 
                     ActionType.TRIGGER -> {
                         uiHandler.post { service.debuggerOverlay.update(action) }
-                        val jumpTargetStepId = service.aiScannerEngine.executeAiTriggerSequence(action)
+                        val scanResult = service.aiScannerEngine.executeAiTriggerSequence(action)
 
                         when {
-                            jumpTargetStepId == -999 -> { currentIndex = 0; continue }
-                            jumpTargetStepId > 0 -> {
-                                val targetIdx = service.actionsList.indexOfFirst { it.id == jumpTargetStepId }
-                                if (targetIdx != -1) { currentIndex = targetIdx; continue }
+                            scanResult.targetScript.isNotEmpty() -> {
+                                service.loadScriptByName(scanResult.targetScript)
+                                currentIndex = 0
+                                continue
+                            }
+                            scanResult.jumpToStep > 0 -> {
+                                val targetIdx = service.actionsList.indexOfFirst { it.id == scanResult.jumpToStep }
+                                if (targetIdx != -1) {
+                                    currentIndex = targetIdx
+                                    continue
+                                }
                             }
                         }
                     }

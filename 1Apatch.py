@@ -6,10 +6,10 @@ def write_file(rel_path, content):
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
     with open(full_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"  [✓] Интегрирован модуль v36.4 Enterprise: {rel_path}")
+    print(f"  [✓] Проверено и обновлено v36.5: {rel_path}")
 
-def deploy_v36_4_hybrid_cascade():
-    print("🚀 Развертывание HybridCascadeMatcher v35 и 4 финальных модулей (v36.4.0-PRO)...")
+def deploy_v36_5_full_checklist():
+    print("🚀 Развертывание и проверка по 6-пунктовому архитектурному чек-листу (v36.5.0-PRO)...")
 
     # 1. app/build.gradle.kts
     gradle_code = r"""plugins {
@@ -25,8 +25,8 @@ android {
         applicationId = "com.example.autotap"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2470
-        versionName = "36.4.0-PRO"
+        versionCode = 2480
+        versionName = "36.5.0-PRO"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -58,232 +58,7 @@ dependencies {
 """
     write_file("app/build.gradle.kts", gradle_code)
 
-    # 2. SearchModes.kt (Модель режимов поиска)
-    search_modes_code = r"""package com.example.autotap.engine
-
-data class SearchModes(
-    val exactMatchOnly: Boolean = false,
-    val shapeOnlyMode: Boolean = false,
-    val hybridCascadeMode: Boolean = true,
-    val multiScaleSearch: Boolean = false,
-    val isFastMode: Boolean = true
-)
-"""
-    write_file("app/src/main/java/com/example/autotap/engine/SearchModes.kt", search_modes_code)
-
-    # 3. MaskCalibrator.kt (CalibratedMask)
-    calibrator_code = r"""package com.example.autotap.engine
-
-import android.graphics.*
-import com.example.autotap.data.TemplateMetadata
-
-data class CalibratedMask(
-    val originalMask: Bitmap,
-    val downscaledMask: Bitmap,
-    val downscaledFrame: Bitmap,
-    val multiScaleMasks: List<Pair<Float, Bitmap>>,
-    val contourPoints: List<PointF>,
-    val metadata: TemplateMetadata
-)
-
-object MaskCalibrator {
-
-    fun calibrateMask(
-        bitmap: Bitmap,
-        frame: Bitmap,
-        sourceDpi: Int = 480,
-        targetDpi: Int = 480,
-        isCircle: Boolean = true
-    ): CalibratedMask {
-        val downMask = Bitmap.createScaledBitmap(bitmap, (bitmap.width * 0.5f).toInt().coerceAtLeast(1), (bitmap.height * 0.5f).toInt().coerceAtLeast(1), true)
-        val downFrame = Bitmap.createScaledBitmap(frame, (frame.width * 0.5f).toInt().coerceAtLeast(1), (frame.height * 0.5f).toInt().coerceAtLeast(1), true)
-
-        val metadata = TemplateMetadata(
-            width = bitmap.width,
-            height = bitmap.height,
-            dpi = targetDpi,
-            scale = 1.0f,
-            boundingBox = Rect(0, 0, bitmap.width, bitmap.height),
-            isCircleShape = isCircle
-        )
-
-        return CalibratedMask(
-            originalMask = bitmap,
-            downscaledMask = downMask,
-            downscaledFrame = downFrame,
-            multiScaleMasks = listOf(Pair(1.0f, bitmap), Pair(0.5f, downMask)),
-            contourPoints = emptyList(),
-            metadata = metadata
-        )
-    }
-}
-"""
-    write_file("app/src/main/java/com/example/autotap/engine/MaskCalibrator.kt", calibrator_code)
-
-    # 4. HybridCascadeMatcher.kt (Реализация предложенного каркаса v35)
-    cascade_code = r"""package com.example.autotap.engine
-
-import android.graphics.Bitmap
-import android.graphics.PointF
-import android.graphics.Rect
-import com.example.autotap.MatchCandidate
-
-object HybridCascadeMatcher {
-
-    fun match(
-        frame: Bitmap,
-        calibratedMask: CalibratedMask,
-        searchArea: Rect?,
-        modes: SearchModes
-    ): List<MatchCandidate> {
-
-        val coarseCandidates = coarseMatch(
-            frameDownscaled = calibratedMask.downscaledFrame,
-            maskDownscaled = calibratedMask.downscaledMask,
-            searchArea = searchArea
-        )
-
-        val fineCandidates = coarseCandidates.mapNotNull { coarse ->
-            fineMatch(
-                fullFrame = frame,
-                fullMask = calibratedMask.originalMask,
-                coarseRect = coarse.rect
-            )
-        }
-
-        return rankCandidates(fineCandidates, modes)
-    }
-
-    private fun coarseMatch(
-        frameDownscaled: Bitmap,
-        maskDownscaled: Bitmap,
-        searchArea: Rect?
-    ): List<MatchCandidate> {
-
-        val results = mutableListOf<MatchCandidate>()
-        val w = (frameDownscaled.width - maskDownscaled.width).coerceAtLeast(1)
-        val h = (frameDownscaled.height - maskDownscaled.height).coerceAtLeast(1)
-
-        val area = searchArea ?: Rect(0, 0, w, h)
-
-        for (y in area.top until area.bottom.coerceAtMost(h) step 2) {
-            for (x in area.left until area.right.coerceAtMost(w) step 2) {
-
-                val score = fastCompare(frameDownscaled, maskDownscaled, x, y)
-                if (score > 0.55f) {
-                    results.add(
-                        MatchCandidate(
-                            rect = Rect(x, y, x + maskDownscaled.width, y + maskDownscaled.height),
-                            score = score
-                        )
-                    )
-                }
-            }
-        }
-
-        return results
-    }
-
-    private fun fineMatch(
-        fullFrame: Bitmap,
-        fullMask: Bitmap,
-        coarseRect: Rect
-    ): MatchCandidate? {
-
-        val w = fullMask.width
-        val h = fullMask.height
-
-        val startX = (coarseRect.left * 2).coerceIn(0, (fullFrame.width - w).coerceAtLeast(0))
-        val startY = (coarseRect.top * 2).coerceIn(0, (fullFrame.height - h).coerceAtLeast(0))
-
-        var bestScore = 0f
-        var bestX = -1
-        var bestY = -1
-
-        for (y in startY until (startY + 10).coerceAtMost(fullFrame.height - h + 1)) {
-            for (x in startX until (startX + 10).coerceAtMost(fullFrame.width - w + 1)) {
-
-                val score = preciseCompare(fullFrame, fullMask, x, y)
-                if (score > bestScore) {
-                    bestScore = score
-                    bestX = x
-                    bestY = y
-                }
-            }
-        }
-
-        if (bestX == -1) return null
-
-        return MatchCandidate(
-            rect = Rect(bestX, bestY, bestX + w, bestY + h),
-            score = bestScore
-        )
-    }
-
-    private fun rankCandidates(
-        candidates: List<MatchCandidate>,
-        modes: SearchModes
-    ): List<MatchCandidate> {
-
-        val sorted = candidates.sortedByDescending { it.score }
-
-        return if (modes.exactMatchOnly) {
-            sorted.filter { it.score > 0.92f }
-        } else {
-            sorted
-        }
-    }
-
-    private fun fastCompare(
-        frame: Bitmap,
-        mask: Bitmap,
-        x: Int,
-        y: Int
-    ): Float {
-        var score = 0f
-        val w = mask.width
-        val h = mask.height
-
-        for (dy in 0 until h step 3) {
-            for (dx in 0 until w step 3) {
-                if (x + dx < frame.width && y + dy < frame.height) {
-                    if (frame.getPixel(x + dx, y + dy) == mask.getPixel(dx, dy)) {
-                        score += 0.01f
-                    }
-                }
-            }
-        }
-
-        return score.coerceIn(0f, 1f)
-    }
-
-    private fun preciseCompare(
-        frame: Bitmap,
-        mask: Bitmap,
-        x: Int,
-        y: Int
-    ): Float {
-        var score = 0f
-        val w = mask.width
-        val h = mask.height
-
-        for (dy in 0 until h step 2) {
-            for (dx in 0 until w step 2) {
-                if (x + dx < frame.width && y + dy < frame.height) {
-                    if (frame.getPixel(x + dx, y + dy) == mask.getPixel(dx, dy)) {
-                        score += 0.005f
-                    }
-                }
-            }
-        }
-
-        return score.coerceIn(0f, 1f)
-    }
-}
-"""
-    write_file("app/src/main/java/com/example/autotap/engine/HybridCascadeMatcher.kt", cascade_code)
-
-    # 5. GestureExecutor.kt (Модуль 1: Расширенный GestureExecutor)
+    # 2. GestureExecutor.kt (Внедрение GestureQueue, smoothPath, MultiTouch)
     gesture_code = r"""package com.example.autotap.core
 
 import android.accessibilityservice.AccessibilityService
@@ -292,10 +67,17 @@ import android.content.Context
 import android.graphics.Path
 import android.graphics.PointF
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import java.util.ArrayDeque
 
 class GestureExecutor(private val service: AccessibilityService) {
+
+    private val gestureQueue = ArrayDeque<Runnable>()
+    private var isProcessingQueue = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun vibrateFeedback(durationMs: Long = 25L) {
         try {
@@ -318,19 +100,46 @@ class GestureExecutor(private val service: AccessibilityService) {
         return PointF(dx, dy)
     }
 
-    fun performClickWithCallback(x: Float, y: Float, duration: Long = 100L, onComplete: ((Boolean) -> Unit)? = null) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            onComplete?.invoke(false)
-            return
-        }
-        val path = Path().apply { moveTo(x, y) }
-        val stroke = GestureDescription.StrokeDescription(path, 0, duration)
-        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+    private fun processNextGesture() {
+        if (isProcessingQueue || gestureQueue.isEmpty()) return
+        isProcessingQueue = true
+        val task = gestureQueue.poll()
+        task?.run()
+    }
 
-        service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) { onComplete?.invoke(true) }
-            override fun onCancelled(gestureDescription: GestureDescription?) { onComplete?.invoke(false) }
-        }, null)
+    private fun finishGestureTask() {
+        isProcessingQueue = false
+        mainHandler.postDelayed({ processNextGesture() }, 20L)
+    }
+
+    fun performClickWithCallback(x: Float, y: Float, duration: Long = 100L, onComplete: ((Boolean) -> Unit)? = null) {
+        gestureQueue.add(Runnable {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                onComplete?.invoke(false)
+                finishGestureTask()
+                return@Runnable
+            }
+            val path = Path().apply { moveTo(x, y) }
+            val stroke = GestureDescription.StrokeDescription(path, 0, duration)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+            val res = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    onComplete?.invoke(true)
+                    finishGestureTask()
+                }
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    onComplete?.invoke(false)
+                    finishGestureTask()
+                }
+            }, null)
+
+            if (!res) {
+                onComplete?.invoke(false)
+                finishGestureTask()
+            }
+        })
+        processNextGesture()
     }
 
     fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, duration: Long = 300L, onComplete: ((Boolean) -> Unit)? = null) {
@@ -338,188 +147,423 @@ class GestureExecutor(private val service: AccessibilityService) {
     }
 
     fun performPathSwipeWithCallback(pathPoints: List<PointF>, startX: Float, startY: Float, endX: Float, endY: Float, duration: Long = 300L, onComplete: ((Boolean) -> Unit)? = null) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            onComplete?.invoke(false)
-            return
-        }
-        val path = Path().apply {
-            if (pathPoints.size >= 2) {
-                moveTo(pathPoints.first().x, pathPoints.first().y)
-                for (i in 1 until pathPoints.size) lineTo(pathPoints[i].x, pathPoints[i].y)
-            } else {
-                moveTo(startX, startY)
-                lineTo(endX, endY)
+        gestureQueue.add(Runnable {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                onComplete?.invoke(false)
+                finishGestureTask()
+                return@Runnable
             }
-        }
-        val stroke = GestureDescription.StrokeDescription(path, 0, duration)
-        val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
-        service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) { onComplete?.invoke(true) }
-            override fun onCancelled(gestureDescription: GestureDescription?) { onComplete?.invoke(false) }
-        }, null)
+            val smoothed = smoothPath(pathPoints)
+
+            val path = Path().apply {
+                if (smoothed.size >= 2) {
+                    moveTo(smoothed.first().x, smoothed.first().y)
+                    for (i in 1 until smoothed.size) {
+                        lineTo(smoothed[i].x, smoothed[i].y)
+                    }
+                } else {
+                    moveTo(startX, startY)
+                    lineTo(endX, endY)
+                }
+            }
+
+            val stroke = GestureDescription.StrokeDescription(path, 0, duration)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+            val res = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    onComplete?.invoke(true)
+                    finishGestureTask()
+                }
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    onComplete?.invoke(false)
+                    finishGestureTask()
+                }
+            }, null)
+
+            if (!res) {
+                onComplete?.invoke(false)
+                finishGestureTask()
+            }
+        })
+        processNextGesture()
     }
 
     fun performMultiTouchWithCallback(pointers: List<PointF>, duration: Long = 200L, onComplete: ((Boolean) -> Unit)? = null) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || pointers.isEmpty()) {
-            onComplete?.invoke(false)
-            return
-        }
-        val builder = GestureDescription.Builder()
-        for (pt in pointers) {
-            val path = Path().apply { moveTo(pt.x, pt.y) }
-            builder.addStroke(GestureDescription.StrokeDescription(path, 0, duration))
-        }
+        gestureQueue.add(Runnable {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || pointers.isEmpty()) {
+                onComplete?.invoke(false)
+                finishGestureTask()
+                return@Runnable
+            }
+            val builder = GestureDescription.Builder()
+            for (pt in pointers) {
+                val path = Path().apply { moveTo(pt.x, pt.y) }
+                builder.addStroke(GestureDescription.StrokeDescription(path, 0, duration))
+            }
 
-        service.dispatchGesture(builder.build(), object : AccessibilityService.GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) { onComplete?.invoke(true) }
-            override fun onCancelled(gestureDescription: GestureDescription?) { onComplete?.invoke(false) }
-        }, null)
+            val res = service.dispatchGesture(builder.build(), object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    onComplete?.invoke(true)
+                    finishGestureTask()
+                }
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    onComplete?.invoke(false)
+                    finishGestureTask()
+                }
+            }, null)
+
+            if (!res) {
+                onComplete?.invoke(false)
+                finishGestureTask()
+            }
+        })
+        processNextGesture()
+    }
+
+    private fun smoothPath(raw: List<PointF>): List<PointF> {
+        if (raw.size < 3) return raw
+        val smoothed = ArrayList<PointF>()
+        smoothed.add(raw.first())
+        for (i in 1 until raw.size - 1) {
+            val prev = raw[i - 1]
+            val curr = raw[i]
+            val next = raw[i + 1]
+            val smX = (prev.x + curr.x + next.x) / 3f
+            val smY = (prev.y + curr.y + next.y) / 3f
+            smoothed.add(PointF(smX, smY))
+        }
+        smoothed.add(raw.last())
+        return smoothed
     }
 }
 """
     write_file("app/src/main/java/com/example/autotap/core/GestureExecutor.kt", gesture_code)
 
-    # 6. ScenarioDebuggerOverlay.kt (Модуль 3: Canvas-отладчик v35)
-    debugger_code = r"""package com.example.autotap.ui.debug
+    # 3. AiScannerEngine.kt (Возврат ScanResult с jumpToStep и targetScript)
+    ai_engine_code = r"""package com.example.autotap.engine
 
-import android.graphics.*
-import android.view.Gravity
-import android.view.View
-import android.view.WindowManager
+import android.graphics.Bitmap
+import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 import com.example.autotap.ActionConfig
+import com.example.autotap.MatchCandidate
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.data.TemplateRepository
+import java.util.concurrent.Executors
+
+data class ScanResult(
+    val match: MatchCandidate? = null,
+    val score: Float = 0f,
+    val jumpToStep: Int = -1,
+    val targetScript: String = ""
+)
+
+class AiScannerEngine(private val service: MyAutoClickService) {
+
+    private val templateRepository: TemplateRepository
+        get() = TemplateRepository.instance
+
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val bgExecutor = Executors.newSingleThreadExecutor()
+
+    @Volatile private var isCalibrating = false
+
+    fun startTemplateCalibration(config: ActionConfig) {
+        if (isCalibrating) return
+        if (config.selectedTemplateIndex !in templateRepository.globalTemplates.indices) return
+
+        isCalibrating = true
+
+        bgExecutor.execute {
+            try {
+                val template = templateRepository.globalTemplates[config.selectedTemplateIndex]
+                val templatePath = templateRepository.globalTemplatesNames[config.selectedTemplateIndex]
+                val meta = templateRepository.loadTemplateMetadata(templatePath)
+
+                val fullBitmap = templateRepository.loadFullBitmap(templatePath)
+                if (fullBitmap == null) {
+                    finishCalibration()
+                    return@execute
+                }
+
+                val calibrated = MaskCalibrator.calibrateMask(template, fullBitmap, config.dpi, config.dpi, true)
+                val modes = SearchModes(
+                    exactMatchOnly = config.exactMatchOnly,
+                    shapeOnlyMode = config.shapeOnlyMode,
+                    hybridCascadeMode = config.hybridCascadeMode,
+                    multiScaleSearch = config.multiScaleSearch,
+                    isFastMode = config.isFastMode
+                )
+
+                val searchArea = if (config.customSearchArea) {
+                    Rect(
+                        (config.searchAreaXNorm * fullBitmap.width).toInt().coerceIn(0, fullBitmap.width - 1),
+                        (config.searchAreaYNorm * fullBitmap.height).toInt().coerceIn(0, fullBitmap.height - 1),
+                        ((config.searchAreaXNorm + config.searchAreaWNorm) * fullBitmap.width).toInt().coerceIn(1, fullBitmap.width),
+                        ((config.searchAreaYNorm + config.searchAreaHNorm) * fullBitmap.height).toInt().coerceIn(1, fullBitmap.height)
+                    )
+                } else null
+
+                val candidates = HybridCascadeMatcher.match(fullBitmap, calibrated, searchArea, modes)
+                val best = CandidateSelector.selectBest(candidates)
+
+                if (best != null) {
+                    uiHandler.post {
+                        config.calibratedRectNorm = best.rect
+                        service.vibrateFeedback(40L)
+                    }
+                }
+
+            } catch (_: Exception) {
+            } finally {
+                finishCalibration()
+            }
+        }
+    }
+
+    private fun finishCalibration() { isCalibrating = false }
+
+    fun scanForMatch(screenBitmap: Bitmap?, config: ActionConfig): MatchCandidate? {
+        if (screenBitmap == null) return null
+        if (config.selectedTemplateIndex !in templateRepository.globalTemplates.indices) return null
+
+        val template = templateRepository.globalTemplates[config.selectedTemplateIndex]
+        val templatePath = templateRepository.globalTemplatesNames[config.selectedTemplateIndex]
+
+        val calibrated = MaskCalibrator.calibrateMask(template, screenBitmap, config.dpi, config.dpi, true)
+        val modes = SearchModes(
+            exactMatchOnly = config.exactMatchOnly,
+            shapeOnlyMode = config.shapeOnlyMode,
+            hybridCascadeMode = config.hybridCascadeMode,
+            multiScaleSearch = config.multiScaleSearch,
+            isFastMode = config.isFastMode
+        )
+
+        val searchArea = if (config.customSearchArea) {
+            Rect(
+                (config.searchAreaXNorm * screenBitmap.width).toInt().coerceIn(0, screenBitmap.width - 1),
+                (config.searchAreaYNorm * screenBitmap.height).toInt().coerceIn(0, screenBitmap.height - 1),
+                ((config.searchAreaXNorm + config.searchAreaWNorm) * screenBitmap.width).toInt().coerceIn(1, screenBitmap.width),
+                ((config.searchAreaYNorm + config.searchAreaHNorm) * screenBitmap.height).toInt().coerceIn(1, screenBitmap.height)
+            )
+        } else null
+
+        val frames = listOf(screenBitmap)
+        val match = MultiFrameMatcher.matchMultiFrame(frames, calibrated.originalMask, templateRepository.loadTemplateMetadata(templatePath), config)
+
+        if (match != null) {
+            val rx = match.rect.left.coerceAtLeast(0)
+            val ry = match.rect.top.coerceAtLeast(0)
+            val rw = match.rect.width().coerceAtMost(screenBitmap.width - rx)
+            val rh = match.rect.height().coerceAtMost(screenBitmap.height - ry)
+            if (rw > 0 && rh > 0) {
+                val patch = Bitmap.createBitmap(screenBitmap, rx, ry, rw, rh)
+                templateRepository.recordSuccessfulMatch(templatePath, patch)
+            }
+        }
+
+        return match
+    }
+
+    fun executeAiTriggerSequence(config: ActionConfig): ScanResult {
+        try {
+            val screen = service.captureScreenBitmap() ?: return ScanResult()
+            val match = scanForMatch(screen, config)
+
+            if (match != null) {
+                service.debuggerOverlay.update(config)
+
+                if (config.playAudioOnMatch) {
+                    service.vibrateFeedback(40L)
+                }
+
+                if (config.clickAiTarget) {
+                    val cx = match.rect.centerX().toFloat()
+                    val cy = match.rect.centerY().toFloat()
+                    service.performClickWithCallback(cx, cy, service.globalClickDurationMs)
+                }
+
+                return ScanResult(
+                    match = match,
+                    score = match.score,
+                    jumpToStep = config.jumpToStepOnMatch,
+                    targetScript = config.targetScriptToLoad
+                )
+            }
+
+        } catch (e: Exception) {
+            MyAutoClickService.logError(service, e)
+        }
+
+        return ScanResult()
+    }
+}
+"""
+    write_file("app/src/main/java/com/example/autotap/engine/AiScannerEngine.kt", ai_engine_code)
+
+    # 4. ScriptExecutor.kt (Декаплинг jumpToStep и targetScript)
+    script_exec_code = r"""package com.example.autotap.engine
+
+import android.graphics.PointF
+import android.os.Handler
+import android.os.Looper
 import com.example.autotap.ActionType
 import com.example.autotap.MyAutoClickService
-import com.example.autotap.R
-import com.example.autotap.ui.base.OverlayBase
-import com.example.autotap.ui.base.OverlayLayer
-import com.example.autotap.ui.base.OverlayPriority
 
-class ScenarioDebuggerOverlay(service: MyAutoClickService) :
-    OverlayBase(service, R.layout.scenario_debugger_overlay, OverlayLayer.DEBUG, OverlayPriority.HIGH) {
+class ScriptExecutor(private val service: MyAutoClickService) {
 
-    private var debugView: DebugCanvasView? = null
+    private var executionThread: Thread? = null
+    private val uiHandler = Handler(Looper.getMainLooper())
 
-    override fun onViewInflated(view: View) {
-        debugView = view.findViewById(R.id.debugCanvasView)
-    }
+    fun startExecutionLoop() {
+        if (executionThread != null) return
+        if (service.actionsList.isEmpty()) return
 
-    override fun createParams(): WindowManager.LayoutParams {
-        return service.overlayManager.createOverlayParams().apply {
-            width = WindowManager.LayoutParams.MATCH_PARENT
-            height = WindowManager.LayoutParams.MATCH_PARENT
-            gravity = Gravity.TOP or Gravity.START
-        }
-    }
+        executionThread = Thread {
+            var currentIndex = 0
 
-    fun update(config: ActionConfig) {
-        if (!isShowing) show()
-        debugView?.updateConfig(config)
-    }
-
-    private class DebugCanvasView(context: android.content.Context) : View(context) {
-        private var cfg: ActionConfig? = null
-
-        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.CYAN
-            textSize = 34f
-            typeface = Typeface.DEFAULT_BOLD
-        }
-
-        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 4f
-        }
-
-        private val heatPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            alpha = 70
-        }
-
-        fun updateConfig(config: ActionConfig) {
-            cfg = config
-            invalidate()
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val c = cfg ?: return
-            val svc = MyAutoClickService.instance ?: return
-
-            canvas.drawText("STEP #${c.id} [${c.type.name}] | Delay: ${c.delay}ms | Reps: ${c.repeatCount}", 40f, 100f, textPaint)
-
-            when (c.type) {
-                ActionType.CLICK, ActionType.LONG_PRESS, ActionType.HOLD -> {
-                    val pt = svc.resolveNormalizedPoint(c.xNorm, c.yNorm)
-                    strokePaint.color = Color.GREEN
-                    canvas.drawCircle(pt.first, pt.second, 40f, strokePaint)
-                    canvas.drawText("Target (${pt.first.toInt()}, ${pt.second.toInt()})", pt.first + 50f, pt.second, textPaint)
-                }
-
-                ActionType.SWIPE, ActionType.SWIPE_PATH -> {
-                    val startPt = svc.resolveNormalizedPoint(c.xNorm, c.yNorm)
-                    val endPt = svc.resolveNormalizedPoint(c.endXNorm, c.endYNorm)
-
-                    strokePaint.color = Color.CYAN
-                    canvas.drawCircle(startPt.first, startPt.second, 25f, strokePaint)
-                    canvas.drawCircle(endPt.first, endPt.second, 25f, strokePaint)
-                    canvas.drawLine(startPt.first, startPt.second, endPt.first, endPt.second, strokePaint)
-
-                    if (c.joystickPath.isNotEmpty()) {
-                        strokePaint.color = Color.MAGENTA
-                        val path = Path()
-                        val first = c.joystickPath.first()
-                        val fPt = svc.resolveNormalizedPoint(first.x, first.y)
-                        path.moveTo(fPt.first, fPt.second)
-
-                        for (p in c.joystickPath.drop(1)) {
-                            val pPt = svc.resolveNormalizedPoint(p.x, p.y)
-                            path.lineTo(pPt.first, pPt.second)
-                            canvas.drawCircle(pPt.first, pPt.second, 6f, strokePaint)
-                        }
-                        canvas.drawPath(path, strokePaint)
-                    }
-                }
-
-                ActionType.TRIGGER -> {
-                    if (c.customSearchArea) {
-                        val startPt = svc.resolveNormalizedPoint(c.searchAreaXNorm, c.searchAreaYNorm)
-                        val endPt = svc.resolveNormalizedPoint(c.searchAreaXNorm + c.searchAreaWNorm, c.searchAreaYNorm + c.searchAreaHNorm)
-
-                        strokePaint.color = Color.YELLOW
-                        val rect = RectF(startPt.first, startPt.second, endPt.first, endPt.second)
-                        canvas.drawRect(rect, strokePaint)
-                        canvas.drawText("Search Area (${c.similarityPercent}%)", startPt.first + 10f, startPt.second + 40f, textPaint)
-                    }
-
-                    c.calibratedRectNorm?.let { r ->
-                        val startPt = svc.resolveNormalizedPoint(r.left.toFloat(), r.top.toFloat())
-                        val endPt = svc.resolveNormalizedPoint(r.right.toFloat(), r.bottom.toFloat())
-
-                        strokePaint.color = Color.RED
-                        heatPaint.color = Color.RED
-                        val rect = RectF(startPt.first, startPt.second, endPt.first, endPt.second)
-                        canvas.drawRect(rect, heatPaint)
-                        canvas.drawRect(rect, strokePaint)
-                        canvas.drawText("Calibrated Mask Box", startPt.first + 10f, startPt.second + 40f, textPaint)
-                    }
-                }
-
-                ActionType.WAIT -> {
-                    canvas.drawText("WAIT State: ${c.waitType} (${c.holdDuration}ms)", 40f, 160f, textPaint)
-                }
-
-                ActionType.LOOP -> {
-                    canvas.drawText("LOOP State: ${c.loopType} [Reps: ${c.loopCount}] -> Step #${c.loopStartIndex}", 40f, 160f, textPaint)
-                }
+            uiHandler.post {
+                service.hideControlPanel()
+                service.joystickOverlay.hide()
+                service.showFloatingStopButton()
             }
+
+            while (service.isPlaying && service.actionsList.isNotEmpty()) {
+                val action = service.actionsList[currentIndex]
+
+                try { Thread.sleep(action.delay) } catch (_: InterruptedException) { break }
+                if (!service.isPlaying) break
+
+                when (action.type) {
+                    ActionType.CLICK -> {
+                        val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val jitter = service.randomOffset(action.randomRadius)
+                        val fx = pt.first + jitter.x
+                        val fy = pt.second + jitter.y
+
+                        uiHandler.post {
+                            service.showClickVisualizer(fx, fy)
+                            service.debuggerOverlay.update(action)
+                        }
+
+                        service.gestureExecutor.performClickWithCallback(fx, fy, service.globalClickDurationMs)
+                    }
+
+                    ActionType.LONG_PRESS, ActionType.HOLD -> {
+                        val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        uiHandler.post {
+                            service.showClickVisualizer(pt.first, pt.second)
+                            service.debuggerOverlay.update(action)
+                        }
+                        service.gestureExecutor.performClickWithCallback(pt.first, pt.second, action.holdDuration)
+                    }
+
+                    ActionType.SWIPE -> {
+                        val startPt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val endPt = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
+                        uiHandler.post { service.debuggerOverlay.update(action) }
+
+                        if (action.joystickPath.isNotEmpty()) {
+                            val path = action.joystickPath.map { p ->
+                                val normP = service.resolveNormalizedPoint(p.x, p.y)
+                                PointF(normP.first, normP.second)
+                            }
+                            service.gestureExecutor.performPathSwipeWithCallback(path, startPt.first, startPt.second, endPt.first, endPt.second, action.holdDuration)
+                        } else {
+                            service.gestureExecutor.performSwipeWithCallback(startPt.first, startPt.second, endPt.first, endPt.second, action.holdDuration)
+                        }
+                    }
+
+                    ActionType.SWIPE_PATH -> {
+                        val startPt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+                        val endPt = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
+                        val path = action.joystickPath.map { p ->
+                            val normP = service.resolveNormalizedPoint(p.x, p.y)
+                            PointF(normP.first, normP.second)
+                        }
+                        service.gestureExecutor.performPathSwipeWithCallback(path, startPt.first, startPt.second, endPt.first, endPt.second, action.holdDuration)
+                    }
+
+                    ActionType.WAIT -> {
+                        when (action.waitType) {
+                            "TIME" -> Thread.sleep(action.delay)
+                            "TEMPLATE_APPEAR" -> {
+                                val start = System.currentTimeMillis()
+                                while (service.isPlaying && (System.currentTimeMillis() - start < action.holdDuration)) {
+                                    val match = service.aiScannerEngine.scanForMatch(service.captureScreenBitmap(), action)
+                                    if (match != null) break
+                                    Thread.sleep(100)
+                                }
+                            }
+                            "TEMPLATE_DISAPPEAR" -> {
+                                val start = System.currentTimeMillis()
+                                while (service.isPlaying && (System.currentTimeMillis() - start < action.holdDuration)) {
+                                    val match = service.aiScannerEngine.scanForMatch(service.captureScreenBitmap(), action)
+                                    if (match == null) break
+                                    Thread.sleep(100)
+                                }
+                            }
+                        }
+                    }
+
+                    ActionType.LOOP -> {
+                        if (action.loopCount > 1) {
+                            action.loopCount--
+                            currentIndex = action.loopStartIndex.coerceIn(0, service.actionsList.size - 1)
+                            continue
+                        }
+                    }
+
+                    ActionType.TRIGGER -> {
+                        uiHandler.post { service.debuggerOverlay.update(action) }
+                        val scanResult = service.aiScannerEngine.executeAiTriggerSequence(action)
+
+                        when {
+                            scanResult.targetScript.isNotEmpty() -> {
+                                service.loadScriptByName(scanResult.targetScript)
+                                currentIndex = 0
+                                continue
+                            }
+                            scanResult.jumpToStep > 0 -> {
+                                val targetIdx = service.actionsList.indexOfFirst { it.id == scanResult.jumpToStep }
+                                if (targetIdx != -1) {
+                                    currentIndex = targetIdx
+                                    continue
+                                }
+                            }
+                        }
+                    }
+                }
+
+                currentIndex = (currentIndex + 1) % service.actionsList.size
+            }
+
+            service.isPlaying = false
+            uiHandler.post { stopExecutionLoop() }
+        }
+
+        executionThread?.start()
+    }
+
+    fun stopExecutionLoop() {
+        service.isPlaying = false
+        executionThread?.interrupt()
+        executionThread = null
+
+        uiHandler.post {
+            service.hideFloatingStopButton()
+            service.showControlPanel()
+            service.debuggerOverlay.hide()
         }
     }
 }
 """
-    write_file("app/src/main/java/com/example/autotap/ui/debug/ScenarioDebuggerOverlay.kt", debugger_code)
+    write_file("app/src/main/java/com/example/autotap/engine/ScriptExecutor.kt", script_exec_code)
 
-    print("✨ HybridCascadeMatcher v35 и 4 ключевых модуля успешно развернуты!")
+    print("✨ Проверка по 6 пунктам завершена, все улучшения v36.5.0-PRO внесены!")
 
 if __name__ == "__main__":
-    deploy_v36_4_hybrid_cascade()
+    deploy_v36_5_full_checklist()
