@@ -6,13 +6,6 @@ import android.view.View
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class ActionType {
-    CLICK,
-    LONG_PRESS,
-    SWIPE,
-    TRIGGER
-}
-
 data class ActionConfig(
     var id: Int = 0,
     var type: ActionType = ActionType.CLICK,

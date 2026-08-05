@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
-        tvVersion.text = "AutoTap v28.14.0 PRO"
+        tvVersion.text = "AutoTap v35.1.0-PRO"
 
         val btnAppDetails = findViewById<Button>(R.id.btnAppDetails)
         val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
@@ -44,33 +44,32 @@ class MainActivity : AppCompatActivity() {
         val btnPermissionsHelp = findViewById<Button>(R.id.btnPermissionsHelp)
         val btnInfoHelp = findViewById<Button>(R.id.btnInfoHelp)
 
-        btnAppDetails.setOnClickListener {
+        btnAppDetails?.setOnClickListener {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = Uri.fromParts("package", packageName, null)
             })
         }
 
-        btnAccessibility.setOnClickListener {
+        btnAccessibility?.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
 
-        btnOverlay.setOnClickListener {
+        btnOverlay?.setOnClickListener {
             try {
-                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")))
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             } catch (_: Exception) {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
             }
         }
 
-        btnExport.setOnClickListener { showExportDialog() }
-        btnImport.setOnClickListener { startImportFlow() }
-        btnShowLogs.setOnClickListener { showLogsDialog() }
-        btnManageTemplates.setOnClickListener { showTemplatesManagerDialog() }
-        btnPermissionsHelp.setOnClickListener { showPermissionsHelpDialog() }
-        btnInfoHelp.setOnClickListener { showInfoHelpDialog() }
+        btnExport?.setOnClickListener { showExportDialog() }
+        btnImport?.setOnClickListener { startImportFlow() }
+        btnShowLogs?.setOnClickListener { showLogsDialog() }
+        btnManageTemplates?.setOnClickListener { showTemplatesManagerDialog() }
+        btnPermissionsHelp?.setOnClickListener { showPermissionsHelpDialog() }
+        btnInfoHelp?.setOnClickListener { showInfoHelpDialog() }
 
-        btnStartPanel.setOnClickListener {
+        btnStartPanel?.setOnClickListener {
             val service = MyAutoClickService.instance
             if (service == null) {
                 Toast.makeText(this, "Служба не активна!", Toast.LENGTH_SHORT).show()
@@ -109,19 +108,19 @@ class MainActivity : AppCompatActivity() {
         val isSystemEnabled = isAccessibilityServiceEnabled()
         val isOverlayGranted = Settings.canDrawOverlays(this)
 
-        btnAccessibility.text =
+        btnAccessibility?.text =
             if (isServiceBound) "Служба кликера: ВКЛЮЧЕНА"
             else if (isSystemEnabled) "Перезапустить службу"
             else "Разрешить работу кликера"
 
-        btnAccessibility.backgroundTintList =
+        btnAccessibility?.backgroundTintList =
             ColorStateList.valueOf(if (isServiceBound) Color.parseColor("#1E3A2B") else Color.parseColor("#8B0000"))
 
-        btnOverlay.text =
+        btnOverlay?.text =
             if (isOverlayGranted) "Показ поверх окон: РАЗРЕШЕНО"
             else "Показ поверх окон: ОТКЛЮЧЕНО"
 
-        btnOverlay.backgroundTintList =
+        btnOverlay?.backgroundTintList =
             ColorStateList.valueOf(if (isOverlayGranted) Color.parseColor("#1E3A2B") else Color.parseColor("#21262D"))
     }
 
@@ -133,9 +132,7 @@ class MainActivity : AppCompatActivity() {
 
         if (enabled.any { it.resolveInfo.serviceInfo.packageName == packageName }) return true
 
-        val raw = Settings.Secure.getString(contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
-
+        val raw = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
         return raw.split(':').any { it.substringBefore('/').equals(packageName, true) }
     }
 
@@ -144,15 +141,6 @@ class MainActivity : AppCompatActivity() {
         val ad = AlertDialog.Builder(this).setView(dialogView).create()
 
         dialogView.findViewById<Button>(R.id.btnExpSingleScript)?.setOnClickListener {
-            ad.dismiss()
-            MyAutoClickService.instance?.showScriptPickerDialog("Выберите сценарий для экспорта") { name ->
-                if (name.isNotEmpty()) {
-                    MyAutoClickService.instance?.exportScriptWithTemplates(this, name)
-                }
-            }
-        }
-
-        dialogView.findViewById<Button>(R.id.btnExpChainScripts)?.setOnClickListener {
             ad.dismiss()
             exportFullBackup()
         }
@@ -198,7 +186,7 @@ class MainActivity : AppCompatActivity() {
             if (templatesDir.exists()) zipDirToZip(filesDir, templatesDir, zos)
 
             zos.close()
-            shareZip(zipFile, "Полный бэкап AutoTap")
+            shareZip(zipFile, "Полный бэкап AutoTap v35")
         } catch (e: Exception) {
             MyAutoClickService.logError(this, e)
             Toast.makeText(this, "Ошибка бэкапа!", Toast.LENGTH_SHORT).show()
@@ -288,7 +276,7 @@ class MainActivity : AppCompatActivity() {
         val btnClose = dialogView.findViewById<Button>(R.id.btnCloseLogs)
 
         val logFile = File(filesDir, "error_log.txt")
-        tvLogs.text = if (logFile.exists() && logFile.length() > 0) logFile.readText() else "Логи отсутствуют."
+        tvLogs?.text = if (logFile.exists() && logFile.length() > 0) logFile.readText() else "Логи отсутствуют."
 
         val ad = AlertDialog.Builder(this).setView(dialogView).create()
 
@@ -308,7 +296,7 @@ class MainActivity : AppCompatActivity() {
 
         btnClear?.setOnClickListener {
             if (logFile.exists()) logFile.delete()
-            tvLogs.text = "Логи очищены."
+            tvLogs?.text = "Логи очищены."
             Toast.makeText(this, "Логи очищены", Toast.LENGTH_SHORT).show()
         }
 
@@ -324,33 +312,31 @@ class MainActivity : AppCompatActivity() {
         val ad = AlertDialog.Builder(this).setView(dialogView).create()
 
         fun refresh() {
-            layoutList.removeAllViews()
+            layoutList?.removeAllViews()
             val baseDir = File(filesDir, "templates")
 
             baseDir.listFiles()?.forEach { folder ->
                 if (folder.isDirectory) {
                     folder.listFiles()?.forEach { file ->
                         if (file.name.startsWith("mask_") && file.name.endsWith(".png")) {
-                            val item = LayoutInflater.from(this)
-                                .inflate(R.layout.item_template, null)
+                            val item = LayoutInflater.from(this).inflate(R.layout.item_template, null)
 
                             val iv = item.findViewById<ImageView>(R.id.ivTemplatePreview)
                             val tv = item.findViewById<TextView>(R.id.tvTemplateName)
                             val btnDelete = item.findViewById<Button>(R.id.btnDeleteTemplateFile)
 
-                            iv.setImageBitmap(BitmapFactory.decodeFile(file.absolutePath))
-                            tv.text = "${folder.name}\n${file.nameWithoutExtension}"
+                            iv?.setImageBitmap(BitmapFactory.decodeFile(file.absolutePath))
+                            tv?.text = "${folder.name}\n${file.nameWithoutExtension}"
 
-                            btnDelete.setOnClickListener {
+                            btnDelete?.setOnClickListener {
                                 MyAutoClickService.instance?.moveTemplateToTrash(
-                                    MyAutoClickService.instance?.globalTemplatesNames?.indexOf(file.absolutePath)
-                                        ?: -1
+                                    MyAutoClickService.instance?.globalTemplatesNames?.indexOf(file.absolutePath) ?: -1
                                 )
                                 MyAutoClickService.instance?.loadAllTemplatesFromDisk()
                                 refresh()
                             }
 
-                            layoutList.addView(item)
+                            layoutList?.addView(item)
                         }
                     }
                 }
@@ -379,9 +365,9 @@ class MainActivity : AppCompatActivity() {
         val tabAi = dialogView.findViewById<Button>(R.id.tabAi)
         val btnClose = dialogView.findViewById<Button>(R.id.btnCloseInfoDialog)
 
-        val clickInfo = "• Клики (Click):\nТочечное нажатие по координатам с регулируемой задержкой, повторами и случайным разбросом (рандомизацией).\n\n• Зажатие (Hold):\nУдержание точки на заданное время (в мс)."
-        val swipeInfo = "• Свайпы (Swipe):\nПлавное перемещение от начальной точки (S) к конечной (E) с заданной длительностью жеста.\n\n• Траектория Джойстика:\nЗапись сложных многоточечных свайпов через плавающий джойстик."
-        val aiInfo = "• ИИ-Сканер (AI Trigger):\nПоиск заданного изображения/маски на экране с помощью умного сканера.\n\n• Настройки:\nКалибровка маски, порог совпадения (%), звуковые уведомления, переход к шагу при совпадении и эстафета сценариев."
+        val clickInfo = "• Клики (Click):\nТочечное нажатие по координатам с регулируемой задержкой, повторами и случайным разбросом.\n\n• Зажатие (Hold):\nУдержание точки на заданное время (в мс)."
+        val swipeInfo = "• Свайпы (Swipe):\nПлавное перемещение от точки (S) к (E).\n\n• Траектория Джойстика:\nЗапись сложных свайпов через плавающий джойстик."
+        val aiInfo = "• ИИ-Сканер (AI Trigger v35):\nПоиск заданного изображения на экране с калибровкой, выбором порога (%) и эстафетой сценариев."
 
         tvContent?.text = clickInfo
 
@@ -395,7 +381,7 @@ class MainActivity : AppCompatActivity() {
         tabSwipe?.setOnClickListener {
             tvContent?.text = swipeInfo
             tabClick?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
-            tabSwipe.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
+            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
             tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
         }
 
@@ -403,7 +389,7 @@ class MainActivity : AppCompatActivity() {
             tvContent?.text = aiInfo
             tabClick?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
             tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
-            tabAi.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
+            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
         }
 
         btnClose?.setOnClickListener { ad.dismiss() }
