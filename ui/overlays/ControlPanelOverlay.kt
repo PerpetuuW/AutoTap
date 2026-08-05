@@ -1,0 +1,1 @@
+service.actionEditor.show(config)
