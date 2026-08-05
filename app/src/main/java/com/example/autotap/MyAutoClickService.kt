@@ -2,31 +2,64 @@ package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PixelFormat
 import android.graphics.PointF
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.example.autotap.core.GestureExecutor
 import com.example.autotap.data.ScriptRepository
 import com.example.autotap.data.TemplateRepository
+import com.example.autotap.engine.ActionEditorEngine
 import com.example.autotap.engine.AiScannerEngine
 import com.example.autotap.engine.ScenarioRunner
 import com.example.autotap.engine.ScriptExecutor
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.debug.ScenarioDebuggerOverlay
-import com.example.autotap.ui.overlays.*
+import com.example.autotap.ui.overlays.CaptureFrameOverlay
+import com.example.autotap.ui.overlays.ClickVisualizerOverlay
+import com.example.autotap.ui.overlays.ControlPanelOverlay
+import com.example.autotap.ui.overlays.EditActionDialog
+import com.example.autotap.ui.overlays.JoystickOverlay
+import com.example.autotap.ui.overlays.ScriptsDialog
 import java.io.File
+import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import kotlin.math.abs
 
 class MyAutoClickService : AccessibilityService() {
 
@@ -109,7 +142,7 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        Toast.makeText(this, "AutoTap v36.6.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "AutoTap v36.7.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
