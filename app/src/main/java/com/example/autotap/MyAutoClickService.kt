@@ -25,7 +25,6 @@ import java.util.concurrent.Executors
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.math.abs
-import kotlin.math.hypot
 
 class MyAutoClickService : AccessibilityService() {
 
@@ -69,9 +68,6 @@ class MyAutoClickService : AccessibilityService() {
     private var stopButtonView: View? = null
     private var captureFrameView: View? = null
     private var joystickOverlayView: View? = null
-    private var recordOverlayView: View? = null
-    private var recordBarView: View? = null
-    private var beaconRingView: View? = null
 
     private var executionThread: Thread? = null
 
@@ -90,7 +86,7 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        Toast.makeText(this, "AutoTap v35.1.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "AutoTap v35.2.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
 
     override fun onInterrupt() {}
@@ -201,6 +197,16 @@ class MyAutoClickService : AccessibilityService() {
         val dx = (-radius..radius).random().toFloat()
         val dy = (-radius..radius).random().toFloat()
         return PointF(dx, dy)
+    }
+
+    fun captureScreenBitmap(): Bitmap? {
+        return try {
+            val (w, h) = getRealScreenSize()
+            Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        } catch (e: Exception) {
+            logError(this, e)
+            null
+        }
     }
 
     fun performClickWithCallback(x: Float, y: Float, duration: Long = 100L, onComplete: ((Boolean) -> Unit)? = null) {
