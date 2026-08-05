@@ -16,6 +16,7 @@ import android.view.WindowManager
 fun logAppEvent(event: String, details: String = "") { DiagnosticLogger.log("AppEvent", event, mapOf("details" to details)) }
 fun logError(tag: String, message: String, throwable: Throwable? = null) { DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}") }
 
+// Все варианты вызова dpToPx
 val Int.dpToPx: Int get() = (this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)).toInt()
 val Float.dpToPx: Float get() = this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)
 
@@ -36,6 +37,7 @@ fun resolveNormalizedPoint(x: Number, y: Number, screenWidth: Int, screenHeight:
     return Point(x.toInt().coerceIn(0, screenWidth), y.toInt().coerceIn(0, screenHeight))
 }
 
+// Все варианты вызова getRealScreenSize
 fun getRealScreenSize(): Point {
     return MyAutoClickService.instance?.getRealScreenSize() ?: Point(1080, 2400)
 }
@@ -77,6 +79,7 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
     } catch (e: Exception) {}
 }
 
+// Все варианты вызова createOverlayParams
 fun createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
     return WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -97,6 +100,7 @@ fun Context.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_C
     return com.example.autotap.createOverlayParams(widthPx, heightPx)
 }
 
+// Все варианты вызова safeAddView / safeRemoveView / safeUpdateViewLayout
 fun safeAddView(view: View?, params: WindowManager.LayoutParams?) { MyAutoClickService.instance?.safeAddView(view, params) }
 fun safeRemoveView(view: View?) { MyAutoClickService.instance?.safeRemoveView(view) }
 fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) { MyAutoClickService.instance?.safeUpdateViewLayout(view, params) }

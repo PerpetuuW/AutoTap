@@ -6,7 +6,7 @@ import com.example.autotap.*
 
 open class OverlayBase(protected val context: Context) {
     fun attachView(view: View) {
-        val params = createOverlayParams()
+        val params = context.createOverlayParams()
         context.safeAddView(view, params)
     }
 }

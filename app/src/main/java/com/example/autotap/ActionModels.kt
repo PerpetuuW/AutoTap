@@ -73,8 +73,13 @@ data class AutoTapAction(
     var loopStartIndex: Int = 0,
     var joystickPath: List<Point> = emptyList()
 ) {
-    fun setCalibratedRect(rect: Rect) { calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat()) }
-    fun setCalibratedRect(rectF: RectF) { calibratedRectNorm = rectF }
+    fun setCalibratedRect(rect: Rect) {
+        calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
+    }
+
+    fun setCalibratedRect(rectF: RectF) {
+        calibratedRectNorm = rectF
+    }
 
     fun toJsonObject(): JSONObject {
         return JSONObject().apply {

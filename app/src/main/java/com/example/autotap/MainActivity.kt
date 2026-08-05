@@ -29,7 +29,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         logAppEvent("MainActivity_onCreate")
 
-        // Программная отрисовка красивого UI без зависимости от XML
         val scrollView = ScrollView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -53,7 +52,6 @@ class MainActivity : AppCompatActivity() {
         }
         rootLayout.addView(titleTv)
 
-        // Индикатор 1: Accessibility Service
         statusAccessibilityTv = createStatusCard(rootLayout, "Accessibility Service: UNKNOWN")
         val btnAccessibility = createButton("Enable Accessibility Service") {
             val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -61,7 +59,6 @@ class MainActivity : AppCompatActivity() {
         }
         rootLayout.addView(btnAccessibility)
 
-        // Индикатор 2: Overlay Permission
         statusOverlayTv = createStatusCard(rootLayout, "Overlay Permission: UNKNOWN")
         val btnOverlay = createButton("Grant Overlay Permission") {
             if (!Settings.canDrawOverlays(this)) {
@@ -71,7 +68,6 @@ class MainActivity : AppCompatActivity() {
         }
         rootLayout.addView(btnOverlay)
 
-        // Индикатор 3: Battery Optimizations
         statusBatteryTv = createStatusCard(rootLayout, "Battery Optimization: UNKNOWN")
         val btnBattery = createButton("Ignore Battery Optimizations") {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -84,7 +80,6 @@ class MainActivity : AppCompatActivity() {
         }
         rootLayout.addView(btnBattery)
 
-        // Главная Кнопка Запуска Оверлея
         val btnLaunchOverlay = Button(this).apply {
             text = "LAUNCH FLOATING PANEL"
             setTextColor(Color.WHITE)

@@ -7,7 +7,6 @@ import shutil
 import logging
 from pathlib import Path
 
-# Настройка логирования по Регламенту 6
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)s] %(message)s',
@@ -15,7 +14,7 @@ logging.basicConfig(
 )
 
 FILES_MAP = {
-    # 1. Ресурсные строки Android
+    # 1. Ресурсные строки
     "app/src/main/res/values/strings.xml": r'''<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AutoTap</string>
@@ -23,7 +22,7 @@ FILES_MAP = {
 </resources>
 ''',
 
-    # 2. Модель AutoTapAction
+    # 2. Модель AutoTapAction с полной поддержкой всех полей и типов из GitHub
     "app/src/main/java/com/example/autotap/ActionModels.kt": r'''package com.example.autotap
 
 import android.content.Context
@@ -97,8 +96,13 @@ data class AutoTapAction(
     var loopStartIndex: Int = 0,
     var joystickPath: List<Point> = emptyList()
 ) {
-    fun setCalibratedRect(rect: Rect) { calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat()) }
-    fun setCalibratedRect(rectF: RectF) { calibratedRectNorm = rectF }
+    fun setCalibratedRect(rect: Rect) {
+        calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
+    }
+
+    fun setCalibratedRect(rectF: RectF) {
+        calibratedRectNorm = rectF
+    }
 
     fun toJsonObject(): JSONObject {
         return JSONObject().apply {
@@ -270,193 +274,7 @@ class AtomicScriptManager(private val context: Context) {
 }
 ''',
 
-    # 3. Полный интерактивный MainActivity.kt с темной темой и кнопками управления
-    "app/src/main/java/com/example/autotap/MainActivity.kt": r'''package com.example.autotap
-
-import android.content.Context
-import android.content.Intent
-import android.graphics.Color
-import android.graphics.Typeface
-import android.net.Uri
-import android.os.Build
-import android.os.Bundle
-import android.os.PowerManager
-import android.provider.Settings
-import android.view.Gravity
-import android.view.ViewGroup
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
-
-class MainActivity : AppCompatActivity() {
-
-    private lateinit var statusAccessibilityTv: TextView
-    private lateinit var statusOverlayTv: TextView
-    private lateinit var statusBatteryTv: TextView
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        logAppEvent("MainActivity_onCreate")
-
-        // Программная отрисовка красивого UI без зависимости от XML
-        val scrollView = ScrollView(this).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setBackgroundColor(Color.parseColor("#121212"))
-        }
-
-        val rootLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 60, 40, 60)
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-
-        val titleTv = TextView(this).apply {
-            text = "AutoTap Dashboard"
-            setTextColor(Color.WHITE)
-            textSize = 26f
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, 40)
-        }
-        rootLayout.addView(titleTv)
-
-        // Индикатор 1: Accessibility Service
-        statusAccessibilityTv = createStatusCard(rootLayout, "Accessibility Service: UNKNOWN")
-        val btnAccessibility = createButton("Enable Accessibility Service") {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            startActivity(intent)
-        }
-        rootLayout.addView(btnAccessibility)
-
-        // Индикатор 2: Overlay Permission
-        statusOverlayTv = createStatusCard(rootLayout, "Overlay Permission: UNKNOWN")
-        val btnOverlay = createButton("Grant Overlay Permission") {
-            if (!Settings.canDrawOverlays(this)) {
-                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-                startActivity(intent)
-            }
-        }
-        rootLayout.addView(btnOverlay)
-
-        // Индикатор 3: Battery Optimizations
-        statusBatteryTv = createStatusCard(rootLayout, "Battery Optimization: UNKNOWN")
-        val btnBattery = createButton("Ignore Battery Optimizations") {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
-                    startActivity(intent)
-                }
-            }
-        }
-        rootLayout.addView(btnBattery)
-
-        // Главная Кнопка Запуска Оверлея
-        val btnLaunchOverlay = Button(this).apply {
-            text = "LAUNCH FLOATING PANEL"
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#FF5722"))
-            textSize = 16f
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 30, 0, 30)
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 50, 0, 0) }
-            layoutParams = lp
-
-            setOnClickListener {
-                vibrateFeedback(50L)
-                if (MyAutoClickService.instance != null) {
-                    MyAutoClickService.instance?.showControlPanel()
-                    moveTaskToBack(true)
-                } else {
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    startActivity(intent)
-                }
-            }
-        }
-        rootLayout.addView(btnLaunchOverlay)
-
-        scrollView.addView(rootLayout)
-        setContentView(scrollView)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        updateDashboardStatuses()
-    }
-
-    private fun updateDashboardStatuses() {
-        val isServiceConnected = MyAutoClickService.instance != null
-        if (isServiceConnected) {
-            statusAccessibilityTv.text = "● Accessibility Service: ACTIVE"
-            statusAccessibilityTv.setTextColor(Color.parseColor("#4CAF50"))
-        } else {
-            statusAccessibilityTv.text = "● Accessibility Service: DISABLED"
-            statusAccessibilityTv.setTextColor(Color.parseColor("#F44336"))
-        }
-
-        val canOverlay = Settings.canDrawOverlays(this)
-        if (canOverlay) {
-            statusOverlayTv.text = "● Overlay Permission: GRANTED"
-            statusOverlayTv.setTextColor(Color.parseColor("#4CAF50"))
-        } else {
-            statusOverlayTv.text = "● Overlay Permission: MISSING"
-            statusOverlayTv.setTextColor(Color.parseColor("#F44336"))
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            val isIgnoring = pm.isIgnoringBatteryOptimizations(packageName)
-            if (isIgnoring) {
-                statusBatteryTv.text = "● Battery Optimization: EXEMPTED"
-                statusBatteryTv.setTextColor(Color.parseColor("#4CAF50"))
-            } else {
-                statusBatteryTv.text = "● Battery Optimization: RESTRICTED"
-                statusBatteryTv.setTextColor(Color.parseColor("#FF9800"))
-            }
-        } else {
-            statusBatteryTv.text = "● Battery Optimization: OK"
-            statusBatteryTv.setTextColor(Color.parseColor("#4CAF50"))
-        }
-    }
-
-    private fun createStatusCard(parent: LinearLayout, initialText: String): TextView {
-        val tv = TextView(this).apply {
-            text = initialText
-            setTextColor(Color.LTGRAY)
-            textSize = 14f
-            setPadding(20, 20, 20, 10)
-        }
-        parent.addView(tv)
-        return tv
-    }
-
-    private fun createButton(labelText: String, onClick: () -> Unit): Button {
-        return Button(this).apply {
-            text = labelText
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#2196F3"))
-            setOnClickListener {
-                vibrateFeedback(30L)
-                onClick()
-            }
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 20) }
-            layoutParams = lp
-        }
-    }
-}
-''',
-
-    # 4. Расширения и Утилиты
+    # 3. Матрица Расширений Получателей (Receiver Extension Matrix)
     "app/src/main/java/com/example/autotap/ExtensionsAndUtils.kt": r'''package com.example.autotap
 
 import android.content.Context
@@ -473,6 +291,7 @@ import android.view.WindowManager
 fun logAppEvent(event: String, details: String = "") { DiagnosticLogger.log("AppEvent", event, mapOf("details" to details)) }
 fun logError(tag: String, message: String, throwable: Throwable? = null) { DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}") }
 
+// Все варианты вызова dpToPx
 val Int.dpToPx: Int get() = (this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)).toInt()
 val Float.dpToPx: Float get() = this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)
 
@@ -493,6 +312,7 @@ fun resolveNormalizedPoint(x: Number, y: Number, screenWidth: Int, screenHeight:
     return Point(x.toInt().coerceIn(0, screenWidth), y.toInt().coerceIn(0, screenHeight))
 }
 
+// Все варианты вызова getRealScreenSize
 fun getRealScreenSize(): Point {
     return MyAutoClickService.instance?.getRealScreenSize() ?: Point(1080, 2400)
 }
@@ -534,6 +354,7 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
     } catch (e: Exception) {}
 }
 
+// Все варианты вызова createOverlayParams
 fun createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
     return WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -554,6 +375,7 @@ fun Context.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_C
     return com.example.autotap.createOverlayParams(widthPx, heightPx)
 }
 
+// Все варианты вызова safeAddView / safeRemoveView / safeUpdateViewLayout
 fun safeAddView(view: View?, params: WindowManager.LayoutParams?) { MyAutoClickService.instance?.safeAddView(view, params) }
 fun safeRemoveView(view: View?) { MyAutoClickService.instance?.safeRemoveView(view) }
 fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) { MyAutoClickService.instance?.safeUpdateViewLayout(view, params) }
@@ -592,7 +414,7 @@ fun getViewFromReusePool(context: Context): View? = null
 fun recycleViewToPool(view: View?) {}
 ''',
 
-    # 5. Движки Поддержки
+    # 4. Движки Поддержки
     "app/src/main/java/com/example/autotap/EngineSupport.kt": r'''package com.example.autotap
 
 import android.graphics.Bitmap
@@ -626,7 +448,7 @@ class TemplateRepositorySupport {
 }
 ''',
 
-    # 6. Глобальные Переменные
+    # 5. Глобальные Переменные
     "app/src/main/java/com/example/autotap/GlobalVars.kt": r'''package com.example.autotap
 
 import java.util.concurrent.CopyOnWriteArrayList
@@ -642,7 +464,7 @@ val globalTemplatesNames: MutableList<String> = CopyOnWriteArrayList()
 val globalTemplates: MutableList<Any> = CopyOnWriteArrayList()
 ''',
 
-    # 7. Основной Сервис MyAutoClickService.kt
+    # 6. Сервис MyAutoClickService
     "app/src/main/java/com/example/autotap/MyAutoClickService.kt": r'''package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
@@ -909,6 +731,187 @@ class MyAutoClickService : AccessibilityService() {
 }
 ''',
 
+    # 7. Интерактивный MainActivity.kt
+    "app/src/main/java/com/example/autotap/MainActivity.kt": r'''package com.example.autotap
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var statusAccessibilityTv: TextView
+    private lateinit var statusOverlayTv: TextView
+    private lateinit var statusBatteryTv: TextView
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        logAppEvent("MainActivity_onCreate")
+
+        val scrollView = ScrollView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(Color.parseColor("#121212"))
+        }
+
+        val rootLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 60, 40, 60)
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+
+        val titleTv = TextView(this).apply {
+            text = "AutoTap Dashboard"
+            setTextColor(Color.WHITE)
+            textSize = 26f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, 40)
+        }
+        rootLayout.addView(titleTv)
+
+        statusAccessibilityTv = createStatusCard(rootLayout, "Accessibility Service: UNKNOWN")
+        val btnAccessibility = createButton("Enable Accessibility Service") {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+        }
+        rootLayout.addView(btnAccessibility)
+
+        statusOverlayTv = createStatusCard(rootLayout, "Overlay Permission: UNKNOWN")
+        val btnOverlay = createButton("Grant Overlay Permission") {
+            if (!Settings.canDrawOverlays(this)) {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                startActivity(intent)
+            }
+        }
+        rootLayout.addView(btnOverlay)
+
+        statusBatteryTv = createStatusCard(rootLayout, "Battery Optimization: UNKNOWN")
+        val btnBattery = createButton("Ignore Battery Optimizations") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+                    startActivity(intent)
+                }
+            }
+        }
+        rootLayout.addView(btnBattery)
+
+        val btnLaunchOverlay = Button(this).apply {
+            text = "LAUNCH FLOATING PANEL"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#FF5722"))
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 30, 0, 30)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 50, 0, 0) }
+            layoutParams = lp
+
+            setOnClickListener {
+                vibrateFeedback(50L)
+                if (MyAutoClickService.instance != null) {
+                    MyAutoClickService.instance?.showControlPanel()
+                    moveTaskToBack(true)
+                } else {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
+                }
+            }
+        }
+        rootLayout.addView(btnLaunchOverlay)
+
+        scrollView.addView(rootLayout)
+        setContentView(scrollView)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateDashboardStatuses()
+    }
+
+    private fun updateDashboardStatuses() {
+        val isServiceConnected = MyAutoClickService.instance != null
+        if (isServiceConnected) {
+            statusAccessibilityTv.text = "● Accessibility Service: ACTIVE"
+            statusAccessibilityTv.setTextColor(Color.parseColor("#4CAF50"))
+        } else {
+            statusAccessibilityTv.text = "● Accessibility Service: DISABLED"
+            statusAccessibilityTv.setTextColor(Color.parseColor("#F44336"))
+        }
+
+        val canOverlay = Settings.canDrawOverlays(this)
+        if (canOverlay) {
+            statusOverlayTv.text = "● Overlay Permission: GRANTED"
+            statusOverlayTv.setTextColor(Color.parseColor("#4CAF50"))
+        } else {
+            statusOverlayTv.text = "● Overlay Permission: MISSING"
+            statusOverlayTv.setTextColor(Color.parseColor("#F44336"))
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isIgnoring = pm.isIgnoringBatteryOptimizations(packageName)
+            if (isIgnoring) {
+                statusBatteryTv.text = "● Battery Optimization: EXEMPTED"
+                statusBatteryTv.setTextColor(Color.parseColor("#4CAF50"))
+            } else {
+                statusBatteryTv.text = "● Battery Optimization: RESTRICTED"
+                statusBatteryTv.setTextColor(Color.parseColor("#FF9800"))
+            }
+        } else {
+            statusBatteryTv.text = "● Battery Optimization: OK"
+            statusBatteryTv.setTextColor(Color.parseColor("#4CAF50"))
+        }
+    }
+
+    private fun createStatusCard(parent: LinearLayout, initialText: String): TextView {
+        val tv = TextView(this).apply {
+            text = initialText
+            setTextColor(Color.LTGRAY)
+            textSize = 14f
+            setPadding(20, 20, 20, 10)
+        }
+        parent.addView(tv)
+        return tv
+    }
+
+    private fun createButton(labelText: String, onClick: () -> Unit): Button {
+        return Button(this).apply {
+            text = labelText
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#2196F3"))
+            setOnClickListener {
+                vibrateFeedback(30L)
+                onClick()
+            }
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 20) }
+            layoutParams = lp
+        }
+    }
+}
+''',
+
     # 8. GestureExecutor.kt
     "app/src/main/java/com/example/autotap/core/GestureExecutor.kt": r'''package com.example.autotap.core
 
@@ -1153,7 +1156,7 @@ def auto_inject_imports(project_root: Path):
             logging.error(f"Failed to inject import into {kt_file}: {e}")
 
 def clean_invalid_res_files(project_root: Path):
-    """Удаление нелегитимных бэкапов из папки res/"""
+    """Удаление бэкапов из папки res/"""
     res_dir = project_root / "app" / "src" / "main" / "res"
     if res_dir.exists():
         for file_path in res_dir.rglob("*"):
@@ -1165,7 +1168,7 @@ def clean_invalid_res_files(project_root: Path):
                     logging.error(f"Failed to delete {file_path}: {e}")
 
 def remove_duplicate_files(project_root: Path):
-    """Удаление устаревших конфликтных файлов объявлений типов"""
+    """Удаление конфликтных файлов объявлений типов"""
     conflicting_files = [
         project_root / "app" / "src" / "main" / "java" / "com" / "example" / "autotap" / "ActionType.kt",
         project_root / "app" / "src" / "main" / "java" / "com" / "example" / "autotap" / "ActionConfig.kt"
