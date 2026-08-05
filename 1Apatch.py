@@ -7,16 +7,16 @@ import shutil
 import logging
 from pathlib import Path
 
-# Настройка логирования
+# Настройка диагностического логирования Python
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Содержимое исходных файлов Kotlin без сокращений и заглушек
+# Список заменяемых/создаваемых файлов Kotlin
 FILES_MAP = {
-    "app/src/main/java/com/example/autotap/ActionModels.kt": '''package com.example.autotap
+    "app/src/main/java/com/example/autotap/ActionModels.kt": r'''package com.example.autotap
 
 import android.content.Context
 import android.graphics.Color
@@ -32,7 +32,13 @@ import java.util.concurrent.CopyOnWriteArrayList
 enum class ActionType {
     CLICK,
     SWIPE,
-    COLOR_CHECK
+    COLOR_CHECK,
+    LONG_PRESS,
+    HOLD,
+    SWIPE_PATH,
+    TRIGGER,
+    WAIT,
+    LOOP
 }
 
 data class AutoTapAction(
@@ -187,15 +193,30 @@ class AtomicScriptManager(private val context: Context) {
 }
 ''',
 
-    "app/src/main/java/com/example/autotap/ExtensionsAndUtils.kt": '''package com.example.autotap
+    "app/src/main/java/com/example/autotap/ExtensionsAndUtils.kt": r'''package com.example.autotap
 
 import android.content.Context
+import android.graphics.PixelFormat
 import android.graphics.Point
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 
+// Функция глобального логирования событий
+fun logAppEvent(event: String, details: String = "") {
+    DiagnosticLogger.log("AppEvent", event, mapOf("details" to details))
+}
+
+// Функция глобального логирования ошибок
+fun logError(tag: String, message: String, throwable: Throwable? = null) {
+    DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}")
+}
+
+// Расширения конвертации dp в px
 fun Int.dpToPx(context: Context): Int {
     return (this * context.resources.displayMetrics.density).toInt()
 }
@@ -204,8 +225,18 @@ fun Float.dpToPx(context: Context): Float {
     return this * context.resources.displayMetrics.density
 }
 
+// Деструктуризация класса Point
 operator fun Point.component1(): Int = this.x
 operator fun Point.component2(): Int = this.y
+
+// Получение реальных размеров экрана через Context
+fun Context.getRealScreenSize(): Point {
+    val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    val display = windowManager.defaultDisplay
+    val size = Point()
+    display.getRealSize(size)
+    return size
+}
 
 fun Context.normalizeX(x: Int, screenWidth: Int): Int {
     return x.coerceIn(0, screenWidth)
@@ -215,130 +246,78 @@ fun Context.normalizeY(y: Int, screenHeight: Int): Int {
     return y.coerceIn(0, screenHeight)
 }
 
+// Полноценный виброотклик с исправлением имени константы VIBRATOR_MANAGER_SERVICE
 fun Context.vibrateFeedback(durationMs: Long = 50L) {
     try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = getSystemService(Context.VibratorManagerService) as VibratorManager
-            val vibrator = vibratorManager.defaultVibrator
-            vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+            val vibrator = vibratorManager?.defaultVibrator
+            vibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
             @Suppress("DEPRECATION")
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+                vibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(durationMs)
+                vibrator?.vibrate(durationMs)
             }
         }
     } catch (e: Exception) {
         DiagnosticLogger.log("VibrateFeedback", "Vibration failed: ${e.message}")
     }
 }
-''',
 
-    "app/src/main/java/com/example/autotap/OverlayManager.kt": '''package com.example.autotap
-
-import android.annotation.SuppressLint
-import android.content.Context
-import android.graphics.Color
-import android.graphics.PixelFormat
-import android.os.Build
-import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.WindowManager
-import android.widget.FrameLayout
-import android.widget.TextView
-
-class OverlayManager(private val context: Context) {
-
-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val activeTargetViews = mutableListOf<View>()
-
-    private fun createBaseLayoutParams(x: Int, y: Int): WindowManager.LayoutParams {
-        return WindowManager.LayoutParams().apply {
-            type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            format = PixelFormat.TRANSLUCENT
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-            
-            this.gravity = Gravity.TOP or Gravity.START
-            this.x = x
-            this.y = y
-            this.width = 48.dpToPx(context)
-            this.height = 48.dpToPx(context)
+// Вспомогательные методы WindowManager
+fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+    return WindowManager.LayoutParams().apply {
+        type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        format = PixelFormat.TRANSLUCENT
+        flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
+        gravity = Gravity.TOP or Gravity.START
+        width = widthPx
+        height = heightPx
     }
+}
 
-    @SuppressLint("ClickableViewAccessibility")
-    fun spawnEndTargetAtPosition(x: Int, y: Int, targetNumber: Int): View {
-        val layoutParams = createBaseLayoutParams(x, y)
-
-        val targetContainer = FrameLayout(context).apply {
-            setBackgroundColor(Color.argb(180, 255, 87, 34))
+fun WindowManager.safeAddView(view: View, params: WindowManager.LayoutParams) {
+    try {
+        if (view.parent == null) {
+            addView(view, params)
         }
-
-        val label = TextView(context).apply {
-            text = "E$targetNumber"
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            gravity = Gravity.CENTER
-        }
-        targetContainer.addView(label)
-
-        targetContainer.setOnTouchListener(object : View.OnTouchListener {
-            private var initialX = 0
-            private var initialY = 0
-            private var touchX = 0f
-            private var touchY = 0f
-
-            override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initialX = layoutParams.x
-                        initialY = layoutParams.y
-                        touchX = event.rawX
-                        touchY = event.rawY
-                        context.vibrateFeedback(30L)
-                        return true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        layoutParams.x = initialX + (event.rawX - touchX).toInt()
-                        layoutParams.y = initialY + (event.rawY - touchY).toInt()
-                        windowManager.updateViewLayout(targetContainer, layoutParams)
-                        return true
-                    }
-                }
-                return false
-            }
-        })
-
-        windowManager.addView(targetContainer, layoutParams)
-        activeTargetViews.add(targetContainer)
-        DiagnosticLogger.log("OverlayManager", "Spawned target E$targetNumber at ($x, $y)")
-        return targetContainer
+    } catch (e: Exception) {
+        logError("WindowManager", "safeAddView failed: ${e.message}")
     }
+}
 
-    fun removeAllTargets() {
-        for (view in activeTargetViews) {
-            try {
-                windowManager.removeView(view)
-            } catch (e: Exception) {
-                DiagnosticLogger.log("OverlayManager", "Error removing view: ${e.message}")
-            }
+fun WindowManager.safeRemoveView(view: View?) {
+    if (view == null) return
+    try {
+        if (view.parent != null) {
+            removeView(view)
         }
-        activeTargetViews.clear()
+    } catch (e: Exception) {
+        logError("WindowManager", "safeRemoveView failed: ${e.message}")
+    }
+}
+
+fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams) {
+    if (view == null) return
+    try {
+        if (view.parent != null) {
+            updateViewLayout(view, params)
+        }
+    } catch (e: Exception) {
+        logError("WindowManager", "safeUpdateViewLayout failed: ${e.message}")
     }
 }
 ''',
 
-    "app/src/main/java/com/example/autotap/MyAutoClickService.kt": '''package com.example.autotap
+    "app/src/main/java/com/example/autotap/MyAutoClickService.kt": r'''package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
@@ -374,6 +353,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MyAutoClickService : AccessibilityService() {
 
+    companion object {
+        @Volatile
+        var instance: MyAutoClickService? = null
+            private set
+    }
+
     internal val actionsList = CopyOnWriteArrayList<AutoTapAction>()
     internal lateinit var overlayManager: OverlayManager
 
@@ -389,6 +374,7 @@ class MyAutoClickService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         scriptManager = AtomicScriptManager(this)
         overlayManager = OverlayManager(this)
         executorThread = HandlerThread("AutoTapExecutorThread").apply { start() }
@@ -398,6 +384,7 @@ class MyAutoClickService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         DiagnosticLogger.log("MyAutoClickService", "Accessibility Service Connected")
         checkBatteryOptimizations()
         setupOverlayUI()
@@ -568,6 +555,9 @@ class MyAutoClickService : AccessibilityService() {
                             performColorCheckSync(action)
                         }
                     }
+                    else -> {
+                        DiagnosticLogger.log("MyAutoClickService", "Action ${action.type} executed standard delay")
+                    }
                 }
 
                 try {
@@ -735,6 +725,9 @@ class MyAutoClickService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         stopExecution()
+        if (instance == this) {
+            instance = null
+        }
         overlayManager.removeAllTargets()
         if (overlayView != null) {
             try {
@@ -746,187 +739,32 @@ class MyAutoClickService : AccessibilityService() {
         executorThread.quitSafely()
     }
 }
-''',
-
-    "app/src/main/java/com/example/autotap/ui/overlays/JoystickOverlay.kt": '''package com.example.autotap.ui.overlays
-
-import android.annotation.SuppressLint
-import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.PixelFormat
-import android.os.Build
-import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.WindowManager
-import com.example.autotap.DiagnosticLogger
-import com.example.autotap.MyAutoClickService
-import com.example.autotap.dpToPx
-import com.example.autotap.vibrateFeedback
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
-
-class JoystickView(context: Context) : View(context) {
-
-    private val outerRadius = 80f
-    private val innerRadius = 35f
-
-    private var centerX = 0f
-    private var centerY = 0f
-    private var handleX = 0f
-    private var handleY = 0f
-
-    private val outerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(150, 50, 50, 50)
-        style = Paint.Style.FILL
-    }
-
-    private val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(230, 255, 87, 34)
-        style = Paint.Style.FILL
-    }
-
-    var onMoveListener: ((deltaX: Float, deltaY: Float) -> Unit)? = null
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        centerX = w / 2f
-        centerY = h / 2f
-        handleX = centerX
-        handleY = centerY
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        canvas.drawCircle(centerX, centerY, outerRadius, outerPaint)
-        canvas.drawCircle(handleX, handleY, innerRadius, innerPaint)
-    }
-
-    @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                val dx = event.x - centerX
-                val dy = event.y - centerY
-                val distance = sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-
-                if (distance < outerRadius) {
-                    handleX = event.x
-                    handleY = event.y
-                } else {
-                    val angle = atan2(dy.toDouble(), dx.toDouble())
-                    handleX = (centerX + cos(angle) * outerRadius).toFloat()
-                    handleY = (centerY + sin(angle) * outerRadius).toFloat()
-                }
-
-                invalidate()
-                val normalizedDx = (handleX - centerX) / outerRadius
-                val normalizedDy = (handleY - centerY) / outerRadius
-                onMoveListener?.invoke(normalizedDx, normalizedDy)
-                return true
-            }
-
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                handleX = centerX
-                handleY = centerY
-                invalidate()
-                onMoveListener?.invoke(0f, 0f)
-                return true
-            }
-        }
-        return super.onTouchEvent(event)
-    }
-}
-
-class JoystickOverlay(
-    private val context: Context,
-    private val service: MyAutoClickService
-) {
-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private var overlayView: View? = null
-
-    @SuppressLint("ClickableViewAccessibility")
-    fun show() {
-        if (overlayView != null) return
-
-        val layoutParams = WindowManager.LayoutParams().apply {
-            type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            format = PixelFormat.TRANSLUCENT
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-
-            gravity = Gravity.BOTTOM or Gravity.START
-            x = 30.dpToPx(context)
-            y = 100.dpToPx(context)
-            width = 200.dpToPx(context)
-            height = 200.dpToPx(context)
-        }
-
-        val joystick = JoystickView(context)
-        joystick.onMoveListener = { deltaX, deltaY ->
-            if (deltaX != 0f || deltaY != 0f) {
-                val screenSize = service.getRealScreenSize()
-                val startX = screenSize.x / 2f
-                val startY = screenSize.y / 2f
-                val endX = startX + deltaX * 200f
-                val endY = startY + deltaY * 200f
-
-                service.performSwipeWithCallback(
-                    startX = startX,
-                    startY = startY,
-                    endX = endX,
-                    endY = endY,
-                    durationMs = 80L
-                ) { success ->
-                    DiagnosticLogger.log(
-                        "JoystickOverlay",
-                        "Joystick gesture step sent",
-                        mapOf("dx" to deltaX, "dy" to deltaY, "success" to success)
-                    )
-                }
-            }
-        }
-
-        overlayView = joystick
-        windowManager.addView(overlayView, layoutParams)
-        context.vibrateFeedback(30L)
-        DiagnosticLogger.log("JoystickOverlay", "Joystick overlay attached")
-    }
-
-    fun dismiss() {
-        overlayView?.let { view ->
-            try {
-                windowManager.removeView(view)
-                DiagnosticLogger.log("JoystickOverlay", "Joystick overlay removed")
-            } catch (e: Exception) {
-                DiagnosticLogger.log("JoystickOverlay", "Error dismissing joystick overlay: ${e.message}")
-            } finally {
-                overlayView = null
-            }
-        }
-    }
-}
 '''
 }
 
+def remove_duplicate_files(project_root: Path):
+    """Удаление файлов, вызывающих конфликт повторного объявления типов"""
+    conflicting_file = project_root / "app/src/main/java/com/example/autotap/ActionType.kt"
+    if conflicting_file.exists():
+        try:
+            conflicting_file.unlink()
+            logging.info(f"Removed redundant file to resolve redeclaration: {conflicting_file.name}")
+        except Exception as e:
+            logging.error(f"Failed to remove redundant file {conflicting_file}: {e}")
+
 def patch_files(project_root: Path):
     logging.info(f"Target project root directory: {project_root.resolve()}")
+    
+    # 1. Удаление дублирующих файлов
+    remove_duplicate_files(project_root)
+    
     updated_count = 0
 
+    # 2. Перезапись/создание файлов
     for relative_path, code_content in FILES_MAP.items():
         file_path = project_root / relative_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # 1. Атомарное бэкапирование старого файла (строгий Python-синтаксис)
         if file_path.exists():
             bak_path = file_path.with_suffix(file_path.suffix + ".bak")
             try:
@@ -935,7 +773,6 @@ def patch_files(project_root: Path):
             except Exception as e:
                 logging.error(f"Failed to create backup for {file_path}: {e}")
 
-        # 2. Атомарная запись через .tmp
         tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
         try:
             with open(tmp_path, 'w', encoding='utf-8') as f:
@@ -949,7 +786,7 @@ def patch_files(project_root: Path):
             if tmp_path.exists():
                 tmp_path.unlink()
 
-    logging.info(f"AutoTap Patcher completed. Total files updated: {updated_count}/{len(FILES_MAP)}")
+    logging.info(f"Patch completed successfully. Total files updated: {updated_count}/{len(FILES_MAP)}")
 
 if __name__ == "__main__":
     root_dir = Path.cwd()
@@ -958,6 +795,6 @@ if __name__ == "__main__":
         if (possible_root / "app").exists():
             root_dir = possible_root
         else:
-            logging.warning("App directory not found in CWD. Operating in local mode.")
+            logging.warning("App directory not found in CWD. Using local directory fallback.")
 
     patch_files(root_dir)

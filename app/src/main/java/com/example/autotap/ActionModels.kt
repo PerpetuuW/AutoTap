@@ -14,7 +14,13 @@ import java.util.concurrent.CopyOnWriteArrayList
 enum class ActionType {
     CLICK,
     SWIPE,
-    COLOR_CHECK
+    COLOR_CHECK,
+    LONG_PRESS,
+    HOLD,
+    SWIPE_PATH,
+    TRIGGER,
+    WAIT,
+    LOOP
 }
 
 data class AutoTapAction(

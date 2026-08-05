@@ -95,17 +95,14 @@ class AtomicScriptManager(private val context: Context) {
                 }
                 val jsonString = jsonArray.toString(2)
 
-                // 1. Атомарная запись во временный файл .tmp
                 FileOutputStream(tmpFile).use { fos ->
                     fos.write(jsonString.toByteArray(Charsets.UTF_8))
                     fos.flush()
                     fos.fd.sync()
                 }
 
-                // 2. Валидация сформированного JSON
                 JSONArray(tmpFile.readText(Charsets.UTF_8))
 
-                // 3. Создание бэкапа существующего файла
                 if (targetFile.exists()) {
                     if (bakFile.exists()) {
                         bakFile.delete()
@@ -115,7 +112,6 @@ class AtomicScriptManager(private val context: Context) {
                     }
                 }
 
-                // 4. Безопасная подмена .tmp -> .json
                 if (!tmpFile.renameTo(targetFile)) {
                     DiagnosticLogger.log("AtomicScriptManager", "Failed to rename .tmp to target file")
                     if (bakFile.exists() && !targetFile.exists()) {

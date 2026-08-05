@@ -220,7 +220,7 @@ class MyAutoClickService : AccessibilityService() {
                         val normEndX = normalizeX(action.endX, screenWidth)
                         val normEndY = normalizeY(action.endY, screenHeight)
                         performSwipeWithCallback(normX, normY, normEndX, normEndY, action.durationMs) { success ->
-                            DiagnosticLogger.log("MyAutoClickService", "Swipe execution status: $success")
+                            DiagnosticLogger.log("MyAutoClickService", "Swipe status: $success")
                         }
                     }
                     ActionType.COLOR_CHECK -> {
@@ -294,6 +294,34 @@ class MyAutoClickService : AccessibilityService() {
         }, null)
     }
 
+    fun performSwipeWithCallback(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        durationMs: Long,
+        callback: ((Boolean) -> Unit)? = null
+    ) {
+        performSwipeWithCallback(
+            startX.toInt(),
+            startY.toInt(),
+            endX.toInt(),
+            endY.toInt(),
+            durationMs,
+            callback ?: {}
+        )
+    }
+
+    fun performSwipeWithCallback(
+        startX: Int,
+        startY: Int,
+        endX: Int,
+        endY: Int,
+        durationMs: Long
+    ) {
+        performSwipeWithCallback(startX, startY, endX, endY, durationMs, {})
+    }
+
     @RequiresApi(Build.VERSION_CODES.R)
     private fun performColorCheckSync(action: AutoTapAction): Boolean {
         val latch = CountDownLatch(1)
@@ -325,8 +353,8 @@ class MyAutoClickService : AccessibilityService() {
                                     val b2 = Color.blue(action.targetColor)
 
                                     isMatch = Math.abs(r1 - r2) <= action.colorTolerance &&
-                                            Math.abs(g1 - g2) <= action.colorTolerance &&
-                                            Math.abs(b1 - b2) <= action.colorTolerance
+                                              Math.abs(g1 - g2) <= action.colorTolerance &&
+                                              Math.abs(b1 - b2) <= action.colorTolerance
                                 }
                             }
                             bitmap.recycle()
