@@ -5,7 +5,6 @@ import android.animation.ObjectAnimator
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
-import android.view.WindowManager
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 

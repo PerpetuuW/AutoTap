@@ -7,7 +7,7 @@ import com.example.autotap.MyAutoClickService
 
 abstract class OverlayBase(
     protected val service: MyAutoClickService,
-    val layoutResId: Int,
+    val layoutResId: Int = 0,
     val layer: OverlayLayer = OverlayLayer.PANEL,
     val priority: OverlayPriority = OverlayPriority.MEDIUM
 ) {
@@ -29,8 +29,14 @@ abstract class OverlayBase(
             return
         }
 
-        val view = service.overlayManager.getViewFromReusePool(layoutResId)
-            ?: LayoutInflater.from(service).inflate(layoutResId, null)
+        val view = if (layoutResId != 0) {
+            service.overlayManager.getViewFromReusePool(layoutResId)
+                ?: LayoutInflater.from(service).inflate(layoutResId, null)
+        } else {
+            rootView
+        }
+
+        if (view == null) return
 
         rootView = view
         val params = createParams()
@@ -45,7 +51,9 @@ abstract class OverlayBase(
         fadeOut {
             rootView?.let {
                 service.overlayManager.safeRemoveView(it)
-                service.overlayManager.recycleViewToPool(layoutResId, it)
+                if (layoutResId != 0) {
+                    service.overlayManager.recycleViewToPool(layoutResId, it)
+                }
             }
             onDetach()
             rootView = null

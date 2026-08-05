@@ -204,7 +204,9 @@ class EditActionDialog(service: MyAutoClickService) :
             ActionEditorEngine.validateAndNormalize(config)
 
             if (selectedType == ActionType.SWIPE && config.endView == null) {
-                val (sw, sh) = service.getRealScreenSize()
+                val screenSize = service.getRealScreenSize()
+                val sw = screenSize.first
+                val sh = screenSize.second
                 service.spawnEndTargetAtPosition(config, sw / 2f + service.dpToPx(80), sh / 2f + service.dpToPx(80))
             } else if (selectedType != ActionType.SWIPE && config.endView != null) {
                 service.overlayManager.safeRemoveView(config.endView)
@@ -223,7 +225,9 @@ class EditActionDialog(service: MyAutoClickService) :
             service.vibrateFeedback(25L)
             saveCurrentData()
             hide()
-            val (sw, sh) = service.getRealScreenSize()
+            val screenSize = service.getRealScreenSize()
+            val sw = screenSize.first
+            val sh = screenSize.second
             service.addNewActionAtPosition(sw / 2f + service.dpToPx(20), sh / 2f + service.dpToPx(20), config.delay, config.type, config.selectedTemplateIndex)
             Toast.makeText(service, "📋 Шаг #${config.id} клонирован!", Toast.LENGTH_SHORT).show()
         }

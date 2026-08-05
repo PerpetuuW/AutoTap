@@ -1,5 +1,6 @@
 package com.example.autotap.ui.debug
 
+import android.content.Context
 import android.graphics.*
 import android.view.Gravity
 import android.view.View
@@ -7,19 +8,27 @@ import android.view.WindowManager
 import com.example.autotap.ActionConfig
 import com.example.autotap.ActionType
 import com.example.autotap.MyAutoClickService
-import com.example.autotap.R
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayPriority
 
 class ScenarioDebuggerOverlay(service: MyAutoClickService) :
-    OverlayBase(service, R.layout.scenario_debugger_overlay, OverlayLayer.DEBUG, OverlayPriority.HIGH) {
+    OverlayBase(service, 0, OverlayLayer.DEBUG, OverlayPriority.HIGH) {
 
-    private var debugView: DebugCanvasView? = null
+    private var debugCanvasView: DebugCanvasView? = null
 
-    override fun onViewInflated(view: View) {
-        debugView = view.findViewById(R.id.debugCanvasView)
+    override fun show() {
+        if (isShowing) return
+        val view = DebugCanvasView(service)
+        debugCanvasView = view
+        rootView = view
+        val params = createParams()
+        service.overlayManager.safeAddView(view, params)
+        onAttach()
+        fadeIn()
     }
+
+    override fun onViewInflated(view: View) {}
 
     override fun createParams(): WindowManager.LayoutParams {
         return service.overlayManager.createOverlayParams().apply {
@@ -31,10 +40,10 @@ class ScenarioDebuggerOverlay(service: MyAutoClickService) :
 
     fun update(config: ActionConfig) {
         if (!isShowing) show()
-        debugView?.updateConfig(config)
+        debugCanvasView?.updateConfig(config)
     }
 
-    private class DebugCanvasView(context: android.content.Context) : View(context) {
+    class DebugCanvasView(context: Context) : View(context) {
         private var cfg: ActionConfig? = null
 
         private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
