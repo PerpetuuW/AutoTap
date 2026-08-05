@@ -13,42 +13,39 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 
-fun logAppEvent(event: String, details: String = "") {
-    DiagnosticLogger.log("AppEvent", event, mapOf("details" to details))
-}
+fun logAppEvent(event: String, details: String = "") { DiagnosticLogger.log("AppEvent", event, mapOf("details" to details)) }
+fun logError(tag: String, message: String, throwable: Throwable? = null) { DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}") }
 
-fun logError(tag: String, message: String, throwable: Throwable? = null) {
-    DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}")
-}
+val Int.dpToPx: Int get() = (this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)).toInt()
+val Float.dpToPx: Float get() = this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)
 
-// 1. Полиморфные перегрузки dpToPx
+fun Int.dpToPx(): Int = (this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)).toInt()
+fun Float.dpToPx(): Float = this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)
 fun Int.dpToPx(context: Context): Int = (this * context.resources.displayMetrics.density).toInt()
 fun Float.dpToPx(context: Context): Float = this * context.resources.displayMetrics.density
 fun Context.dpToPx(valPx: Int): Int = (valPx * resources.displayMetrics.density).toInt()
 fun Context.dpToPx(valPx: Float): Float = valPx * resources.displayMetrics.density
 fun View.dpToPx(valPx: Int): Int = (valPx * context.resources.displayMetrics.density).toInt()
 
-// 2. Расширения Point
 operator fun Point.component1(): Int = this.x
 operator fun Point.component2(): Int = this.y
 val Point.first: Int get() = this.x
 val Point.second: Int get() = this.y
 
-fun resolveNormalizedPoint(x: Int, y: Int, screenWidth: Int, screenHeight: Int): Point {
-    return Point(x.coerceIn(0, screenWidth), y.coerceIn(0, screenHeight))
-}
-
-fun resolveNormalizedPoint(x: Float, y: Float, screenWidth: Int, screenHeight: Int): Point {
+fun resolveNormalizedPoint(x: Number, y: Number, screenWidth: Int, screenHeight: Int): Point {
     return Point(x.toInt().coerceIn(0, screenWidth), y.toInt().coerceIn(0, screenHeight))
 }
 
-// 3. Полиморфный getRealScreenSize
+fun getRealScreenSize(): Point {
+    return MyAutoClickService.instance?.getRealScreenSize() ?: Point(1080, 2400)
+}
+
 fun Context.getRealScreenSize(): Point {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    val display = wm.defaultDisplay
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    val display = wm?.defaultDisplay
     val size = Point()
-    display.getRealSize(size)
-    return size
+    display?.getRealSize(size)
+    return if (size.x > 0) size else Point(1080, 2400)
 }
 
 fun WindowManager.getRealScreenSize(): Point {
@@ -67,8 +64,7 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
     try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-            val vibrator = vibratorManager?.defaultVibrator
-            vibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibratorManager?.defaultVibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
             @Suppress("DEPRECATION")
             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
@@ -78,80 +74,61 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
                 vibrator?.vibrate(durationMs)
             }
         }
-    } catch (e: Exception) {
-        DiagnosticLogger.log("VibrateFeedback", "Vibration failed: ${e.message}")
-    }
+    } catch (e: Exception) {}
 }
 
-// 4. Полиморфный createOverlayParams
-fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+fun createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
     return WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         format = PixelFormat.TRANSLUCENT
-        flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        }
+        flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         gravity = Gravity.TOP or Gravity.START
         width = widthPx
         height = heightPx
     }
 }
 
-fun Context.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    return wm.createOverlayParams(widthPx, heightPx)
+fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+    return com.example.autotap.createOverlayParams(widthPx, heightPx)
 }
 
-// 5. Полиморфный safeAddView / safeRemoveView / safeUpdateViewLayout
+fun Context.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+    return com.example.autotap.createOverlayParams(widthPx, heightPx)
+}
+
+fun safeAddView(view: View?, params: WindowManager.LayoutParams?) { MyAutoClickService.instance?.safeAddView(view, params) }
+fun safeRemoveView(view: View?) { MyAutoClickService.instance?.safeRemoveView(view) }
+fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) { MyAutoClickService.instance?.safeUpdateViewLayout(view, params) }
+
 fun WindowManager.safeAddView(view: View?, params: WindowManager.LayoutParams?) {
     if (view == null || params == null) return
-    try {
-        if (view.parent == null) {
-            addView(view, params)
-        }
-    } catch (e: Exception) {
-        logError("WindowManager", "safeAddView failed: ${e.message}")
-    }
+    try { if (view.parent == null) addView(view, params) } catch (e: Exception) {}
 }
 
 fun Context.safeAddView(view: View?, params: WindowManager.LayoutParams?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeAddView(view, params)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeAddView(view, params)
 }
 
 fun WindowManager.safeRemoveView(view: View?) {
     if (view == null) return
-    try {
-        if (view.parent != null) {
-            removeView(view)
-        }
-    } catch (e: Exception) {
-        logError("WindowManager", "safeRemoveView failed: ${e.message}")
-    }
+    try { if (view.parent != null) removeView(view) } catch (e: Exception) {}
 }
 
 fun Context.safeRemoveView(view: View?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeRemoveView(view)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeRemoveView(view)
 }
 
 fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) {
     if (view == null || params == null) return
-    try {
-        if (view.parent != null) {
-            updateViewLayout(view, params)
-        }
-    } catch (e: Exception) {
-        logError("WindowManager", "safeUpdateViewLayout failed: ${e.message}")
-    }
+    try { if (view.parent != null) updateViewLayout(view, params) } catch (e: Exception) {}
 }
 
 fun Context.safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeUpdateViewLayout(view, params)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeUpdateViewLayout(view, params)
 }
 
 fun getViewFromReusePool(context: Context): View? = null

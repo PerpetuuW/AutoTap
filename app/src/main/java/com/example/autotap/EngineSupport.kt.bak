@@ -20,9 +20,7 @@ class CaptureFrameOverlaySupport : OverlaySupport()
 class JoystickOverlaySupport : OverlaySupport()
 
 class AiScannerEngineSupport {
-    fun scanForMatch(vararg args: Any?, callback: ((Boolean) -> Unit)? = null) {
-        callback?.invoke(true)
-    }
+    fun scanForMatch(vararg args: Any?, callback: ((Boolean) -> Unit)? = null) { callback?.invoke(true) }
     fun executeAiTriggerSequence(vararg args: Any?) {}
     fun startTemplateCalibration(vararg args: Any?) {}
 }

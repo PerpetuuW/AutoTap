@@ -17,15 +17,7 @@ import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 
 enum class ActionType {
-    CLICK,
-    SWIPE,
-    COLOR_CHECK,
-    LONG_PRESS,
-    HOLD,
-    SWIPE_PATH,
-    TRIGGER,
-    WAIT,
-    LOOP
+    CLICK, SWIPE, COLOR_CHECK, LONG_PRESS, HOLD, SWIPE_PATH, TRIGGER, WAIT, LOOP
 }
 
 typealias ActionConfig = AutoTapAction
@@ -41,7 +33,6 @@ data class AutoTapAction(
     var delayAfterMs: Long = 500L,
     var targetColor: Int = Color.BLACK,
     var colorTolerance: Int = 15,
-
     var delay: Long = 500L,
     var repeatCount: Int = 1,
     var similarityPercent: Float = 0.8f,
@@ -74,7 +65,6 @@ data class AutoTapAction(
     var loopType: String = "COUNT",
     var multiTemplateIndices: List<Int> = emptyList(),
     var updatedAt: Long = System.currentTimeMillis(),
-
     var randomOffset: Int = 0,
     var randomRadius: Int = 0,
     var holdDuration: Long = 100L,
@@ -83,13 +73,8 @@ data class AutoTapAction(
     var loopStartIndex: Int = 0,
     var joystickPath: List<Point> = emptyList()
 ) {
-    fun setCalibratedRect(rect: Rect) {
-        calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
-    }
-
-    fun setCalibratedRect(rectF: RectF) {
-        calibratedRectNorm = rectF
-    }
+    fun setCalibratedRect(rect: Rect) { calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat()) }
+    fun setCalibratedRect(rectF: RectF) { calibratedRectNorm = rectF }
 
     fun toJsonObject(): JSONObject {
         return JSONObject().apply {
@@ -197,75 +182,43 @@ data class AutoTapAction(
         }
 
         fun fromJson(jsonObj: JSONObject): AutoTapAction = fromJsonObject(jsonObj)
-
         fun fromJson(jsonStr: String): AutoTapAction {
-            return try {
-                fromJsonObject(JSONObject(jsonStr))
-            } catch (e: Exception) {
-                AutoTapAction()
-            }
+            return try { fromJsonObject(JSONObject(jsonStr)) } catch (e: Exception) { AutoTapAction() }
         }
     }
 }
 
 object DiagnosticLogger {
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
-
     fun log(tag: String, message: String, metrics: Map<String, Any> = emptyMap()) {
         val timestamp = dateFormat.format(Date())
-        val metricsString = if (metrics.isNotEmpty()) {
-            " | Metrics: " + metrics.entries.joinToString(", ") { "${it.key}=${it.value}" }
-        } else {
-            ""
-        }
-        val formattedMessage = "[$timestamp] [$tag] $message$metricsString"
-        android.util.Log.d("AutoTap_Audit", formattedMessage)
+        val metricsString = if (metrics.isNotEmpty()) " | Metrics: " + metrics.entries.joinToString(", ") { "${it.key}=${it.value}" } else ""
+        android.util.Log.d("AutoTap_Audit", "[$timestamp] [$tag] $message$metricsString")
     }
 }
 
 class AtomicScriptManager(private val context: Context) {
     private val lock = Any()
-
     fun saveScript(fileName: String, actions: CopyOnWriteArrayList<AutoTapAction>): Boolean {
         synchronized(lock) {
-            val startTime = System.currentTimeMillis()
             val targetFile = File(context.filesDir, "$fileName.json")
             val tmpFile = File(context.filesDir, "$fileName.tmp")
             val bakFile = File(context.filesDir, "$fileName.json.bak")
-
             try {
                 val jsonArray = JSONArray()
-                for (action in actions) {
-                    jsonArray.put(action.toJsonObject())
-                }
-                val jsonString = jsonArray.toString(2)
-
+                for (action in actions) jsonArray.put(action.toJsonObject())
                 FileOutputStream(tmpFile).use { fos ->
-                    fos.write(jsonString.toByteArray(Charsets.UTF_8))
+                    fos.write(jsonArray.toString(2).toByteArray(Charsets.UTF_8))
                     fos.flush()
                     fos.fd.sync()
                 }
-
-                JSONArray(tmpFile.readText(Charsets.UTF_8))
-
                 if (targetFile.exists()) {
                     if (bakFile.exists()) bakFile.delete()
                     targetFile.renameTo(bakFile)
                 }
-
-                if (!tmpFile.renameTo(targetFile)) {
-                    if (bakFile.exists() && !targetFile.exists()) bakFile.renameTo(targetFile)
-                    return false
-                }
-
-                DiagnosticLogger.log(
-                    "AtomicScriptManager",
-                    "Script saved",
-                    mapOf("file" to fileName, "durationMs" to (System.currentTimeMillis() - startTime), "count" to actions.size)
-                )
+                if (!tmpFile.renameTo(targetFile)) return false
                 return true
             } catch (e: Exception) {
-                DiagnosticLogger.log("AtomicScriptManager", "Error saving script: ${e.message}")
                 if (tmpFile.exists()) tmpFile.delete()
                 return false
             }
@@ -281,18 +234,12 @@ class AtomicScriptManager(private val context: Context) {
                 bakFile.exists() && bakFile.length() > 0 -> bakFile
                 else -> null
             }
-
             val list = CopyOnWriteArrayList<AutoTapAction>()
             if (fileToRead == null) return list
-
             try {
                 val jsonArray = JSONArray(fileToRead.readText(Charsets.UTF_8))
-                for (i in 0 until jsonArray.length()) {
-                    list.add(AutoTapAction.fromJsonObject(jsonArray.getJSONObject(i)))
-                }
-            } catch (e: Exception) {
-                DiagnosticLogger.log("AtomicScriptManager", "Error loading script: ${e.message}")
-            }
+                for (i in 0 until jsonArray.length()) list.add(AutoTapAction.fromJsonObject(jsonArray.getJSONObject(i)))
+            } catch (e: Exception) {}
             return list
         }
     }

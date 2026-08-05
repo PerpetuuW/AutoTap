@@ -71,13 +71,11 @@ class MyAutoClickService : AccessibilityService() {
         overlayManager = OverlayManager(this)
         executorThread = HandlerThread("AutoTapExecutorThread").apply { start() }
         executorHandler = Handler(executorThread.looper)
-        DiagnosticLogger.log("MyAutoClickService", "Service onCreate executed")
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        DiagnosticLogger.log("MyAutoClickService", "Accessibility Service Connected")
         checkBatteryOptimizations()
         setupOverlayUI()
     }
@@ -106,26 +104,12 @@ class MyAutoClickService : AccessibilityService() {
     @SuppressLint("ClickableViewAccessibility")
     private fun setupOverlayUI() {
         if (!Settings.canDrawOverlays(this)) return
-
         windowManager = getSystemService(WindowManager::class.java)
         val (screenWidth, screenHeight) = getRealScreenSize()
 
-        val layoutParams = WindowManager.LayoutParams().apply {
-            type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            format = PixelFormat.TRANSLUCENT
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-
-            this.gravity = Gravity.TOP or Gravity.START
-            this.x = normalizeX(10.dpToPx(this@MyAutoClickService), screenWidth)
-            this.y = normalizeY(100.dpToPx(this@MyAutoClickService), screenHeight)
-            this.width = WindowManager.LayoutParams.WRAP_CONTENT
-            this.height = WindowManager.LayoutParams.WRAP_CONTENT
+        val layoutParams = createOverlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT).apply {
+            x = normalizeX(10.dpToPx(this@MyAutoClickService), screenWidth)
+            y = normalizeY(100.dpToPx(this@MyAutoClickService), screenHeight)
         }
 
         val container = FrameLayout(this).apply {
@@ -144,11 +128,7 @@ class MyAutoClickService : AccessibilityService() {
             text = "START / STOP"
             setOnClickListener {
                 vibrateFeedback(40L)
-                if (isRunningState.get()) {
-                    stopExecution()
-                } else {
-                    startExecution()
-                }
+                if (isRunningState.get()) stopExecution() else startExecution()
             }
         }
 
@@ -159,36 +139,8 @@ class MyAutoClickService : AccessibilityService() {
         }
         container.addView(layout)
 
-        container.setOnTouchListener(object : View.OnTouchListener {
-            private var initialX = 0
-            private var initialY = 0
-            private var touchX = 0f
-            private var touchY = 0f
-
-            override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initialX = layoutParams.x
-                        initialY = layoutParams.y
-                        touchX = event.rawX
-                        touchY = event.rawY
-                        return true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val newX = initialX + (event.rawX - touchX).toInt()
-                        val newY = initialY + (event.rawY - touchY).toInt()
-                        layoutParams.x = normalizeX(newX, screenWidth)
-                        layoutParams.y = normalizeY(newY, screenHeight)
-                        windowManager.updateViewLayout(container, layoutParams)
-                        return true
-                    }
-                }
-                return false
-            }
-        })
-
         overlayView = container
-        windowManager.addView(overlayView, layoutParams)
+        windowManager.safeAddView(overlayView, layoutParams)
     }
 
     fun showControlPanel() { setupOverlayUI() }
@@ -223,9 +175,7 @@ class MyAutoClickService : AccessibilityService() {
     fun showAddActionMenu() {}
     fun showTutorialCard() {}
     fun showScriptsDialog() {}
-    fun showScriptPickerDialog(vararg args: Any?, callback: ((String) -> Unit)? = null) {
-        callback?.invoke("default_scenario")
-    }
+    fun showScriptPickerDialog(vararg args: Any?, callback: ((String) -> Unit)? = null) { callback?.invoke("default_scenario") }
     fun toggleNumbersVisibility() {}
     fun startOverlayRecording() { isRecording = true }
     fun stopOverlayRecording() { isRecording = false }
@@ -233,52 +183,21 @@ class MyAutoClickService : AccessibilityService() {
     fun showClickVisualizer(x: Int, y: Int) {}
 
     fun captureScreenBitmap(): Bitmap? = null
-    fun captureScreenBitmap(callback: (Bitmap?) -> Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            takeScreenshot(
-                android.view.Display.DEFAULT_DISPLAY,
-                applicationContext.mainExecutor,
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshotResult: ScreenshotResult) {
-                        try {
-                            val hardwareBuffer = screenshotResult.hardwareBuffer
-                            val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshotResult.colorSpace)
-                                ?.copy(Bitmap.Config.ARGB_8888, false)
-                            hardwareBuffer.close()
-                            callback(bitmap)
-                        } catch (e: Exception) {
-                            callback(null)
-                        }
-                    }
-                    override fun onFailure(errorCode: Int) { callback(null) }
-                }
-            )
-        } else {
-            callback(null)
-        }
-    }
+    fun captureScreenBitmap(callback: (Bitmap?) -> Unit) { callback(null) }
 
-    fun performClickWithCallback(x: Float, y: Float, durationMs: Long = 100L, callback: ((Boolean) -> Unit)? = null) {
-        performClickWithCallback(x.toInt(), y.toInt(), durationMs, callback)
-    }
-
-    fun performClickWithCallback(x: Int, y: Int, durationMs: Long = 100L, callback: ((Boolean) -> Unit)? = null) {
-        val success = performClickSync(x, y, durationMs)
+    fun performClickWithCallback(x: Number, y: Number, durationMs: Long = 100L, callback: ((Boolean) -> Unit)? = null) {
+        val success = performClickSync(x.toInt(), y.toInt(), durationMs)
         callback?.invoke(success)
     }
 
-    fun performPathSwipeWithCallback(vararg args: Any?, callback: ((Boolean) -> Unit)? = null) {
-        callback?.invoke(true)
-    }
+    fun performPathSwipeWithCallback(vararg args: Any?, callback: ((Boolean) -> Unit)? = null) { callback?.invoke(true) }
 
     fun startExecution() {
         if (isRunningState.compareAndSet(false, true)) {
             isPlaying = true
             val loaded = scriptManager.loadScript("default_scenario")
             actionsList.clear()
-            if (loaded.isNotEmpty()) {
-                actionsList.addAll(loaded)
-            } else {
+            if (loaded.isNotEmpty()) actionsList.addAll(loaded) else {
                 val (screenWidth, screenHeight) = getRealScreenSize()
                 actionsList.add(AutoTapAction(x = screenWidth / 2, y = screenHeight / 2))
             }
@@ -296,30 +215,17 @@ class MyAutoClickService : AccessibilityService() {
 
     private fun runExecutionLoop() {
         val (screenWidth, screenHeight) = getRealScreenSize()
-
         while (isRunningState.get()) {
             for (action in actionsList) {
                 if (!isRunningState.get()) break
                 val normX = normalizeX(action.x, screenWidth)
                 val normY = normalizeY(action.y, screenHeight)
-
                 when (action.type) {
                     ActionType.CLICK -> performClickSync(normX, normY, action.durationMs)
-                    ActionType.SWIPE -> {
-                        val normEndX = normalizeX(action.endX, screenWidth)
-                        val normEndY = normalizeY(action.endY, screenHeight)
-                        performSwipeWithCallback(normX, normY, normEndX, normEndY, action.durationMs) {}
-                    }
+                    ActionType.SWIPE -> performSwipeWithCallback(normX, normY, action.endX, action.endY, action.durationMs) {}
                     else -> Thread.sleep(action.durationMs)
                 }
-
-                try {
-                    Thread.sleep(action.delayAfterMs)
-                } catch (e: InterruptedException) {
-                    isRunningState.set(false)
-                    isPlaying = false
-                    break
-                }
+                try { Thread.sleep(action.delayAfterMs) } catch (e: InterruptedException) { break }
             }
         }
     }
@@ -330,47 +236,26 @@ class MyAutoClickService : AccessibilityService() {
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(1L))
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
-
         dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                result = true
-                latch.countDown()
-            }
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                result = false
-                latch.countDown()
-            }
+            override fun onCompleted(gestureDescription: GestureDescription?) { result = true; latch.countDown() }
+            override fun onCancelled(gestureDescription: GestureDescription?) { result = false; latch.countDown() }
         }, null)
-
         try { latch.await(2, TimeUnit.SECONDS) } catch (e: InterruptedException) { return false }
         return result
     }
 
-    fun performSwipeWithCallback(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long, callback: (Boolean) -> Unit) {
-        val path = Path().apply {
-            moveTo(startX.toFloat(), startY.toFloat())
-            lineTo(endX.toFloat(), endY.toFloat())
-        }
+    fun performSwipeWithCallback(startX: Number, startY: Number, endX: Number, endY: Number, durationMs: Long, callback: (Boolean) -> Unit) {
+        val path = Path().apply { moveTo(startX.toFloat(), startY.toFloat()); lineTo(endX.toFloat(), endY.toFloat()) }
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(10L))
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
-
         dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                vibrateFeedback(20L)
-                callback(true)
-            }
+            override fun onCompleted(gestureDescription: GestureDescription?) { vibrateFeedback(20L); callback(true) }
             override fun onCancelled(gestureDescription: GestureDescription?) { callback(false) }
         }, null)
     }
 
-    fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        performSwipeWithCallback(startX.toInt(), startY.toInt(), endX.toInt(), endY.toInt(), durationMs, callback ?: {})
-    }
-
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
-
     override fun onInterrupt() { stopExecution() }
-
     override fun onDestroy() {
         super.onDestroy()
         stopExecution()

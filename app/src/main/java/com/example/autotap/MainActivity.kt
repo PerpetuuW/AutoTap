@@ -2,423 +2,184 @@ package com.example.autotap
 
 import com.example.autotap.*
 
-import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
-import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
-import android.os.StrictMode
 import android.provider.Settings
-import android.view.LayoutInflater
-import android.widget.*
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.FileProvider
-import java.io.*
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 
-@Suppress("SpellCheckingInspection", "DEPRECATION")
 class MainActivity : AppCompatActivity() {
 
-    private var hasAutoShownPermissions = false
+    private lateinit var statusAccessibilityTv: TextView
+    private lateinit var statusOverlayTv: TextView
+    private lateinit var statusBatteryTv: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        logAppEvent("MainActivity_onCreate")
 
-        StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
-
-        val tvVersion = findViewById<TextView>(R.id.tvVersion)
-        tvVersion?.text = "AutoTap v40.0.0-PRO"
-
-        val btnAppDetails = findViewById<Button>(R.id.btnAppDetails)
-        val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
-        val btnOverlay = findViewById<Button>(R.id.btnOverlay)
-        val btnExport = findViewById<Button>(R.id.btnExport)
-        val btnImport = findViewById<Button>(R.id.btnImport)
-        val btnStartPanel = findViewById<Button>(R.id.btnStartPanel)
-        val btnShowLogs = findViewById<Button>(R.id.btnShowLogs)
-        val btnManageTemplates = findViewById<Button>(R.id.btnManageTemplates)
-        val btnPermissionsHelp = findViewById<Button>(R.id.btnPermissionsHelp)
-        val btnInfoHelp = findViewById<Button>(R.id.btnInfoHelp)
-
-        btnAppDetails?.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.fromParts("package", packageName, null)
-            })
+        // Программная отрисовка красивого UI без зависимости от XML
+        val scrollView = ScrollView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(Color.parseColor("#121212"))
         }
 
-        btnAccessibility?.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        val rootLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 60, 40, 60)
+            gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        btnOverlay?.setOnClickListener {
-            try {
-                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            } catch (_: Exception) {
-                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
-            }
+        val titleTv = TextView(this).apply {
+            text = "AutoTap Dashboard"
+            setTextColor(Color.WHITE)
+            textSize = 26f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, 40)
         }
+        rootLayout.addView(titleTv)
 
-        btnExport?.setOnClickListener { showExportDialog() }
-        btnImport?.setOnClickListener { startImportFlow() }
-        btnShowLogs?.setOnClickListener { showLogsDialog() }
-        btnManageTemplates?.setOnClickListener { showTemplatesManagerDialog() }
-        btnPermissionsHelp?.setOnClickListener { showPermissionsHelpDialog() }
-        btnInfoHelp?.setOnClickListener { showInfoHelpDialog() }
+        // Индикатор 1: Accessibility Service
+        statusAccessibilityTv = createStatusCard(rootLayout, "Accessibility Service: UNKNOWN")
+        val btnAccessibility = createButton("Enable Accessibility Service") {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+        }
+        rootLayout.addView(btnAccessibility)
 
-        btnStartPanel?.setOnClickListener {
-            val service = MyAutoClickService.instance
-            if (service == null) {
-                Toast.makeText(this, "Служба не активна!", Toast.LENGTH_SHORT).show()
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                return@setOnClickListener
-            }
-
+        // Индикатор 2: Overlay Permission
+        statusOverlayTv = createStatusCard(rootLayout, "Overlay Permission: UNKNOWN")
+        val btnOverlay = createButton("Grant Overlay Permission") {
             if (!Settings.canDrawOverlays(this)) {
-                Toast.makeText(this, "Разрешите показ поверх окон!", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                startActivity(intent)
             }
-
-            requestBatteryOptimizationExemption()
-
-            service.showControlPanel()
-            moveTaskToBack(true)
         }
+        rootLayout.addView(btnOverlay)
+
+        // Индикатор 3: Battery Optimizations
+        statusBatteryTv = createStatusCard(rootLayout, "Battery Optimization: UNKNOWN")
+        val btnBattery = createButton("Ignore Battery Optimizations") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+                    startActivity(intent)
+                }
+            }
+        }
+        rootLayout.addView(btnBattery)
+
+        // Главная Кнопка Запуска Оверлея
+        val btnLaunchOverlay = Button(this).apply {
+            text = "LAUNCH FLOATING PANEL"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#FF5722"))
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 30, 0, 30)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 50, 0, 0) }
+            layoutParams = lp
+
+            setOnClickListener {
+                vibrateFeedback(50L)
+                if (MyAutoClickService.instance != null) {
+                    MyAutoClickService.instance?.showControlPanel()
+                    moveTaskToBack(true)
+                } else {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
+                }
+            }
+        }
+        rootLayout.addView(btnLaunchOverlay)
+
+        scrollView.addView(rootLayout)
+        setContentView(scrollView)
     }
 
     override fun onResume() {
         super.onResume()
-        updatePermissionButtonStates()
-
-        val isServiceRunning = MyAutoClickService.instance != null
-        val isOverlayGranted = Settings.canDrawOverlays(this)
-
-        if ((!isServiceRunning || !isOverlayGranted) && !hasAutoShownPermissions) {
-            hasAutoShownPermissions = true
-            showPermissionsHelpDialog()
-        }
+        updateDashboardStatuses()
     }
 
-    private fun requestBatteryOptimizationExemption() {
+    private fun updateDashboardStatuses() {
+        val isServiceConnected = MyAutoClickService.instance != null
+        if (isServiceConnected) {
+            statusAccessibilityTv.text = "● Accessibility Service: ACTIVE"
+            statusAccessibilityTv.setTextColor(Color.parseColor("#4CAF50"))
+        } else {
+            statusAccessibilityTv.text = "● Accessibility Service: DISABLED"
+            statusAccessibilityTv.setTextColor(Color.parseColor("#F44336"))
+        }
+
+        val canOverlay = Settings.canDrawOverlays(this)
+        if (canOverlay) {
+            statusOverlayTv.text = "● Overlay Permission: GRANTED"
+            statusOverlayTv.setTextColor(Color.parseColor("#4CAF50"))
+        } else {
+            statusOverlayTv.text = "● Overlay Permission: MISSING"
+            statusOverlayTv.setTextColor(Color.parseColor("#F44336"))
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-            if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
-                try {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } catch (_: Exception) {}
-            }
-        }
-    }
-
-    private fun updatePermissionButtonStates() {
-        val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
-        val btnOverlay = findViewById<Button>(R.id.btnOverlay)
-
-        val isServiceBound = MyAutoClickService.instance != null
-        val isSystemEnabled = isAccessibilityServiceEnabled()
-        val isOverlayGranted = Settings.canDrawOverlays(this)
-
-        btnAccessibility?.text =
-            if (isServiceBound) "Служба кликера: ВКЛЮЧЕНА"
-            else if (isSystemEnabled) "Перезапустить службу"
-            else "Разрешить работу кликера"
-
-        btnAccessibility?.backgroundTintList =
-            ColorStateList.valueOf(if (isServiceBound) Color.parseColor("#1E3A2B") else Color.parseColor("#8B0000"))
-
-        btnOverlay?.text =
-            if (isOverlayGranted) "Показ поверх окон: РАЗРЕШЕНО"
-            else "Показ поверх окон: ОТКЛЮЧЕНО"
-
-        btnOverlay?.backgroundTintList =
-            ColorStateList.valueOf(if (isOverlayGranted) Color.parseColor("#1E3A2B") else Color.parseColor("#21262D"))
-    }
-
-    private fun isAccessibilityServiceEnabled(): Boolean {
-        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
-        val enabled = am?.getEnabledAccessibilityServiceList(
-            android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
-        ) ?: emptyList()
-
-        if (enabled.any { it.resolveInfo.serviceInfo.packageName == packageName }) return true
-
-        val raw = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
-        return raw.split(':').any { it.substringBefore('/').equals(packageName, true) }
-    }
-
-    private fun showExportDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_export_select, null)
-        val ad = AlertDialog.Builder(this).setView(dialogView).create()
-
-        dialogView.findViewById<Button>(R.id.btnExpSingleScript)?.setOnClickListener {
-            ad.dismiss()
-            exportFullBackup()
-        }
-
-        dialogView.findViewById<Button>(R.id.btnExpTemplatesOnly)?.setOnClickListener {
-            ad.dismiss()
-            exportTemplatesOnly()
-        }
-
-        dialogView.findViewById<Button>(R.id.btnExpFullBackup)?.setOnClickListener {
-            ad.dismiss()
-            exportFullBackup()
-        }
-
-        dialogView.findViewById<Button>(R.id.btnCloseExpSelect)?.setOnClickListener {
-            ad.dismiss()
-        }
-
-        ad.show()
-    }
-
-    private fun exportTemplatesOnly() {
-        val baseDir = File(filesDir, "templates")
-        if (!baseDir.exists() || baseDir.listFiles()?.isEmpty() == true) {
-            Toast.makeText(this, "Пул шаблонов пуст!", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val zipFile = File(externalCacheDir ?: cacheDir, "autotap_templates.zip")
-        zipFolder(baseDir, zipFile)
-        shareZip(zipFile, "ИИ-шаблоны AutoTap")
-    }
-
-    private fun exportFullBackup() {
-        try {
-            val zipFile = File(externalCacheDir ?: cacheDir, "autotap_backup.zip")
-            val zos = ZipOutputStream(FileOutputStream(zipFile))
-
-            val scriptsDir = File(filesDir, "scripts")
-            if (scriptsDir.exists()) zipDirToZip(filesDir, scriptsDir, zos)
-
-            val templatesDir = File(filesDir, "templates")
-            if (templatesDir.exists()) zipDirToZip(filesDir, templatesDir, zos)
-
-            zos.close()
-            shareZip(zipFile, "Полный бэкап AutoTap v40.0")
-        } catch (e: Exception) {
-            MyAutoClickService.logError(this, e)
-            Toast.makeText(this, "Ошибка бэкапа!", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun startImportFlow() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            type = "application/zip"
-            addCategory(Intent.CATEGORY_OPENABLE)
-        }
-        startActivityForResult(intent, 1002)
-    }
-
-    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
-        super.onActivityResult(req, res, data)
-        if (req == 1002 && res == RESULT_OK) {
-            val uri = data?.data ?: return
-            importZip(uri)
-        }
-    }
-
-    private fun importZip(uri: Uri) {
-        try {
-            val input = contentResolver.openInputStream(uri) ?: return
-            val zis = ZipInputStream(BufferedInputStream(input))
-
-            var entry: ZipEntry?
-            val canonicalBase = filesDir.canonicalPath
-
-            while (zis.nextEntry.also { entry = it } != null) {
-                val name = entry!!.name
-                val outFile = File(filesDir, name)
-
-                if (!outFile.canonicalPath.startsWith(canonicalBase)) {
-                    throw SecurityException("Заблокирована попытка записи Zip Slip файла вне каталога!")
-                }
-
-                outFile.parentFile?.mkdirs()
-                BufferedOutputStream(FileOutputStream(outFile)).use { bos ->
-                    zis.copyTo(bos)
-                }
-            }
-            zis.close()
-
-            MyAutoClickService.instance?.loadAllTemplatesFromDisk()
-            Toast.makeText(this, "Импорт завершён!", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            MyAutoClickService.logError(this, e)
-            Toast.makeText(this, "Ошибка импорта!", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun zipFolder(folder: File, zipFile: File) {
-        val zos = ZipOutputStream(FileOutputStream(zipFile))
-        folder.listFiles()?.forEach { file ->
-            val entry = ZipEntry(file.name)
-            zos.putNextEntry(entry)
-            zos.write(file.readBytes())
-            zos.closeEntry()
-        }
-        zos.close()
-    }
-
-    private fun zipDirToZip(root: File, src: File, zos: ZipOutputStream) {
-        src.listFiles()?.forEach { file ->
-            if (file.isDirectory) {
-                zipDirToZip(root, file, zos)
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isIgnoring = pm.isIgnoringBatteryOptimizations(packageName)
+            if (isIgnoring) {
+                statusBatteryTv.text = "● Battery Optimization: EXEMPTED"
+                statusBatteryTv.setTextColor(Color.parseColor("#4CAF50"))
             } else {
-                val entryName = file.absolutePath.substring(root.absolutePath.length + 1)
-                zos.putNextEntry(ZipEntry(entryName))
-                zos.write(file.readBytes())
-                zos.closeEntry()
+                statusBatteryTv.text = "● Battery Optimization: RESTRICTED"
+                statusBatteryTv.setTextColor(Color.parseColor("#FF9800"))
             }
+        } else {
+            statusBatteryTv.text = "● Battery Optimization: OK"
+            statusBatteryTv.setTextColor(Color.parseColor("#4CAF50"))
         }
     }
 
-    private fun shareZip(zipFile: File, title: String) {
-        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", zipFile)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/zip"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    private fun createStatusCard(parent: LinearLayout, initialText: String): TextView {
+        val tv = TextView(this).apply {
+            text = initialText
+            setTextColor(Color.LTGRAY)
+            textSize = 14f
+            setPadding(20, 20, 20, 10)
         }
-        startActivity(Intent.createChooser(intent, title))
+        parent.addView(tv)
+        return tv
     }
 
-    private fun showLogsDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_logs, null)
-        val tvLogs = dialogView.findViewById<TextView>(R.id.tvLogsContent)
-        val btnShare = dialogView.findViewById<Button>(R.id.btnShareLogs)
-        val btnClear = dialogView.findViewById<Button>(R.id.btnClearLogs)
-        val btnClose = dialogView.findViewById<Button>(R.id.btnCloseLogs)
-
-        val logFile = File(filesDir, "error_log.txt")
-        tvLogs?.text = if (logFile.exists() && logFile.length() > 0) logFile.readText() else "Логи отсутствуют."
-
-        val ad = AlertDialog.Builder(this).setView(dialogView).create()
-
-        btnShare?.setOnClickListener {
-            if (logFile.exists() && logFile.length() > 0) {
-                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", logFile)
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                startActivity(Intent.createChooser(intent, "Поделиться логами"))
-            } else {
-                Toast.makeText(this, "Логи пусты", Toast.LENGTH_SHORT).show()
+    private fun createButton(labelText: String, onClick: () -> Unit): Button {
+        return Button(this).apply {
+            text = labelText
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#2196F3"))
+            setOnClickListener {
+                vibrateFeedback(30L)
+                onClick()
             }
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 20) }
+            layoutParams = lp
         }
-
-        btnClear?.setOnClickListener {
-            if (logFile.exists()) logFile.delete()
-            tvLogs?.text = "Логи очищены."
-            Toast.makeText(this, "Логи очищены", Toast.LENGTH_SHORT).show()
-        }
-
-        btnClose?.setOnClickListener { ad.dismiss() }
-        ad.show()
-    }
-
-    private fun showTemplatesManagerDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_templates_manager, null)
-        val layoutList = dialogView.findViewById<LinearLayout>(R.id.layoutTemplatesList)
-        val btnClose = dialogView.findViewById<Button>(R.id.btnCloseTemplatesManager)
-
-        val ad = AlertDialog.Builder(this).setView(dialogView).create()
-
-        fun refresh() {
-            layoutList?.removeAllViews()
-            val baseDir = File(filesDir, "templates")
-
-            baseDir.listFiles()?.forEach { folder ->
-                if (folder.isDirectory) {
-                    folder.listFiles()?.forEach { file ->
-                        if (file.name.startsWith("mask_") && file.name.endsWith(".png")) {
-                            val item = LayoutInflater.from(this).inflate(R.layout.item_template, null)
-
-                            val iv = item.findViewById<ImageView>(R.id.ivTemplatePreview)
-                            val tv = item.findViewById<TextView>(R.id.tvTemplateName)
-                            val btnDelete = item.findViewById<Button>(R.id.btnDeleteTemplateFile)
-
-                            iv?.setImageBitmap(BitmapFactory.decodeFile(file.absolutePath))
-                            tv?.text = "${folder.name}\n${file.nameWithoutExtension}"
-
-                            btnDelete?.setOnClickListener {
-                                MyAutoClickService.instance?.moveTemplateToTrash(
-                                    MyAutoClickService.instance?.globalTemplatesNames?.indexOf(file.absolutePath) ?: -1
-                                )
-                                MyAutoClickService.instance?.loadAllTemplatesFromDisk()
-                                refresh()
-                            }
-
-                            layoutList?.addView(item)
-                        }
-                    }
-                }
-            }
-        }
-
-        refresh()
-        btnClose?.setOnClickListener { ad.dismiss() }
-        ad.show()
-    }
-
-    private fun showPermissionsHelpDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_permissions, null)
-        val ad = AlertDialog.Builder(this).setView(dialogView).create()
-        dialogView.findViewById<Button>(R.id.btnClosePermissionsDialog)?.setOnClickListener { ad.dismiss() }
-        ad.show()
-    }
-
-    private fun showInfoHelpDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_info, null)
-        val ad = AlertDialog.Builder(this).setView(dialogView).create()
-
-        val tvContent = dialogView.findViewById<TextView>(R.id.tvTabContent)
-        val tabClick = dialogView.findViewById<Button>(R.id.tabClick)
-        val tabSwipe = dialogView.findViewById<Button>(R.id.tabSwipe)
-        val tabAi = dialogView.findViewById<Button>(R.id.tabAi)
-        val btnClose = dialogView.findViewById<Button>(R.id.btnCloseInfoDialog)
-
-        val clickInfo = "• Клики (Click):\nТочечное нажатие по координатам с регулируемой задержкой, повторами и случайным разбросом.\n\n• Зажатие (Hold):\nУдержание точки на заданное время (в мс)."
-        val swipeInfo = "• Свайпы (Swipe):\nПлавное перемещение от точки (S) к (E).\n\n• Траектория Джойстика:\nЗапись сложных свайпов через плавающий джойстик."
-        val aiInfo = "• ИИ-Сканер (AI Trigger v40):\nПоиск заданного изображения на экране с калибровкой, выбором порога (%) и эстафетой сценариев."
-
-        tvContent?.text = clickInfo
-
-        tabClick?.setOnClickListener {
-            tvContent?.text = clickInfo
-            tabClick.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
-            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
-            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
-        }
-
-        tabSwipe?.setOnClickListener {
-            tvContent?.text = swipeInfo
-            tabClick?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
-            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
-            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
-        }
-
-        tabAi?.setOnClickListener {
-            tvContent?.text = aiInfo
-            tabClick?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
-            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
-            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
-        }
-
-        btnClose?.setOnClickListener { ad.dismiss() }
-        ad.show()
     }
 }
