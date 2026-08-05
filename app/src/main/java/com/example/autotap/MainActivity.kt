@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
-        tvVersion?.text = "AutoTap v37.2.0-PRO"
+        tvVersion?.text = "AutoTap v37.3.0-PRO"
 
         val btnAppDetails = findViewById<Button>(R.id.btnAppDetails)
         val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
@@ -186,7 +186,7 @@ class MainActivity : AppCompatActivity() {
             if (templatesDir.exists()) zipDirToZip(filesDir, templatesDir, zos)
 
             zos.close()
-            shareZip(zipFile, "Полный бэкап AutoTap v37.2")
+            shareZip(zipFile, "Полный бэкап AutoTap v37.3")
         } catch (e: Exception) {
             MyAutoClickService.logError(this, e)
             Toast.makeText(this, "Ошибка бэкапа!", Toast.LENGTH_SHORT).show()

@@ -57,6 +57,10 @@ object MaskCalibrator {
         )
     }
 
+    fun adaptMask(bmp: Bitmap): Bitmap {
+        return applyClaheLocalContrast(bmp)
+    }
+
     fun applyClaheLocalContrast(bmp: Bitmap): Bitmap {
         val out = bmp.copy(Bitmap.Config.ARGB_8888, true)
         val w = out.width
