@@ -42,7 +42,6 @@ data class AutoTapAction(
     var targetColor: Int = Color.BLACK,
     var colorTolerance: Int = 15,
 
-    // Редактируемые var-поля с поддержкой приведения Float/Int типов
     var delay: Long = 500L,
     var repeatCount: Int = 1,
     var similarityPercent: Float = 0.8f,
@@ -86,6 +85,10 @@ data class AutoTapAction(
 ) {
     fun setCalibratedRect(rect: Rect) {
         calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
+    }
+
+    fun setCalibratedRect(rectF: RectF) {
+        calibratedRectNorm = rectF
     }
 
     fun toJsonObject(): JSONObject {

@@ -1,5 +1,7 @@
 package com.example.autotap
 
+import com.example.autotap.*
+
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.annotation.SuppressLint
