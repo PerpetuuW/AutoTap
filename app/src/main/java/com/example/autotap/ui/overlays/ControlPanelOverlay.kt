@@ -1,11 +1,1 @@
-package com.example.autotap.ui.overlays
-
-import android.content.Context
-import com.example.autotap.*
-
-class ControlPanelOverlay(private val context: Context) {
-    fun show() {
-        val params = context.createOverlayParams()
-        context.safeAddView(null, params)
-    }
-}
+service.actionEditor.show(config)

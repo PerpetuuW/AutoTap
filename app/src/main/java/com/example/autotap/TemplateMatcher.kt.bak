@@ -1,2 +1,506 @@
-matches.forEach { pt -> MyAutoClickService.instance?.candidateOverlay?.showCandidate(pt) }
-        return matches
+﻿package com.example.autotap
+
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.Point
+import android.graphics.Rect
+import org.json.JSONObject
+import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.min
+
+enum class SearchMatchingMode { PIXEL, SHAPE, HYBRID }
+
+object TemplateMatcher {
+
+    fun analyzeTemplate(template: Bitmap): JSONObject {
+        val w = template.width
+        val h = template.height
+        val area = w * h
+        val aspectRatio = w.toFloat() / h.toFloat()
+
+        var totalLum = 0L
+        var totalLumSq = 0L
+        var edgePixelsCount = 0
+        var activePixels = 0
+
+        val pixels = IntArray(w * h)
+        template.getPixels(pixels, 0, w, 0, 0, w, h)
+
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val idx = y * w + x
+                val color = pixels[idx]
+                if (Color.alpha(color) > 20) {
+                    activePixels++
+                    val lum = (Color.red(color) * 299 + Color.green(color) * 587 + Color.blue(color) * 114) / 1000
+                    totalLum += lum
+                    totalLumSq += (lum * lum).toLong()
+
+                    if (x < w - 1 && y < h - 1) {
+                        val lumRight = (Color.red(pixels[idx + 1]) * 299 + Color.green(pixels[idx + 1]) * 587 + Color.blue(pixels[idx + 1]) * 114) / 1000
+                        val lumDown = (Color.red(pixels[idx + w]) * 299 + Color.green(pixels[idx + w]) * 587 + Color.blue(pixels[idx + w]) * 114) / 1000
+                        val grad = abs(lum - lumRight) + abs(lum - lumDown)
+                        if (grad > 35) edgePixelsCount++
+                    }
+                }
+            }
+        }
+
+        val edgeDensity = if (activePixels > 0) edgePixelsCount.toFloat() / activePixels.toFloat() else 0f
+        val meanLum = if (activePixels > 0) (totalLum / activePixels).toFloat() else 128f
+        val variance = if (activePixels > 0) max(0f, (totalLumSq / activePixels).toFloat() - (meanLum * meanLum)) else 0f
+        val stdDev = Math.sqrt(variance.toDouble()).toFloat()
+
+        val autoMode = when {
+            edgeDensity > 0.22f -> SearchMatchingMode.SHAPE
+            stdDev < 25f && edgeDensity < 0.08f -> SearchMatchingMode.PIXEL
+            else -> SearchMatchingMode.HYBRID
+        }
+
+        val templateType = when {
+            h <= 8 && w >= 80 -> TemplateType.THIN_HORIZONTAL
+            w <= 8 && h >= 80 -> TemplateType.THIN_VERTICAL
+            aspectRatio >= 3.5f -> TemplateType.WIDE
+            area <= 400 -> TemplateType.MICRO
+            area <= 2500 -> TemplateType.SMALL
+            area <= 10000 -> TemplateType.MEDIUM
+            area <= 40000 -> TemplateType.LARGE
+            else -> TemplateType.HUGE
+        }
+
+        val (scanStepX, scanStepY) = when (templateType) {
+            TemplateType.MICRO -> Pair(1, 1)
+            TemplateType.THIN_HORIZONTAL -> Pair(4, 1)
+            TemplateType.THIN_VERTICAL -> Pair(1, 4)
+            TemplateType.WIDE -> Pair(6, 2)
+            TemplateType.SMALL -> Pair(2, 2)
+            TemplateType.MEDIUM -> Pair(4, 4)
+            TemplateType.LARGE -> Pair(6, 6)
+            TemplateType.HUGE -> Pair(8, 8)
+            else -> Pair(4, 4)
+        }
+
+        val (sobelWeight, pixelWeight) = when (autoMode) {
+            SearchMatchingMode.SHAPE -> Pair(0.70f, 0.30f)
+            SearchMatchingMode.PIXEL -> Pair(0.15f, 0.85f)
+            SearchMatchingMode.HYBRID -> Pair(0.40f, 0.60f)
+        }
+
+        return JSONObject().apply {
+            put("templateType", templateType.name)
+            put("width", w)
+            put("height", h)
+            put("aspectRatio", aspectRatio)
+            put("edgeDensity", edgeDensity)
+            put("stdDevLuminance", stdDev)
+            put("autoMatchingMode", autoMode.name)
+            put("searchStrategy", JSONObject().apply {
+                put("scanStepX", scanStepX)
+                put("scanStepY", scanStepY)
+                put("fineStepX", 1)
+                put("fineStepY", 1)
+            })
+            put("matching", JSONObject().apply {
+                put("mode", autoMode.name)
+                put("similarity", 0.80)
+                put("sobelWeight", sobelWeight)
+                put("pixelWeight", pixelWeight)
+            })
+        }
+    }
+
+    fun generateSmartMask(src: Bitmap, isCircle: Boolean): Bitmap {
+        val w = src.width
+        val h = src.height
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val pixels = IntArray(w * h)
+        src.getPixels(pixels, 0, w, 0, 0, w, h)
+
+        val cx = w / 2f
+        val cy = h / 2f
+        val radius = min(w, h) / 2f
+
+        val cornerColors = intArrayOf(
+            pixels[0], pixels[(w - 1).coerceAtLeast(0)],
+            pixels[((h - 1) * w).coerceAtLeast(0)], pixels[(h * w - 1).coerceAtLeast(0)]
+        )
+        var bgRed = 0; var bgGreen = 0; var bgBlue = 0
+        for (c in cornerColors) {
+            bgRed += Color.red(c)
+            bgGreen += Color.green(c)
+            bgBlue += Color.blue(c)
+        }
+        bgRed /= 4; bgGreen /= 4; bgBlue /= 4
+
+        var validPixels = 0
+
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val idx = y * w + x
+                var alpha = Color.alpha(pixels[idx])
+                val pxColor = pixels[idx]
+
+                if (isCircle) {
+                    val dist = hypot((x - cx).toDouble(), (y - cy).toDouble())
+                    if (dist > radius) alpha = 0
+                }
+
+                if (alpha > 20) {
+                    val rDiff = abs(Color.red(pxColor) - bgRed)
+                    val gDiff = abs(Color.green(pxColor) - bgGreen)
+                    val bDiff = abs(Color.blue(pxColor) - bgBlue)
+                    if (rDiff < 25 && gDiff < 25 && bDiff < 25 && (x < 5 || x > w - 6 || y < 5 || y > h - 6)) {
+                        alpha = 0
+                    }
+                }
+
+                if (alpha > 30) validPixels++
+                pixels[idx] = if (alpha == 0) Color.TRANSPARENT else pxColor
+            }
+        }
+
+        if (validPixels < (w * h * 0.05)) {
+            return src.copy(Bitmap.Config.ARGB_8888, true)
+        }
+
+        out.setPixels(pixels, 0, w, 0, 0, w, h)
+        return out
+    }
+
+    fun calculateSobelEdgeScore(
+        sPixels: IntArray, tPixels: IntArray,
+        sw: Int, sh: Int, tw: Int, th: Int,
+        x: Int, y: Int
+    ): Float {
+        var edgeMatches = 0
+        var totalEdges = 0
+
+        val isThinLine = tw <= 12 || th <= 12 || (tw * th) <= 600
+        val gradThreshold = if (isThinLine) 18 else 30
+        val evalStep = if (isThinLine) 1 else 2
+
+        val maxTy = Math.min(th - 1, sh - y - 1)
+        val maxTx = Math.min(tw - 1, sw - x - 1)
+
+        for (ty in 1 until maxTy step evalStep) {
+            for (tx in 1 until maxTx step evalStep) {
+                val tIdx = ty * tw + tx
+                if (tIdx + tw >= tPixels.size || tIdx + 1 >= tPixels.size) continue
+                val tColor = tPixels[tIdx]
+                if (Color.alpha(tColor) > 20) {
+                    val tLum = (Color.red(tColor) * 299 + Color.green(tColor) * 587 + Color.blue(tColor) * 114) / 1000
+                    val tLumRight = (Color.red(tPixels[tIdx + 1]) * 299 + Color.green(tPixels[tIdx + 1]) * 587 + Color.blue(tPixels[tIdx + 1]) * 114) / 1000
+                    val tLumDown = (Color.red(tPixels[tIdx + tw]) * 299 + Color.green(tPixels[tIdx + tw]) * 587 + Color.blue(tPixels[tIdx + tw]) * 114) / 1000
+                    val tGrad = abs(tLum - tLumRight) + abs(tLum - tLumDown)
+
+                    if (tGrad > gradThreshold) {
+                        totalEdges++
+                        val sy = y + ty
+                        val sx = x + tx
+                        val sIdx = sy * sw + sx
+                        if (sIdx + sw >= sPixels.size || sIdx + 1 >= sPixels.size) continue
+                        val sColor = sPixels[sIdx]
+                        val sLum = (Color.red(sColor) * 299 + Color.green(sColor) * 587 + Color.blue(sColor) * 114) / 1000
+                        val sLumRight = (Color.red(sPixels[sIdx + 1]) * 299 + Color.green(sPixels[sIdx + 1]) * 587 + Color.blue(sPixels[sIdx + 1]) * 114) / 1000
+                        val sLumDown = (Color.red(sPixels[sIdx + sw]) * 299 + Color.green(sPixels[sIdx + sw]) * 587 + Color.blue(sPixels[sIdx + sw]) * 114) / 1000
+                        val sGrad = abs(sLum - sLumRight) + abs(sLum - sLumDown)
+
+                        if (abs(tGrad - sGrad) < 45) {
+                            edgeMatches++
+                        }
+                    }
+                }
+            }
+        }
+        if (totalEdges < 3) return 0.0f
+        return edgeMatches.toFloat() / totalEdges.toFloat()
+    }
+
+    fun findTemplateCandidatesCoarseFine(
+        screenBitmap: Bitmap,
+        template: Bitmap,
+        meta: JSONObject?,
+        actionConfig: ActionConfig? = null
+    ): List<MatchCandidate> {
+        val sw = screenBitmap.width
+        val sh = screenBitmap.height
+        val tw = template.width
+        val th = template.height
+
+        if (tw > sw || th > sh) return emptyList()
+
+        val matchingMeta = meta?.optJSONObject("matching")
+        val modeStr = actionConfig?.let {
+            if (it.shapeOnlyMode) "SHAPE" else null
+        } ?: matchingMeta?.optString("mode", "HYBRID") ?: "HYBRID"
+
+        val sobelWeight = matchingMeta?.optDouble("sobelWeight", 0.40)?.toFloat() ?: 0.40f
+        val pixelWeight = matchingMeta?.optDouble("pixelWeight", 0.60)?.toFloat() ?: 0.60f
+
+        val strat = meta?.optJSONObject("searchStrategy")
+        val baseStepX = strat?.optInt("scanStepX", 4) ?: 4
+        val baseStepY = strat?.optInt("scanStepY", 4) ?: 4
+
+        val zones = mutableListOf<Rect>()
+
+        if (meta != null && meta.has("originX")) {
+            val ox = meta.getInt("originX")
+            val oy = meta.getInt("originY")
+            val ow = meta.optInt("originW", tw)
+            val oh = meta.optInt("originH", th)
+            zones.add(Rect((ox - 35).coerceAtLeast(0), (oy - 35).coerceAtLeast(0), (ox + ow + 35).coerceAtMost(sw), (oy + oh + 35).coerceAtMost(sh)))
+            zones.add(Rect((ox - 180).coerceAtLeast(0), (oy - 180).coerceAtLeast(0), (ox + ow + 180).coerceAtMost(sw), (oy + oh + 180).coerceAtMost(sh)))
+        }
+
+        if (actionConfig != null) {
+            if (actionConfig.searchAreaW > 20 && actionConfig.searchAreaH > 20) {
+                zones.add(Rect(
+                    actionConfig.searchAreaX.coerceAtLeast(0),
+                    actionConfig.searchAreaY.coerceAtLeast(0),
+                    (actionConfig.searchAreaX + actionConfig.searchAreaW).coerceAtMost(sw),
+                    (actionConfig.searchAreaY + actionConfig.searchAreaH).coerceAtMost(sh)
+                ))
+            }
+            if (actionConfig.searchAreasList.isNotEmpty()) {
+                zones.addAll(actionConfig.searchAreasList)
+            }
+        }
+
+        zones.add(Rect(0, 0, sw, sh))
+
+        val scales = if (actionConfig?.multiScaleSearch == true) {
+            floatArrayOf(1.0f, 0.88f, 1.12f)
+        } else {
+            floatArrayOf(1.0f)
+        }
+
+        val allCandidates = mutableListOf<MatchCandidate>()
+
+        for (scaleFactor in scales) {
+            val scaledTw = (tw * scaleFactor).toInt().coerceIn(10, sw)
+            val scaledTh = (th * scaleFactor).toInt().coerceIn(10, sh)
+
+            val curTemplate = if (scaleFactor != 1.0f) {
+                Bitmap.createScaledBitmap(template, scaledTw, scaledTh, false)
+            } else template
+
+            val downScale = 2
+            val smallSw = (sw / downScale).coerceAtLeast(1)
+            val smallSh = (sh / downScale).coerceAtLeast(1)
+            val smallTw = (scaledTw / downScale).coerceAtLeast(1)
+            val smallTh = (scaledTh / downScale).coerceAtLeast(1)
+
+            val smallScreen = Bitmap.createScaledBitmap(screenBitmap, smallSw, smallSh, false)
+            val smallTemplate = Bitmap.createScaledBitmap(curTemplate, smallTw, smallTh, false)
+
+            val sPixels = IntArray(smallSw * smallSh)
+            val tPixels = IntArray(smallTw * smallTh)
+            smallScreen.getPixels(sPixels, 0, smallSw, 0, 0, smallSw, smallSh)
+            smallTemplate.getPixels(tPixels, 0, smallTw, 0, 0, smallTw, smallTh)
+
+            val stepX = (baseStepX / downScale).coerceAtLeast(1)
+            val stepY = (baseStepY / downScale).coerceAtLeast(1)
+
+            for (zone in zones) {
+                val startY = (zone.top / downScale).coerceAtLeast(0)
+                val endY = ((zone.bottom - scaledTh) / downScale).coerceAtLeast(startY)
+                val startX = (zone.left / downScale).coerceAtLeast(0)
+                val endX = ((zone.right - scaledTw) / downScale).coerceAtLeast(startX)
+
+                for (y in startY..endY step stepY) {
+                    for (x in startX..endX step stepX) {
+                        var matchPixels = 0
+                        var totalChecked = 0
+
+                        for (ty in 0 until smallTh step stepY) {
+                            for (tx in 0 until smallTw step stepX) {
+                                val tColor = tPixels[ty * smallTw + tx]
+                                if (Color.alpha(tColor) > 10) {
+                                    totalChecked++
+                                    val sColor = sPixels[(y + ty) * smallSw + (x + tx)]
+                                    if (abs(Color.red(sColor) - Color.red(tColor)) < 30 &&
+                                        abs(Color.green(sColor) - Color.green(tColor)) < 30 &&
+                                        abs(Color.blue(sColor) - Color.blue(tColor)) < 30) {
+                                        matchPixels++
+                                    }
+                                }
+                            }
+                        }
+
+                        if (totalChecked < 8) continue
+                        val score = matchPixels.toFloat() / totalChecked.toFloat()
+
+                        if (score > 0.48f) {
+                            val origX = x * downScale
+                            val origY = y * downScale
+                            val rect = Rect(origX, origY, origX + scaledTw, origY + scaledTh)
+                            allCandidates.add(MatchCandidate(Point(origX + scaledTw / 2, origY + scaledTh / 2), rect, score))
+                        }
+                    }
+                }
+                val maxScoreInZone = allCandidates.maxOfOrNull { it.score } ?: 0f
+                if (maxScoreInZone >= 0.85f) break
+            }
+
+            smallScreen.recycle()
+            smallTemplate.recycle()
+            if (curTemplate !== template) curTemplate.recycle()
+
+            if (allCandidates.isNotEmpty()) break
+        }
+
+        if (allCandidates.isEmpty()) return emptyList()
+
+        allCandidates.sortByDescending { it.score }
+        val topCoarse = allCandidates.take(10)
+
+        val fullSPixels = IntArray(sw * sh)
+        val fullTPixels = IntArray(tw * th)
+        screenBitmap.getPixels(fullSPixels, 0, sw, 0, 0, sw, sh)
+        template.getPixels(fullTPixels, 0, tw, 0, 0, tw, th)
+
+        val fineCandidates = mutableListOf<MatchCandidate>()
+
+        for (cand in topCoarse) {
+            val cx = cand.rect.left
+            val cy = cand.rect.top
+
+            var bestScore = cand.score
+            var bestRect = cand.rect
+
+            for (fy in (cy - 6).coerceAtLeast(0)..(cy + 6).coerceAtMost(sh - th)) {
+                for (fx in (cx - 6).coerceAtLeast(0)..(cx + 6).coerceAtMost(sw - tw)) {
+                    var matchPixels = 0
+                    var totalChecked = 0
+
+                    for (ty in 0 until th step 2) {
+                        for (tx in 0 until tw step 2) {
+                            val tColor = fullTPixels[ty * tw + tx]
+                            if (Color.alpha(tColor) > 10) {
+                                totalChecked++
+                                val sColor = fullSPixels[(fy + ty) * sw + (fx + tx)]
+                                if (abs(Color.red(sColor) - Color.red(tColor)) < 25 &&
+                                    abs(Color.green(sColor) - Color.green(tColor)) < 25 &&
+                                    abs(Color.blue(sColor) - Color.blue(tColor)) < 25) {
+                                    matchPixels++
+                                }
+                            }
+                        }
+                    }
+
+                    if (totalChecked < 10) continue
+                    val colorScore = matchPixels.toFloat() / totalChecked.toFloat()
+
+                    val finalScore = when (modeStr) {
+                        "SHAPE" -> calculateSobelEdgeScore(fullSPixels, fullTPixels, sw, sh, tw, th, fx, fy)
+                        "PIXEL" -> colorScore
+                        else -> {
+                            val edgeScore = calculateSobelEdgeScore(fullSPixels, fullTPixels, sw, sh, tw, th, fx, fy)
+                            (colorScore * pixelWeight) + (edgeScore * sobelWeight)
+                        }
+                    }
+
+                    if (finalScore > bestScore) {
+                        bestScore = finalScore
+                        bestRect = Rect(fx, fy, fx + tw, fy + th)
+                    }
+                }
+            }
+            fineCandidates.add(MatchCandidate(Point(bestRect.centerX(), bestRect.centerY()), bestRect, bestScore))
+        }
+
+        fineCandidates.sortByDescending { it.score }
+        val nmsList = mutableListOf<MatchCandidate>()
+
+        for (cand in fineCandidates) {
+            val intersects = nmsList.any { existing -> Rect.intersects(existing.rect, cand.rect) }
+            if (!intersects) {
+                nmsList.add(cand)
+            }
+        }
+
+        return nmsList.take(6)
+    }
+
+    fun findCandidatesForCreation(screenBitmap: Bitmap, template: Bitmap): MutableList<MatchCandidate> {
+        val candidates = mutableListOf<MatchCandidate>()
+
+        val scale = 4
+        val smallSw = (screenBitmap.width / scale).coerceAtLeast(1)
+        val smallSh = (screenBitmap.height / scale).coerceAtLeast(1)
+        val smallTw = (template.width / scale).coerceAtLeast(1)
+        val smallTh = (template.height / scale).coerceAtLeast(1)
+
+        if (smallTw > smallSw || smallTh > smallSh) return candidates
+
+        val smallScreen = Bitmap.createScaledBitmap(screenBitmap, smallSw, smallSh, false)
+        val smallTemplate = Bitmap.createScaledBitmap(template, smallTw, smallSh, false)
+
+        val screenPixels = IntArray(smallSw * smallSh)
+        val templatePixels = IntArray(smallTw * smallTh)
+        smallScreen.getPixels(screenPixels, 0, smallSw, 0, 0, smallSw, smallSh)
+        smallTemplate.getPixels(templatePixels, 0, smallTw, 0, 0, smallTw, smallTh)
+
+        val fullSPixels = IntArray(screenBitmap.width * screenBitmap.height)
+        val fullTPixels = IntArray(template.width * template.height)
+        screenBitmap.getPixels(fullSPixels, 0, screenBitmap.width, 0, 0, screenBitmap.width, screenBitmap.height)
+        template.getPixels(fullTPixels, 0, template.width, 0, 0, template.width, template.height)
+
+        val step = 2
+        for (y in 0..(smallSh - smallTh) step step) {
+            for (x in 0..(smallSw - smallTw) step step) {
+                var matchPixels = 0
+                var totalChecked = 0
+                for (ty in 0 until smallTh step step) {
+                    for (tx in 0 until smallTw step step) {
+                        val sColor = screenPixels[(y + ty) * smallSw + (x + tx)]
+                        val tColor = templatePixels[ty * smallTw + tx]
+                        if (Color.alpha(tColor) > 10) {
+                            totalChecked++
+                            if (abs(Color.red(sColor) - Color.red(tColor)) < 30 &&
+                                abs(Color.green(sColor) - Color.green(tColor)) < 30 &&
+                                abs(Color.blue(sColor) - Color.blue(tColor)) < 30) {
+                                matchPixels++
+                            }
+                        }
+                    }
+                }
+                if (totalChecked < 12) continue
+                val colorScore = matchPixels.toFloat() / totalChecked.toFloat()
+
+                if (colorScore > 0.55f) {
+                    val origX = x * scale
+                    val origY = y * scale
+                    val origW = template.width
+                    val origH = template.height
+
+                    val edgeScore = calculateSobelEdgeScore(
+                        fullSPixels, fullTPixels,
+                        screenBitmap.width, screenBitmap.height,
+                        origW, origH,
+                        origX, origY
+                    )
+
+                    val hybridScore = (colorScore * 0.50f) + (edgeScore * 0.50f)
+
+                    if (hybridScore > 0.50f) {
+                        val rect = Rect(origX, origY, origX + origW, origY + origH)
+                        val existingIdx = candidates.indexOfFirst { Rect.intersects(it.rect, rect) }
+                        if (existingIdx == -1) {
+                            candidates.add(MatchCandidate(Point(origX + origW/2, origY + origH/2), rect, hybridScore))
+                        } else if (hybridScore > candidates[existingIdx].score) {
+                            candidates[existingIdx] = MatchCandidate(Point(origX + origW/2, origY + origH/2), rect, hybridScore)
+                        }
+                    }
+                }
+            }
+        }
+        smallScreen.recycle()
+        smallTemplate.recycle()
+
+        candidates.sortByDescending { it.score }
+        return candidates.take(6).toMutableList()
+    }
+}

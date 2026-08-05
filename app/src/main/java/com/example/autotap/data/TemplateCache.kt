@@ -1,5 +1,6 @@
 
 package com.example.autotap.data
+import com.example.autotap.*
 
 import android.graphics.Bitmap
 import java.util.concurrent.ConcurrentHashMap

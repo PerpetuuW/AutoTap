@@ -1,5 +1,6 @@
 
 package com.example.autotap.ui.overlays
+import com.example.autotap.*
 
 import android.graphics.Color
 import android.graphics.PixelFormat
