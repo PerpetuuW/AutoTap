@@ -76,7 +76,6 @@ class ControlPanelOverlay(service: MyAutoClickService) :
 
                     p.gravity = Gravity.TOP or Gravity.START
                     p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
-                    // Ограничиваем сверху 60dp, чтобы не цеплять шторку
                     p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(service.dpToPx(60), maxY)
                     service.overlayManager.safeUpdateViewLayout(view, p)
                     true
@@ -111,14 +110,6 @@ class ControlPanelOverlay(service: MyAutoClickService) :
         btnLoadScript?.setOnClickListener { service.vibrateFeedback(20L); service.showScriptsDialog() }
         btnHideNumbers?.setOnClickListener { service.vibrateFeedback(20L); service.toggleNumbersVisibility() }
         btnClose?.setOnClickListener { service.vibrateFeedback(20L); service.hideControlPanel(openMainApp = true) }
-    }
-
-    override fun createParams(): WindowManager.LayoutParams {
-        return service.overlayManager.createOverlayParams().apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = service.dpToPx(20)
-            y = service.dpToPx(240) // Смещено ниже от шторки Android
-        }
     }
 
     fun ensureSubMenuVisible() {
