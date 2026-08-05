@@ -6,11 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
 import android.view.WindowManager
-import com.example.autotap.AutoTapAction
-import com.example.autotap.ActionType
-import com.example.autotap.MyAutoClickService
-import com.example.autotap.createOverlayParams
-import com.example.autotap.safeAddView
+import com.example.autotap.*
 
 class ScenarioDebuggerOverlay(private val context: Context) {
 
@@ -46,6 +42,6 @@ class ScenarioDebuggerOverlay(private val context: Context) {
     }
 
     private fun DiagnosticLoggerLog(action: AutoTapAction) {
-        com.example.autotap.DiagnosticLogger.log("ScenarioDebuggerOverlay", "Debug step: ${action.id}")
+        DiagnosticLogger.log("ScenarioDebuggerOverlay", "Debug step: ${action.id}")
     }
 }

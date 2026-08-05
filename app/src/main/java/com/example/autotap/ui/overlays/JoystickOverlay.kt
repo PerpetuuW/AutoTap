@@ -1,5 +1,7 @@
 package com.example.autotap.ui.overlays
 
+import com.example.autotap.*
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas

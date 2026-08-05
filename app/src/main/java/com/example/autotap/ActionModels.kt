@@ -1,8 +1,11 @@
 package com.example.autotap
 
+import com.example.autotap.*
+
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Point
+import android.graphics.Rect
 import android.graphics.RectF
 import org.json.JSONArray
 import org.json.JSONObject
@@ -39,7 +42,7 @@ data class AutoTapAction(
     var targetColor: Int = Color.BLACK,
     var colorTolerance: Int = 15,
 
-    // Изменяемые поля для работы ActionEditorEngine, AiScannerEngine и TemplateMatcher
+    // Редактируемые var-поля с поддержкой приведения Float/Int типов
     var delay: Long = 500L,
     var repeatCount: Int = 1,
     var similarityPercent: Float = 0.8f,
@@ -81,6 +84,10 @@ data class AutoTapAction(
     var loopStartIndex: Int = 0,
     var joystickPath: List<Point> = emptyList()
 ) {
+    fun setCalibratedRect(rect: Rect) {
+        calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
+    }
+
     fun toJsonObject(): JSONObject {
         return JSONObject().apply {
             put("id", id)
@@ -185,6 +192,8 @@ data class AutoTapAction(
                 loopStartIndex = json.optInt("loopStartIndex", 0)
             )
         }
+
+        fun fromJson(jsonObj: JSONObject): AutoTapAction = fromJsonObject(jsonObj)
 
         fun fromJson(jsonStr: String): AutoTapAction {
             return try {

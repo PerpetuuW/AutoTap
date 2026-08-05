@@ -1,5 +1,7 @@
 package com.example.autotap.engine
 
+import com.example.autotap.*
+
 import android.graphics.PointF
 import android.os.Handler
 import android.os.Looper

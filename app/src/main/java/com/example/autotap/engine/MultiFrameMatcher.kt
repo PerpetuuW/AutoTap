@@ -1,5 +1,7 @@
 package com.example.autotap.engine
 
+import com.example.autotap.*
+
 import android.graphics.Bitmap
 import com.example.autotap.ActionConfig
 import com.example.autotap.MatchCandidate

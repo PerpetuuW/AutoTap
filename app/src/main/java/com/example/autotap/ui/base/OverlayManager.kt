@@ -1,5 +1,7 @@
 package com.example.autotap.ui.base
 
+import com.example.autotap.*
+
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build

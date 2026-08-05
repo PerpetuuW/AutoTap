@@ -1,5 +1,7 @@
 package com.example.autotap
 
+import com.example.autotap.*
+
 import android.graphics.*
 import org.json.JSONObject
 import kotlin.math.abs

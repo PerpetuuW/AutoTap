@@ -1,5 +1,7 @@
 package com.example.autotap.data
 
+import com.example.autotap.*
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

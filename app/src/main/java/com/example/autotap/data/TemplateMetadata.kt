@@ -1,5 +1,7 @@
 package com.example.autotap.data
 
+import com.example.autotap.*
+
 import android.graphics.Rect
 import org.json.JSONObject
 

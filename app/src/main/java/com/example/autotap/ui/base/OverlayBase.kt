@@ -1,5 +1,7 @@
 package com.example.autotap.ui.base
 
+import com.example.autotap.*
+
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager

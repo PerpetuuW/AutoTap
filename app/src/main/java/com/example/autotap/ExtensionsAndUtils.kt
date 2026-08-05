@@ -1,5 +1,7 @@
 package com.example.autotap
 
+import com.example.autotap.*
+
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Point

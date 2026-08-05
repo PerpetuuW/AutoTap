@@ -1,6 +1,10 @@
 package com.example.autotap
 
+import com.example.autotap.*
+
 import android.graphics.Bitmap
+import android.graphics.Rect
+import android.graphics.RectF
 import android.view.View
 import java.io.File
 

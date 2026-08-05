@@ -1,5 +1,7 @@
 package com.example.autotap.ui.overlays
 
+import com.example.autotap.*
+
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.view.Gravity

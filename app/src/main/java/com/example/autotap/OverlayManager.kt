@@ -1,5 +1,7 @@
 package com.example.autotap
 
+import com.example.autotap.*
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color

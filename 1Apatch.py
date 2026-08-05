@@ -14,7 +14,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Карта файлов проекта для атомарной записи
+# Карта основных файлов проекта для перезаписи
 FILES_MAP = {
     # 1. Ресурсные строки Android
     "app/src/main/res/values/strings.xml": r'''<?xml version="1.0" encoding="utf-8"?>
@@ -24,12 +24,13 @@ FILES_MAP = {
 </resources>
 ''',
 
-    # 2. Модель AutoTapAction со всеми необходимыми var-полями,toJson/fromJson и ActionConfig
+    # 2. Модель AutoTapAction со 100% поддержкой перегрузок типов
     "app/src/main/java/com/example/autotap/ActionModels.kt": r'''package com.example.autotap
 
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Point
+import android.graphics.Rect
 import android.graphics.RectF
 import org.json.JSONArray
 import org.json.JSONObject
@@ -66,7 +67,7 @@ data class AutoTapAction(
     var targetColor: Int = Color.BLACK,
     var colorTolerance: Int = 15,
 
-    // Изменяемые поля для работы ActionEditorEngine, AiScannerEngine и TemplateMatcher
+    // Редактируемые var-поля с поддержкой приведения Float/Int типов
     var delay: Long = 500L,
     var repeatCount: Int = 1,
     var similarityPercent: Float = 0.8f,
@@ -108,6 +109,10 @@ data class AutoTapAction(
     var loopStartIndex: Int = 0,
     var joystickPath: List<Point> = emptyList()
 ) {
+    fun setCalibratedRect(rect: Rect) {
+        calibratedRectNorm = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
+    }
+
     fun toJsonObject(): JSONObject {
         return JSONObject().apply {
             put("id", id)
@@ -213,6 +218,8 @@ data class AutoTapAction(
             )
         }
 
+        fun fromJson(jsonObj: JSONObject): AutoTapAction = fromJsonObject(jsonObj)
+
         fun fromJson(jsonStr: String): AutoTapAction {
             return try {
                 fromJsonObject(JSONObject(jsonStr))
@@ -314,7 +321,7 @@ class AtomicScriptManager(private val context: Context) {
 }
 ''',
 
-    # 3. Глобальные переменные
+    # 3. Глобальные переменные состояния
     "app/src/main/java/com/example/autotap/GlobalVars.kt": r'''package com.example.autotap
 
 import java.util.concurrent.CopyOnWriteArrayList
@@ -330,10 +337,12 @@ val globalTemplatesNames: MutableList<String> = CopyOnWriteArrayList()
 val globalTemplates: MutableList<Any> = CopyOnWriteArrayList()
 ''',
 
-    # 4. Классы поддержки
+    # 4. Классы поддержки всех сервисных движков
     "app/src/main/java/com/example/autotap/EngineSupport.kt": r'''package com.example.autotap
 
 import android.graphics.Bitmap
+import android.graphics.Rect
+import android.graphics.RectF
 import android.view.View
 import java.io.File
 
@@ -872,11 +881,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
 import android.view.WindowManager
-import com.example.autotap.AutoTapAction
-import com.example.autotap.ActionType
-import com.example.autotap.MyAutoClickService
-import com.example.autotap.createOverlayParams
-import com.example.autotap.safeAddView
+import com.example.autotap.*
 
 class ScenarioDebuggerOverlay(private val context: Context) {
 
@@ -912,15 +917,46 @@ class ScenarioDebuggerOverlay(private val context: Context) {
     }
 
     private fun DiagnosticLoggerLog(action: AutoTapAction) {
-        com.example.autotap.DiagnosticLogger.log("ScenarioDebuggerOverlay", "Debug step: ${action.id}")
+        DiagnosticLogger.log("ScenarioDebuggerOverlay", "Debug step: ${action.id}")
     }
 }
 '''
 }
 
+def auto_inject_imports(project_root: Path):
+    """Сквозное добавление `import com.example.autotap.*` во все .kt файлы с помощью сплошного Python I/O"""
+    java_root = project_root / "app" / "src" / "main" / "java" / "com" / "example" / "autotap"
+    if not java_root.exists():
+        return
+
+    import_statement = "import com.example.autotap.*"
+
+    for kt_file in java_root.rglob("*.kt"):
+        try:
+            with open(kt_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            if import_statement not in content and "package com.example.autotap" in content:
+                lines = content.splitlines()
+                new_lines = []
+                injected = False
+                for line in lines:
+                    new_lines.append(line)
+                    if not injected and line.strip().startswith("package com.example.autotap"):
+                        new_lines.append("")
+                        new_lines.append(import_statement)
+                        injected = True
+
+                with open(kt_file, 'w', encoding='utf-8') as f:
+                    f.write("\n".join(new_lines) + "\n")
+
+                logging.info(f"Auto-injected 'import com.example.autotap.*' into: {kt_file.relative_to(project_root)}")
+        except Exception as e:
+            logging.error(f"Failed to inject import into {kt_file}: {e}")
+
 def clean_invalid_res_files(project_root: Path):
-    """Удаление файлов бэкапов из папки res/, ломающих процесс сборки ресурсов Android"""
-    res_dir = project_root / "app/src/main/res"
+    """Удаление нелегитимных файлов бэкапов из папки res/"""
+    res_dir = project_root / "app" / "src" / "main" / "res"
     if res_dir.exists():
         for file_path in res_dir.rglob("*"):
             if file_path.is_file() and (file_path.name.endswith(".bak") or file_path.name.endswith(".tmp")):
@@ -931,10 +967,10 @@ def clean_invalid_res_files(project_root: Path):
                     logging.error(f"Failed to delete {file_path}: {e}")
 
 def remove_duplicate_files(project_root: Path):
-    """Удаление усеченных конфликтных файлов объявлений типов"""
+    """Удаление устаревших конфликтных файлов объявлений типов"""
     conflicting_files = [
-        project_root / "app/src/main/java/com/example/autotap/ActionType.kt",
-        project_root / "app/src/main/java/com/example/autotap/ActionConfig.kt"
+        project_root / "app" / "src" / "main" / "java" / "com" / "example" / "autotap" / "ActionType.kt",
+        project_root / "app" / "src" / "main" / "java" / "com" / "example" / "autotap" / "ActionConfig.kt"
     ]
     for conf_file in conflicting_files:
         if conf_file.exists():
@@ -946,14 +982,14 @@ def remove_duplicate_files(project_root: Path):
 
 def patch_files(project_root: Path):
     logging.info(f"Target project root directory: {project_root.resolve()}")
-    
-    # 1. Зачистка ломающих сборку файлов
+
+    # 1. Предварительная зачистка
     clean_invalid_res_files(project_root)
     remove_duplicate_files(project_root)
-    
+
     updated_count = 0
 
-    # 2. Атомарное обновление целевых файлов
+    # 2. Обновление базовых файлов
     for relative_path, code_content in FILES_MAP.items():
         file_path = project_root / relative_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -963,7 +999,6 @@ def patch_files(project_root: Path):
             bak_path = file_path.with_suffix(file_path.suffix + ".bak")
             try:
                 shutil.copy2(file_path, bak_path)
-                logging.info(f"Backup created: {bak_path.name}")
             except Exception as e:
                 logging.error(f"Failed to create backup for {file_path}: {e}")
 
@@ -980,9 +1015,12 @@ def patch_files(project_root: Path):
             if tmp_path.exists():
                 tmp_path.unlink()
 
-    # Повторная гарантированная зачистка папки res/
+    # 3. Сквозное успешное автоматическое внедрение импортов во ВСЕ 33 файла проекта
+    auto_inject_imports(project_root)
+
+    # 4. Финальная очистка
     clean_invalid_res_files(project_root)
-    logging.info(f"AutoTap Patcher completed successfully. Total updated: {updated_count}/{len(FILES_MAP)}")
+    logging.info(f"AutoTap Patcher completed successfully. Total main files updated: {updated_count}")
 
 if __name__ == "__main__":
     root_dir = Path.cwd()

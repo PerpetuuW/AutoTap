@@ -1,5 +1,7 @@
 package com.example.autotap
 
+import com.example.autotap.*
+
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent

@@ -1,5 +1,7 @@
 package com.example.autotap
 
+import com.example.autotap.*
+
 import java.util.concurrent.CopyOnWriteArrayList
 
 var isRecording: Boolean = false

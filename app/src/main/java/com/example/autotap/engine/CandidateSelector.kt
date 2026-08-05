@@ -1,5 +1,7 @@
 package com.example.autotap.engine
 
+import com.example.autotap.*
+
 import com.example.autotap.MatchCandidate
 
 object CandidateSelector {
