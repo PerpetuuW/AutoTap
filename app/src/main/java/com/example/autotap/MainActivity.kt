@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
-        tvVersion.text = "AutoTap v35.1.0-PRO"
+        tvVersion?.text = "AutoTap v35.5.0-PRO"
 
         val btnAppDetails = findViewById<Button>(R.id.btnAppDetails)
         val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)

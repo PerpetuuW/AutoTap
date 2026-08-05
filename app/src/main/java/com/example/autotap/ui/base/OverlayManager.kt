@@ -1,0 +1,101 @@
+package com.example.autotap.ui.base
+
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.util.DisplayMetrics
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.MyAutoClickService
+import java.util.concurrent.ConcurrentHashMap
+
+class OverlayManager(private val context: Context) {
+
+    private val windowManager: WindowManager =
+        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    private val attachedViews = ConcurrentHashMap<View, Boolean>()
+    private val updateHandler = Handler(Looper.getMainLooper())
+    private val pendingUpdates = ConcurrentHashMap<View, WindowManager.LayoutParams>()
+
+    fun safeAddView(view: View?, params: WindowManager.LayoutParams) {
+        if (view == null || attachedViews[view] == true) return
+        try {
+            windowManager.addView(view, params)
+            attachedViews[view] = true
+        } catch (e: Exception) {
+            MyAutoClickService.logError(context, e)
+        }
+    }
+
+    fun safeRemoveView(view: View?) {
+        if (view == null || attachedViews[view] != true) return
+        try {
+            windowManager.removeView(view)
+        } catch (e: Exception) {
+            MyAutoClickService.logError(context, e)
+        } finally {
+            attachedViews.remove(view)
+        }
+    }
+
+    fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams) {
+        if (view == null || attachedViews[view] != true) return
+        pendingUpdates[view] = params
+        updateHandler.removeCallbacksAndMessages(null)
+        updateHandler.postDelayed({
+            try {
+                val p = pendingUpdates[view] ?: return@postDelayed
+                windowManager.updateViewLayout(view, p)
+            } catch (e: Exception) {
+                MyAutoClickService.logError(context, e)
+            } finally {
+                pendingUpdates.remove(view)
+            }
+        }, 8)
+    }
+
+    fun dpToPx(dp: Int): Int = (dp * context.resources.displayMetrics.density).toInt()
+    fun dpToPx(dp: Float): Int = (dp * context.resources.displayMetrics.density).toInt()
+
+    fun getRealScreenSize(): Pair<Int, Int> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            Pair(bounds.width(), bounds.height())
+        } else {
+            val dm = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(dm)
+            Pair(dm.widthPixels, dm.heightPixels)
+        }
+    }
+
+    fun getOverlayType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    }
+
+    fun createOverlayParams(): WindowManager.LayoutParams {
+        return WindowManager.LayoutParams().apply {
+            type = getOverlayType()
+            format = PixelFormat.TRANSLUCENT
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+
+            width = WindowManager.LayoutParams.WRAP_CONTENT
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+        }
+    }
+}

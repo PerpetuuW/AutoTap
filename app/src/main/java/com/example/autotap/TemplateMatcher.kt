@@ -42,12 +42,7 @@ object TemplateMatcher {
 
         for (y in 0 until h) {
             for (x in 0 until w) {
-
-                var sumR = 0
-                var sumG = 0
-                var sumB = 0
-                var sumA = 0
-
+                var sumR = 0; var sumG = 0; var sumB = 0; var sumA = 0
                 for (bmp in frames) {
                     val c = bmp.getPixel(x, y)
                     sumR += Color.red(c)
@@ -55,21 +50,16 @@ object TemplateMatcher {
                     sumB += Color.blue(c)
                     sumA += Color.alpha(c)
                 }
-
                 val avgR = sumR / frames.size
                 val avgG = sumG / frames.size
                 val avgB = sumB / frames.size
                 val avgA = sumA / frames.size
 
-                val finalColor = Color.argb(avgA, avgR, avgG, avgB)
-                out.setPixel(x, y, finalColor)
+                out.setPixel(x, y, Color.argb(avgA, avgR, avgG, avgB))
             }
         }
 
-        if (circleShape) {
-            applyCircularMask(out)
-        }
-
+        if (circleShape) applyCircularMask(out)
         return out
     }
 
@@ -87,10 +77,6 @@ object TemplateMatcher {
     ): List<MatchCandidate> {
 
         val similarityThreshold = (config.similarityPercent / 100f).coerceIn(0.1f, 0.99f)
-        val shapeOnly = config.shapeOnlyMode
-        val hybridCascade = config.hybridCascadeMode
-        val multiScale = config.multiScaleSearch
-
         val candidates = ArrayList<MatchCandidate>()
 
         val searchArea = if (config.customSearchArea) {
@@ -104,76 +90,16 @@ object TemplateMatcher {
             Rect(0, 0, screen.width, screen.height)
         }
 
-        val coarseStep = 6
-        val fineStep = 2
+        val tw = template.width
+        val th = template.height
 
-        val scales = if (multiScale) {
-            floatArrayOf(1.0f, 0.95f, 0.9f, 1.05f)
-        } else {
-            floatArrayOf(1.0f)
-        }
-
-        for (scale in scales) {
-            val scaledTemplate = if (scale != 1.0f) {
-                Bitmap.createScaledBitmap(
-                    template,
-                    (template.width * scale).toInt(),
-                    (template.height * scale).toInt(),
-                    true
-                )
-            } else template
-
-            val tw = scaledTemplate.width
-            val th = scaledTemplate.height
-
-            for (y in searchArea.top until (searchArea.bottom - th).coerceAtLeast(searchArea.top + 1) step coarseStep) {
-                for (x in searchArea.left until (searchArea.right - tw).coerceAtLeast(searchArea.left + 1) step coarseStep) {
-
-                    val score = if (shapeOnly) {
-                        shapeMatch(screen, scaledTemplate, x, y)
-                    } else {
-                        pixelMatch(screen, scaledTemplate, x, y)
-                    }
-
-                    if (score >= similarityThreshold) {
-                        candidates.add(MatchCandidate(Rect(x, y, x + tw, y + th), score))
-                    }
+        for (y in searchArea.top until (searchArea.bottom - th).coerceAtLeast(searchArea.top + 1) step 6) {
+            for (x in searchArea.left until (searchArea.right - tw).coerceAtLeast(searchArea.left + 1) step 6) {
+                val score = pixelMatch(screen, template, x, y)
+                if (score >= similarityThreshold) {
+                    candidates.add(MatchCandidate(Rect(x, y, x + tw, y + th), score))
                 }
             }
-
-            val refined = ArrayList<MatchCandidate>()
-            for (c in candidates) {
-                val cx0 = max(searchArea.left, c.rect.left - coarseStep)
-                val cy0 = max(searchArea.top, c.rect.top - coarseStep)
-                val cx1 = min(searchArea.right - tw, c.rect.left + coarseStep)
-                val cy1 = min(searchArea.bottom - th, c.rect.top + coarseStep)
-
-                var bestScore = c.score
-                var bestRect = c.rect
-
-                for (y in cy0..cy1 step fineStep) {
-                    for (x in cx0..cx1 step fineStep) {
-                        val score = if (shapeOnly) {
-                            shapeMatch(screen, scaledTemplate, x, y)
-                        } else {
-                            pixelMatch(screen, scaledTemplate, x, y)
-                        }
-                        if (score > bestScore) {
-                            bestScore = score
-                            bestRect = Rect(x, y, x + tw, y + th)
-                        }
-                    }
-                }
-
-                refined.add(MatchCandidate(bestRect, bestScore))
-            }
-
-            candidates.clear()
-            candidates.addAll(refined)
-        }
-
-        if (hybridCascade) {
-            return candidates.sortedByDescending { it.score }.take(3)
         }
 
         return candidates.sortedByDescending { it.score }
@@ -186,8 +112,8 @@ object TemplateMatcher {
         var score = 0f
         var total = 0f
 
-        for (y in 0 until th) {
-            for (x in 0 until tw) {
+        for (y in 0 until th step 2) {
+            for (x in 0 until tw step 2) {
                 if (sx + x >= screen.width || sy + y >= screen.height) continue
                 val sc = screen.getPixel(sx + x, sy + y)
                 val tc = template.getPixel(x, y)
@@ -197,39 +123,7 @@ object TemplateMatcher {
                 val db = abs(Color.blue(sc) - Color.blue(tc))
 
                 val diff = (dr + dg + db) / 765f
-                val sim = 1f - diff
-
-                score += sim
-                total += 1f
-            }
-        }
-
-        return if (total > 0f) score / total else 0f
-    }
-
-    private fun shapeMatch(screen: Bitmap, template: Bitmap, sx: Int, sy: Int): Float {
-        val tw = template.width
-        val th = template.height
-
-        var score = 0f
-        var total = 0f
-
-        for (y in 0 until th step 2) {
-            for (x in 0 until tw step 2) {
-                if (sx + x >= screen.width || sy + y >= screen.height) continue
-                val sc = screen.getPixel(sx + x, sy + y)
-                val tc = template.getPixel(x, y)
-
-                val scA = Color.alpha(sc)
-                val tcA = Color.alpha(tc)
-
-                val sim = if (tcA < 128) {
-                    if (scA < 128) 1f else 0f
-                } else {
-                    if (scA >= 128) 1f else 0f
-                }
-
-                score += sim
+                score += (1f - diff)
                 total += 1f
             }
         }
