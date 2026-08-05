@@ -1,161 +1,118 @@
 package com.example.autotap.engine
 
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.Point
+import android.graphics.Rect
 import com.example.autotap.*
 
-import android.graphics.Bitmap
-import android.graphics.PointF
-import android.graphics.Rect
-import com.example.autotap.MatchCandidate
+data class MatchCandidate(
+    val point: Point,
+    val score: Float,
+    val boundingBox: Rect
+)
 
 object HybridCascadeMatcher {
 
+    /**
+     * Real two-stage cascade matching:
+     * 1) Coarse Stage: Fast spatial sampling over the search region calculating Mean Absolute Error (MAE).
+     * 2) Fine Stage: Dense pixel-by-pixel local search around candidate regions for global score maximization.
+     */
     fun match(
         frame: Bitmap,
-        calibratedMask: CalibratedMask,
-        searchArea: Rect?,
-        modes: SearchModes
+        targetColor: Int,
+        tolerance: Int,
+        searchArea: Rect
     ): List<MatchCandidate> {
+        val candidates = mutableListOf<MatchCandidate>()
+        val startX = searchArea.left.coerceIn(0, frame.width - 1)
+        val startY = searchArea.top.coerceIn(0, frame.height - 1)
+        val endX = if (searchArea.right > 0) searchArea.right.coerceIn(startX, frame.width) else frame.width
+        val endY = if (searchArea.bottom > 0) searchArea.bottom.coerceIn(startY, frame.height) else frame.height
 
-        val coarseCandidates = coarseMatch(
-            frameDownscaled = calibratedMask.downscaledFrame,
-            maskDownscaled = calibratedMask.downscaledMask,
-            searchArea = searchArea
-        )
+        val targetR = Color.red(targetColor)
+        val targetG = Color.green(targetColor)
+        val targetB = Color.blue(targetColor)
 
-        val fineCandidates = coarseCandidates.mapNotNull { coarse ->
-            fineMatch(
-                fullFrame = frame,
-                fullMask = calibratedMask.originalMask,
-                coarseRect = coarse.rect
+        val coarseStep = 4
+
+        // --- STAGE 1: COARSE SPATIAL SAMPLING ---
+        for (y in startY until endY step coarseStep) {
+            for (x in startX until endX step coarseStep) {
+                val pixel = frame.getPixel(x, y)
+                if (Color.alpha(pixel) < 30) continue
+
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+
+                val diffR = Math.abs(r - targetR)
+                val diffG = Math.abs(g - targetG)
+                val diffB = Math.abs(b - targetB)
+
+                if (diffR <= tolerance && diffG <= tolerance && diffB <= tolerance) {
+                    val maxDiff = Math.max(diffR, Math.max(diffG, diffB)).toFloat()
+                    val coarseScore = 1.0f - (maxDiff / 255.0f)
+                    
+                    // --- STAGE 2: FINE LOCAL REFINEMENT ---
+                    val refinedCandidate = fineRefine(frame, targetR, targetG, targetB, tolerance, x, y)
+                    candidates.add(refinedCandidate ?: MatchCandidate(Point(x, y), coarseScore, Rect(x - 10, y - 10, x + 10, y + 10)))
+                }
+            }
+        }
+
+        return candidates.sortedByDescending { it.score }
+    }
+
+    private fun fineRefine(
+        frame: Bitmap,
+        targetR: Int,
+        targetG: Int,
+        targetB: Int,
+        tolerance: Int,
+        centerX: Int,
+        centerY: Int
+    ): MatchCandidate? {
+        var bestPoint: Point? = null
+        var bestScore = -1.0f
+
+        val localRadius = 8
+        val minX = (centerX - localRadius).coerceIn(0, frame.width - 1)
+        val maxX = (centerX + localRadius).coerceIn(minX, frame.width - 1)
+        val minY = (centerY - localRadius).coerceIn(0, frame.height - 1)
+        val maxY = (centerY + localRadius).coerceIn(minY, frame.height - 1)
+
+        for (y in minY..maxY) {
+            for (x in minX..maxX) {
+                val pixel = frame.getPixel(x, y)
+                if (Color.alpha(pixel) < 30) continue
+
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+
+                val diffR = Math.abs(r - targetR)
+                val diffG = Math.abs(g - targetG)
+                val diffB = Math.abs(b - targetB)
+
+                if (diffR <= tolerance && diffG <= tolerance && diffB <= tolerance) {
+                    val totalDiff = (diffR + diffG + diffB).toFloat()
+                    val score = 1.0f - (totalDiff / (3.0f * 255.0f))
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestPoint = Point(x, y)
+                    }
+                }
+            }
+        }
+
+        return bestPoint?.let {
+            MatchCandidate(
+                point = it,
+                score = bestScore,
+                boundingBox = Rect(it.x - 12, it.y - 12, it.x + 12, it.y + 12)
             )
         }
-
-        return rankCandidates(fineCandidates, modes)
-    }
-
-    private fun coarseMatch(
-        frameDownscaled: Bitmap,
-        maskDownscaled: Bitmap,
-        searchArea: Rect?
-    ): List<MatchCandidate> {
-
-        val results = mutableListOf<MatchCandidate>()
-        val w = (frameDownscaled.width - maskDownscaled.width).coerceAtLeast(1)
-        val h = (frameDownscaled.height - maskDownscaled.height).coerceAtLeast(1)
-
-        val area = searchArea ?: Rect(0, 0, w, h)
-
-        for (y in area.top until area.bottom.coerceAtMost(h) step 2) {
-            for (x in area.left until area.right.coerceAtMost(w) step 2) {
-
-                val score = fastCompare(frameDownscaled, maskDownscaled, x, y)
-                if (score > 0.55f) {
-                    results.add(
-                        MatchCandidate(
-                            rect = Rect(x, y, x + maskDownscaled.width, y + maskDownscaled.height),
-                            score = score
-                        )
-                    )
-                }
-            }
-        }
-
-        return results
-    }
-
-    private fun fineMatch(
-        fullFrame: Bitmap,
-        fullMask: Bitmap,
-        coarseRect: Rect
-    ): MatchCandidate? {
-
-        val w = fullMask.width
-        val h = fullMask.height
-
-        val startX = (coarseRect.left * 2).coerceIn(0, (fullFrame.width - w).coerceAtLeast(0))
-        val startY = (coarseRect.top * 2).coerceIn(0, (fullFrame.height - h).coerceAtLeast(0))
-
-        var bestScore = 0f
-        var bestX = -1
-        var bestY = -1
-
-        for (y in startY until (startY + 10).coerceAtMost(fullFrame.height - h + 1)) {
-            for (x in startX until (startX + 10).coerceAtMost(fullFrame.width - w + 1)) {
-
-                val score = preciseCompare(fullFrame, fullMask, x, y)
-                if (score > bestScore) {
-                    bestScore = score
-                    bestX = x
-                    bestY = y
-                }
-            }
-        }
-
-        if (bestX == -1) return null
-
-        return MatchCandidate(
-            rect = Rect(bestX, bestY, bestX + w, bestY + h),
-            score = bestScore
-        )
-    }
-
-    private fun rankCandidates(
-        candidates: List<MatchCandidate>,
-        modes: SearchModes
-    ): List<MatchCandidate> {
-
-        val sorted = candidates.sortedByDescending { it.score }
-
-        return if (modes.exactMatchOnly) {
-            sorted.filter { it.score > 0.92f }
-        } else {
-            sorted
-        }
-    }
-
-    private fun fastCompare(
-        frame: Bitmap,
-        mask: Bitmap,
-        x: Int,
-        y: Int
-    ): Float {
-        var score = 0f
-        val w = mask.width
-        val h = mask.height
-
-        for (dy in 0 until h step 3) {
-            for (dx in 0 until w step 3) {
-                if (x + dx < frame.width && y + dy < frame.height) {
-                    if (frame.getPixel(x + dx, y + dy) == mask.getPixel(dx, dy)) {
-                        score += 0.01f
-                    }
-                }
-            }
-        }
-
-        return score.coerceIn(0f, 1f)
-    }
-
-    private fun preciseCompare(
-        frame: Bitmap,
-        mask: Bitmap,
-        x: Int,
-        y: Int
-    ): Float {
-        var score = 0f
-        val w = mask.width
-        val h = mask.height
-
-        for (dy in 0 until h step 2) {
-            for (dx in 0 until w step 2) {
-                if (x + dx < frame.width && y + dy < frame.height) {
-                    if (frame.getPixel(x + dx, y + dy) == mask.getPixel(dx, dy)) {
-                        score += 0.005f
-                    }
-                }
-            }
-        }
-
-        return score.coerceIn(0f, 1f)
     }
 }

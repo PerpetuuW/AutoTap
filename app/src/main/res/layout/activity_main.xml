@@ -2,263 +2,100 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark_blue"
-    android:fitsSystemWindows="true"
-    android:fillViewport="true">
+    android:background="@color/dark_background">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="24dp"
-        android:paddingBottom="16dp">
+        android:padding="24dp">
 
-        <!-- Защищённый карточка-заголовок -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AutoTap Dashboard"
+            android:textColor="@color/accent_cyan"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Система автоматизации кликов и ИИ-сканирования"
+            android:textColor="#AAAAAA"
+            android:textSize="14sp" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:background="@color/dark_surface"
             android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/panel_background"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:layout_marginBottom="16dp">
+            android:padding="16dp">
 
             <TextView
-                android:id="@+id/tvTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="AutoTap Premium"
-                android:textColor="#00F5D4"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:singleLine="true"
-                android:maxLines="1"
-                android:ellipsize="end" />
+                android:text="@string/title_status"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/tvSubTitle"
+                android:id="@+id/tvStatusAccessibility"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Полноэкранный ИИ-поиск и умная авто-инструкция"
-                android:textColor="@color/text_gray"
-                android:textSize="11sp"
-                android:gravity="center"
-                android:layout_marginTop="4dp" />
+                android:layout_marginTop="8dp"
+                android:text="Accessibility Service: OTKЛЮЧЕН"
+                android:textColor="@color/accent_red" />
 
             <TextView
-                android:id="@+id/tvVersion"
+                android:id="@+id/tvStatusOverlay"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="v25.9.1 PRO"
-                android:textColor="@color/accent_blue"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:layout_marginTop="4dp" />
+                android:layout_marginTop="4dp"
+                android:text="Overlay Permission: OTKЛЮЧЕН"
+                android:textColor="@color/accent_red" />
         </LinearLayout>
 
-        <!-- Секция 1: Настройки разрешений -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚙ Настройка разрешений"
-                android:textColor="#58A6FF"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
-
-            <Button
-                android:id="@+id/btnAppDetails"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="1. Разрешить запрещенные настройки (MIUI/HyperOS)"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
-
-            <Button
-                android:id="@+id/btnAccessibility"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="2. Разрешить работу кликера"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
-
-            <Button
-                android:id="@+id/btnOverlay"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="3. Поверх других приложений"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="8dp"
-                android:gravity="center"/>
-        </LinearLayout>
-
-        <!-- Секция 2: Управление шаблонами и данными -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📁 Управление шаблонами и данными"
-                android:textColor="#58A6FF"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
-
-            <Button
-                android:id="@+id/btnManageTemplates"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="Редактирование и менеджер ИИ-шаблонов"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnExport"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="46dp"
-                    android:text="📤 Экспорт"
-                    android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
-                    android:textSize="11sp"
-                    android:padding="4dp"
-                    android:gravity="center"/>
-
-                <View
-                    android:layout_width="8dp"
-                    android:layout_height="match_parent"/>
-
-                <Button
-                    android:id="@+id/btnImport"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="46dp"
-                    android:text="📥 Импорт"
-                    android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
-                    android:textSize="11sp"
-                    android:padding="4dp"
-                    android:gravity="center"/>
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- Секция 3: Инфо и Логи -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
-
-                <Button
-                    android:id="@+id/btnPermissionsHelp"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="44dp"
-                    android:text="О разрешениях"
-                    android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
-                    android:textSize="11sp"
-                    android:padding="4dp"
-                    android:gravity="center"/>
-
-                <View
-                    android:layout_width="8dp"
-                    android:layout_height="match_parent"/>
-
-                <Button
-                    android:id="@+id/btnInfoHelp"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="44dp"
-                    android:text="Справка v25.9.1 PRO"
-                    android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
-                    android:textSize="11sp"
-                    android:padding="4dp"
-                    android:gravity="center"/>
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/btnShowLogs"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="Просмотр логов работы и ошибок"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="4dp"
-                android:gravity="center"/>
-        </LinearLayout>
-
-        <!-- Главная кнопка старта -->
         <Button
-            android:id="@+id/btnStartPanel"
+            android:id="@+id/btnAccessibility"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="56dp"
-            android:text="🚀 ЗАПУСТИТЬ ПАНЕЛЬ КЛИКЕРА"
-            android:textColor="@color/text_white"
-            android:backgroundTint="@color/accent_blue"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:padding="10dp"
-            android:gravity="center"/>
+            android:layout_height="56dp"
+            android:layout_marginTop="20dp"
+            android:backgroundTint="@color/dark_surface"
+            android:text="@string/btn_enable_accessibility"
+            android:textColor="@color/white" />
+
+        <Button
+            android:id="@+id/btnOverlayPermission"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="@color/dark_surface"
+            android:text="@string/btn_enable_overlay"
+            android:textColor="@color/white" />
+
+        <Button
+            android:id="@+id/btnBatteryOptimization"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="@color/dark_surface"
+            android:text="@string/btn_ignore_battery"
+            android:textColor="@color/white" />
+
+        <Button
+            android:id="@+id/btnStartOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginTop="32dp"
+            android:backgroundTint="@color/accent_cyan"
+            android:text="@string/btn_show_panel"
+            android:textColor="@color/black"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
     </LinearLayout>
 </ScrollView>
