@@ -8,8 +8,8 @@ def write_file(rel_path, content):
         f.write(content)
     print(f"  [✓] Записан файл: {rel_path}")
 
-def fix_capture_screen_scope():
-    print("🚀 Исправление области видимости captureScreenBitmap() v35.2.0-PRO...")
+def fix_joystick_recording():
+    print("🚀 Восстановление и реставрация записи джойстика v35.3.0-PRO...")
 
     # 1. app/build.gradle.kts
     gradle_code = r"""plugins {
@@ -25,8 +25,8 @@ android {
         applicationId = "com.example.autotap"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2370
-        versionName = "35.2.0-PRO"
+        versionCode = 2375
+        versionName = "35.3.0-PRO"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -58,7 +58,7 @@ dependencies {
 """
     write_file("app/build.gradle.kts", gradle_code)
 
-    # 2. MyAutoClickService.kt (Перенос captureScreenBitmap в публичную область класса)
+    # 2. MyAutoClickService.kt (Полная реализация джойстика и многоточечных свайпов)
     service_code = r"""package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
@@ -86,6 +86,8 @@ import java.util.concurrent.Executors
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.min
 
 class MyAutoClickService : AccessibilityService() {
 
@@ -118,6 +120,7 @@ class MyAutoClickService : AccessibilityService() {
     var isNumbersHidden = false
 
     var globalClickDurationMs: Long = 120L
+    var globalSwipeDurationMs: Long = 300L
     var globalScriptLoopCount: Int = 1
     var isGlobalScriptInfinite: Boolean = false
     var globalRelayNextScript: String = ""
@@ -147,7 +150,7 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        Toast.makeText(this, "AutoTap v35.2.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "AutoTap v35.3.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
 
     override fun onInterrupt() {}
@@ -290,13 +293,32 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, duration: Long = 300L, onComplete: ((Boolean) -> Unit)? = null) {
+        performPathSwipeWithCallback(emptyList(), startX, startY, endX, endY, duration, onComplete)
+    }
+
+    fun performPathSwipeWithCallback(
+        pathPoints: List<PointF>,
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        duration: Long = 300L,
+        onComplete: ((Boolean) -> Unit)? = null
+    ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             onComplete?.invoke(false)
             return
         }
         val path = Path().apply {
-            moveTo(startX, startY)
-            lineTo(endX, endY)
+            if (pathPoints.size >= 2) {
+                moveTo(pathPoints.first().x, pathPoints.first().y)
+                for (i in 1 until pathPoints.size) {
+                    lineTo(pathPoints[i].x, pathPoints[i].y)
+                }
+            } else {
+                moveTo(startX, startY)
+                lineTo(endX, endY)
+            }
         }
         val stroke = GestureDescription.StrokeDescription(path, 0, duration)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
@@ -497,7 +519,15 @@ class MyAutoClickService : AccessibilityService() {
                     ActionType.SWIPE -> {
                         val (sx, sy) = resolveNormalizedPoint(cfg.xNorm, cfg.yNorm)
                         val (ex, ey) = resolveNormalizedPoint(cfg.endXNorm, cfg.endYNorm)
-                        performSwipeWithCallback(sx, sy, ex, ey, cfg.holdDuration)
+                        if (cfg.joystickPath.isNotEmpty()) {
+                            val path = cfg.joystickPath.map { p ->
+                                val normP = resolveNormalizedPoint(p.x, p.y)
+                                PointF(normP.first, normP.second)
+                            }
+                            performPathSwipeWithCallback(path, sx, sy, ex, ey, cfg.holdDuration)
+                        } else {
+                            performSwipeWithCallback(sx, sy, ex, ey, cfg.holdDuration)
+                        }
                     }
                     ActionType.TRIGGER -> {
                         val jump = executeAiTriggerSequence(cfg)
@@ -718,13 +748,142 @@ class MyAutoClickService : AccessibilityService() {
         val view = LayoutInflater.from(this).inflate(R.layout.floating_joystick_control, null)
         joystickOverlayView = view
 
+        val sizePx = dpToPx(160)
         val params = createOverlayParams().apply {
+            width = sizePx
+            height = sizePx + dpToPx(40)
             gravity = Gravity.TOP or Gravity.START
             x = dpToPx(30)
             y = dpToPx(200)
         }
 
-        val btnClose = view.findViewById<ImageButton>(R.id.btnCloseJoystick)
+        val handleMove = view.findViewById<View>(R.id.handleMoveJoystick)
+        val btnClose = view.findViewById<View>(R.id.btnCloseJoystick)
+        val btnRecordJoystick = view.findViewById<Button>(R.id.btnRecordJoystick)
+        val viewKnob = view.findViewById<View>(R.id.viewJoystickKnob)
+
+        var isJoystickRecording = false
+        var joystickStartTime = 0L
+        var startX = 0f
+        var startY = 0f
+        val recordedPathPoints = ArrayList<PointF>()
+
+        handleMove?.setOnTouchListener(object : View.OnTouchListener {
+            private var initX = 0; private var initY = 0
+            private var touchX = 0f; private var touchY = 0f
+
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initX = params.x; initY = params.y
+                        touchX = event.rawX; touchY = event.rawY
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val (sw, sh) = getRealScreenSize()
+                        params.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, (sw - sizePx).coerceAtLeast(0))
+                        params.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, (sh - sizePx).coerceAtLeast(0))
+                        safeUpdateViewLayout(view, params)
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        viewKnob?.setOnTouchListener(object : View.OnTouchListener {
+            private var maxRadiusPx = dpToPx(50).toFloat()
+
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        startX = event.rawX
+                        startY = event.rawY
+                        joystickStartTime = System.currentTimeMillis()
+                        recordedPathPoints.clear()
+                        recordedPathPoints.add(PointF(startX, startY))
+                        vibrateFeedback(20L)
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = event.rawX - startX
+                        val dy = event.rawY - startY
+                        val dist = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                        val angle = Math.atan2(dy.toDouble(), dx.toDouble())
+                        val clampedDist = min(dist, maxRadiusPx)
+
+                        val knobX = (clampedDist * Math.cos(angle)).toFloat()
+                        val knobY = (clampedDist * Math.sin(angle)).toFloat()
+
+                        viewKnob.translationX = knobX
+                        viewKnob.translationY = knobY
+
+                        if (isJoystickRecording) {
+                            recordedPathPoints.add(PointF(startX + knobX, startY + knobY))
+                        }
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        v.performClick()
+                        val duration = (System.currentTimeMillis() - joystickStartTime).coerceIn(100L, 5000L)
+                        val finalDx = viewKnob.translationX
+                        val finalDy = viewKnob.translationY
+                        val finalDist = hypot(finalDx.toDouble(), finalDy.toDouble()).toFloat()
+
+                        viewKnob.animate().translationX(0f).translationY(0f).setDuration(180).start()
+
+                        if (finalDist > 15) {
+                            val centerX = params.x + sizePx / 2f
+                            val centerY = params.y + dpToPx(30) + sizePx / 2f
+                            val targetX = centerX + finalDx
+                            val targetY = centerY + finalDy
+
+                            performSwipeWithCallback(centerX, centerY, targetX, targetY, duration)
+
+                            if (isJoystickRecording) {
+                                val normPath = ArrayList<PointF>().apply {
+                                    recordedPathPoints.forEach { p ->
+                                        add(PointF(normalizeX(p.x), normalizeY(p.y)))
+                                    }
+                                }
+                                val first = normPath.firstOrNull() ?: PointF(normalizeX(centerX), normalizeY(centerY))
+                                val last = normPath.lastOrNull() ?: PointF(normalizeX(targetX), normalizeY(targetY))
+
+                                val cfg = ActionConfig(
+                                    id = actionsList.size + 1,
+                                    type = ActionType.SWIPE,
+                                    xNorm = first.x,
+                                    yNorm = first.y,
+                                    endXNorm = last.x,
+                                    endYNorm = last.y,
+                                    holdDuration = duration,
+                                    joystickPath = normPath
+                                )
+
+                                actionsList.add(cfg)
+                                spawnEndTargetAtPosition(cfg, targetX, targetY)
+                                Toast.makeText(
+                                    this@MyAutoClickService,
+                                    "🕹 Записано движение джойстика (${duration}мс)!",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        btnRecordJoystick?.setOnClickListener {
+            vibrateFeedback(25L)
+            isJoystickRecording = !isJoystickRecording
+            btnRecordJoystick.text = if (isJoystickRecording) "🔴 Запись..." else "⏺ ЗАПИСАТЬ"
+            btnRecordJoystick.backgroundTintList =
+                ColorStateList.valueOf(getColor(if (isJoystickRecording) R.color.red_close else R.color.accent_blue))
+        }
+
         btnClose?.setOnClickListener { vibrateFeedback(20L); safeRemoveView(view); joystickOverlayView = null }
         safeAddView(view, params)
     }
@@ -933,7 +1092,7 @@ class MyAutoClickService : AccessibilityService() {
 """
     write_file("app/src/main/java/com/example/autotap/MyAutoClickService.kt", service_code)
 
-    print("✨ Исправление функции captureScreenBitmap() успешно завершено!")
+    print("✨ Функция записи джойстика и отправка траекторий жестов успешно восстановлены!")
 
 if __name__ == "__main__":
-    fix_capture_screen_scope()
+    fix_joystick_recording()
