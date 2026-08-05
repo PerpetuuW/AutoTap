@@ -1,66 +1,173 @@
 package com.example.autotap
 
-import android.graphics.Point
-import android.graphics.Rect
-import android.view.View
+import android.content.Context
+import android.graphics.Color
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
 
-enum class ActionType { CLICK, LONG_PRESS, SWIPE, TRIGGER }
-
-enum class TemplateType {
-    MICRO, SMALL, MEDIUM, LARGE, HUGE, THIN_HORIZONTAL, THIN_VERTICAL, WIDE, STANDARD
+enum class ActionType {
+    CLICK,
+    SWIPE,
+    COLOR_CHECK
 }
 
-data class MatchCandidate(
-    val point: Point = Point(),
-    val ratio: Float = 0f,
-    val rect: Rect = Rect()
+data class AutoTapAction(
+    val id: String,
+    val type: ActionType,
+    val x: Int,
+    val y: Int,
+    val endX: Int = 0,
+    val endY: Int = 0,
+    val durationMs: Long = 100L,
+    val delayAfterMs: Long = 500L,
+    val targetColor: Int = Color.BLACK,
+    val colorTolerance: Int = 15
 ) {
-    val score: Float get() = ratio
-    constructor(point: Point, rect: Rect, ratio: Float) : this(point, ratio, rect)
-    constructor(rect: Rect, ratio: Float) : this(Point(rect.centerX(), rect.centerY()), ratio, rect)
+    fun toJsonObject(): JSONObject {
+        return JSONObject().apply {
+            put("id", id)
+            put("type", type.name)
+            put("x", x)
+            put("y", y)
+            put("endX", endX)
+            put("endY", endY)
+            put("durationMs", durationMs)
+            put("delayAfterMs", delayAfterMs)
+            put("targetColor", targetColor)
+            put("colorTolerance", colorTolerance)
+        }
+    }
+
+    companion object {
+        fun fromJsonObject(json: JSONObject): AutoTapAction {
+            return AutoTapAction(
+                id = json.getString("id"),
+                type = ActionType.valueOf(json.getString("type")),
+                x = json.getInt("x"),
+                y = json.getInt("y"),
+                endX = json.optInt("endX", 0),
+                endY = json.optInt("endY", 0),
+                durationMs = json.optLong("durationMs", 100L),
+                delayAfterMs = json.optLong("delayAfterMs", 500L),
+                targetColor = json.optInt("targetColor", Color.BLACK),
+                colorTolerance = json.optInt("colorTolerance", 15)
+            )
+        }
+    }
 }
 
-class ActionConfig(
-    var id: Int,
-    var startView: View,
-    var type: ActionType = ActionType.CLICK,
-    var delay: Long = 1000,
-    var checkInterval: Long = 500,
-    var endView: View? = null,
-    var selectedTemplateIndex: Int = -1,
-    var clickAiTarget: Boolean = true,
-    var jumpToStepOnMatch: Int = 0,
-    var captureSize: Int = 100,
-    var repeatCount: Int = 1,
-    var holdDuration: Long = 1000,
-    var randomRadius: Int = 0,
-    var fullScreenshotPath: String = "",
-    var maskX: Int = 0,
-    var maskY: Int = 0,
-    var maskW: Int = 100,
-    var maskH: Int = 100,
-    var similarityPercent: Int = 70,
-    var targetScriptToLoad: String = "",
-    var aiTimeoutSeconds: Int = 0,
-    var scanIntervalSeconds: Int = 5,
-    var postMatchDelaySeconds: Int = 3,
-    var multiTemplateIndices: ArrayList<Int> = arrayListOf(),
-    var searchInCapturedArea: Boolean = false,
-    var playAudioOnMatch: Boolean = false,
-    var isFastMode: Boolean = true,
-    var bestMatchAuto: Boolean = true,
-    var exactMatchOnly: Boolean = false,
-    var semiTransparentMode: Boolean = false,
-    var showSearchVisualizer: Boolean = true,
-    var customSearchArea: Boolean = false,
-    var searchAreaX: Int = 0,
-    var searchAreaY: Int = 0,
-    var searchAreaW: Int = 0,
-    var searchAreaH: Int = 0,
-    var shapeOnlyMode: Boolean = false,
-    var hybridCascadeMode: Boolean = true,
-    var searchAreasList: ArrayList<Rect> = arrayListOf(),
-    var centerOfMassClick: Boolean = false,
-    var multiScaleSearch: Boolean = false,
-    var autoTuningMode: Boolean = false
-)
+object DiagnosticLogger {
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+
+    fun log(tag: String, message: String, metrics: Map<String, Any> = emptyMap()) {
+        val timestamp = dateFormat.format(Date())
+        val metricsString = if (metrics.isNotEmpty()) {
+            " | Metrics: " + metrics.entries.joinToString(", ") { "${it.key}=${it.value}" }
+        } else {
+            ""
+        }
+        val formattedMessage = "[$timestamp] [$tag] $message$metricsString"
+        android.util.Log.d("AutoTap_Audit", formattedMessage)
+    }
+}
+
+class AtomicScriptManager(private val context: Context) {
+
+    private val lock = Any()
+
+    fun saveScript(fileName: String, actions: CopyOnWriteArrayList<AutoTapAction>): Boolean {
+        synchronized(lock) {
+            val startTime = System.currentTimeMillis()
+            val targetFile = File(context.filesDir, "$fileName.json")
+            val tmpFile = File(context.filesDir, "$fileName.tmp")
+            val bakFile = File(context.filesDir, "$fileName.json.bak")
+
+            try {
+                val jsonArray = JSONArray()
+                for (action in actions) {
+                    jsonArray.put(action.toJsonObject())
+                }
+                val jsonString = jsonArray.toString(2)
+
+                // 1. Атомарная запись во временный файл .tmp
+                FileOutputStream(tmpFile).use { fos ->
+                    fos.write(jsonString.toByteArray(Charsets.UTF_8))
+                    fos.flush()
+                    fos.fd.sync()
+                }
+
+                // 2. Валидация сформированного JSON
+                JSONArray(tmpFile.readText(Charsets.UTF_8))
+
+                // 3. Создание бэкапа существующего файла
+                if (targetFile.exists()) {
+                    if (bakFile.exists()) {
+                        bakFile.delete()
+                    }
+                    if (!targetFile.renameTo(bakFile)) {
+                        DiagnosticLogger.log("AtomicScriptManager", "Failed to backup target file to .bak")
+                    }
+                }
+
+                // 4. Безопасная подмена .tmp -> .json
+                if (!tmpFile.renameTo(targetFile)) {
+                    DiagnosticLogger.log("AtomicScriptManager", "Failed to rename .tmp to target file")
+                    if (bakFile.exists() && !targetFile.exists()) {
+                        bakFile.renameTo(targetFile)
+                    }
+                    return false
+                }
+
+                DiagnosticLogger.log(
+                    "AtomicScriptManager",
+                    "Script saved successfully",
+                    mapOf("file" to fileName, "durationMs" to (System.currentTimeMillis() - startTime), "count" to actions.size)
+                )
+                return true
+
+            } catch (e: Exception) {
+                DiagnosticLogger.log("AtomicScriptManager", "Critical error saving script: ${e.message}")
+                if (tmpFile.exists()) tmpFile.delete()
+                return false
+            }
+        }
+    }
+
+    fun loadScript(fileName: String): CopyOnWriteArrayList<AutoTapAction> {
+        synchronized(lock) {
+            val targetFile = File(context.filesDir, "$fileName.json")
+            val bakFile = File(context.filesDir, "$fileName.json.bak")
+
+            val fileToRead = when {
+                targetFile.exists() && targetFile.length() > 0 -> targetFile
+                bakFile.exists() && bakFile.length() > 0 -> bakFile
+                else -> null
+            }
+
+            val list = CopyOnWriteArrayList<AutoTapAction>()
+            if (fileToRead == null) {
+                DiagnosticLogger.log("AtomicScriptManager", "No valid script file found for: $fileName")
+                return list
+            }
+
+            try {
+                val content = fileToRead.readText(Charsets.UTF_8)
+                val jsonArray = JSONArray(content)
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    list.add(AutoTapAction.fromJsonObject(obj))
+                }
+                DiagnosticLogger.log("AtomicScriptManager", "Script loaded", mapOf("file" to fileName, "count" to list.size))
+            } catch (e: Exception) {
+                DiagnosticLogger.log("AtomicScriptManager", "Error parsing script JSON: ${e.message}")
+            }
+            return list
+        }
+    }
+}
