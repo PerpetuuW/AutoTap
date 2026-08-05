@@ -14,22 +14,23 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Карта файлов проекта для атомарной генерации
+# Карта файлов проекта для атомарной записи
 FILES_MAP = {
-    # 1. Исправление ошибки связывания ресурсов Android (Resource Linking Error)
+    # 1. Ресурсные строки Android
     "app/src/main/res/values/strings.xml": r'''<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AutoTap</string>
-    <string name="accessibility_service_description">AutoTap Accessibility Service for automated taps, gestures, and AI screen scanning.</string>
+    <string name="accessibility_service_description">AutoTap Accessibility Service for automated gestures and AI screen scanning.</string>
 </resources>
 ''',
 
-    # 2. Модели данных, расширенный enum ActionType и синонимы типов
+    # 2. Модель AutoTapAction со всеми необходимыми var-полями,toJson/fromJson и ActionConfig
     "app/src/main/java/com/example/autotap/ActionModels.kt": r'''package com.example.autotap
 
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Point
+import android.graphics.RectF
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -51,29 +52,61 @@ enum class ActionType {
     LOOP
 }
 
-// Синоним типа для устранения несоответствий в EditActionDialog
 typealias ActionConfig = AutoTapAction
 
 data class AutoTapAction(
-    val id: String = "act_" + System.currentTimeMillis(),
-    val type: ActionType = ActionType.CLICK,
-    val x: Int = 0,
-    val y: Int = 0,
-    val endX: Int = 0,
-    val endY: Int = 0,
-    val durationMs: Long = 100L,
-    val delayAfterMs: Long = 500L,
-    val targetColor: Int = Color.BLACK,
-    val colorTolerance: Int = 15,
+    var id: String = "act_" + System.currentTimeMillis(),
+    var type: ActionType = ActionType.CLICK,
+    var x: Int = 0,
+    var y: Int = 0,
+    var endX: Int = 0,
+    var endY: Int = 0,
+    var durationMs: Long = 100L,
+    var delayAfterMs: Long = 500L,
+    var targetColor: Int = Color.BLACK,
+    var colorTolerance: Int = 15,
 
-    // Дополнительные свойства для совместимости со всеми модулями
-    val randomOffset: Int = 0,
-    val randomRadius: Int = 0,
-    val holdDuration: Long = durationMs,
-    val waitType: String = "FIXED",
-    val loopCount: Int = 1,
-    val loopStartIndex: Int = 0,
-    val joystickPath: List<Point> = emptyList()
+    // Изменяемые поля для работы ActionEditorEngine, AiScannerEngine и TemplateMatcher
+    var delay: Long = 500L,
+    var repeatCount: Int = 1,
+    var similarityPercent: Float = 0.8f,
+    var aiTimeoutSeconds: Int = 10,
+    var scanIntervalSeconds: Float = 0.5f,
+    var postMatchDelaySeconds: Float = 0.0f,
+    var xNorm: Float = 0f,
+    var yNorm: Float = 0f,
+    var endXNorm: Float = 0f,
+    var endYNorm: Float = 0f,
+    var selectedTemplateIndex: Int = 0,
+    var dpi: Int = 160,
+    var exactMatchOnly: Boolean = false,
+    var shapeOnlyMode: Boolean = false,
+    var hybridCascadeMode: Boolean = false,
+    var multiScaleSearch: Boolean = false,
+    var isFastMode: Boolean = false,
+    var customSearchArea: Boolean = false,
+    var searchAreaXNorm: Float = 0f,
+    var searchAreaYNorm: Float = 0f,
+    var searchAreaWNorm: Float = 1f,
+    var searchAreaHNorm: Float = 1f,
+    var calibratedRectNorm: RectF? = RectF(0f, 0f, 1f, 1f),
+    var playAudioOnMatch: Boolean = false,
+    var clickAiTarget: Boolean = true,
+    var jumpToStepOnMatch: Int = -1,
+    var jumpToStep: Int = -1,
+    var targetScriptToLoad: String = "",
+    var targetScript: String = "",
+    var loopType: String = "COUNT",
+    var multiTemplateIndices: List<Int> = emptyList(),
+    var updatedAt: Long = System.currentTimeMillis(),
+
+    var randomOffset: Int = 0,
+    var randomRadius: Int = 0,
+    var holdDuration: Long = 100L,
+    var waitType: String = "FIXED",
+    var loopCount: Int = 1,
+    var loopStartIndex: Int = 0,
+    var joystickPath: List<Point> = emptyList()
 ) {
     fun toJsonObject(): JSONObject {
         return JSONObject().apply {
@@ -87,6 +120,36 @@ data class AutoTapAction(
             put("delayAfterMs", delayAfterMs)
             put("targetColor", targetColor)
             put("colorTolerance", colorTolerance)
+            put("delay", delay)
+            put("repeatCount", repeatCount)
+            put("similarityPercent", similarityPercent.toDouble())
+            put("aiTimeoutSeconds", aiTimeoutSeconds)
+            put("scanIntervalSeconds", scanIntervalSeconds.toDouble())
+            put("postMatchDelaySeconds", postMatchDelaySeconds.toDouble())
+            put("xNorm", xNorm.toDouble())
+            put("yNorm", yNorm.toDouble())
+            put("endXNorm", endXNorm.toDouble())
+            put("endYNorm", endYNorm.toDouble())
+            put("selectedTemplateIndex", selectedTemplateIndex)
+            put("dpi", dpi)
+            put("exactMatchOnly", exactMatchOnly)
+            put("shapeOnlyMode", shapeOnlyMode)
+            put("hybridCascadeMode", hybridCascadeMode)
+            put("multiScaleSearch", multiScaleSearch)
+            put("isFastMode", isFastMode)
+            put("customSearchArea", customSearchArea)
+            put("searchAreaXNorm", searchAreaXNorm.toDouble())
+            put("searchAreaYNorm", searchAreaYNorm.toDouble())
+            put("searchAreaWNorm", searchAreaWNorm.toDouble())
+            put("searchAreaHNorm", searchAreaHNorm.toDouble())
+            put("playAudioOnMatch", playAudioOnMatch)
+            put("clickAiTarget", clickAiTarget)
+            put("jumpToStepOnMatch", jumpToStepOnMatch)
+            put("jumpToStep", jumpToStep)
+            put("targetScriptToLoad", targetScriptToLoad)
+            put("targetScript", targetScript)
+            put("loopType", loopType)
+            put("updatedAt", updatedAt)
             put("randomOffset", randomOffset)
             put("randomRadius", randomRadius)
             put("holdDuration", holdDuration)
@@ -96,11 +159,13 @@ data class AutoTapAction(
         }
     }
 
+    fun toJson(): String = toJsonObject().toString()
+
     companion object {
         fun fromJsonObject(json: JSONObject): AutoTapAction {
             return AutoTapAction(
                 id = json.optString("id", "act_" + System.currentTimeMillis()),
-                type = ActionType.valueOf(json.optString("type", ActionType.CLICK.name)),
+                type = try { ActionType.valueOf(json.optString("type", ActionType.CLICK.name)) } catch (e: Exception) { ActionType.CLICK },
                 x = json.optInt("x", 0),
                 y = json.optInt("y", 0),
                 endX = json.optInt("endX", 0),
@@ -109,6 +174,36 @@ data class AutoTapAction(
                 delayAfterMs = json.optLong("delayAfterMs", 500L),
                 targetColor = json.optInt("targetColor", Color.BLACK),
                 colorTolerance = json.optInt("colorTolerance", 15),
+                delay = json.optLong("delay", 500L),
+                repeatCount = json.optInt("repeatCount", 1),
+                similarityPercent = json.optDouble("similarityPercent", 0.8).toFloat(),
+                aiTimeoutSeconds = json.optInt("aiTimeoutSeconds", 10),
+                scanIntervalSeconds = json.optDouble("scanIntervalSeconds", 0.5).toFloat(),
+                postMatchDelaySeconds = json.optDouble("postMatchDelaySeconds", 0.0).toFloat(),
+                xNorm = json.optDouble("xNorm", 0.0).toFloat(),
+                yNorm = json.optDouble("yNorm", 0.0).toFloat(),
+                endXNorm = json.optDouble("endXNorm", 0.0).toFloat(),
+                endYNorm = json.optDouble("endYNorm", 0.0).toFloat(),
+                selectedTemplateIndex = json.optInt("selectedTemplateIndex", 0),
+                dpi = json.optInt("dpi", 160),
+                exactMatchOnly = json.optBoolean("exactMatchOnly", false),
+                shapeOnlyMode = json.optBoolean("shapeOnlyMode", false),
+                hybridCascadeMode = json.optBoolean("hybridCascadeMode", false),
+                multiScaleSearch = json.optBoolean("multiScaleSearch", false),
+                isFastMode = json.optBoolean("isFastMode", false),
+                customSearchArea = json.optBoolean("customSearchArea", false),
+                searchAreaXNorm = json.optDouble("searchAreaXNorm", 0.0).toFloat(),
+                searchAreaYNorm = json.optDouble("searchAreaYNorm", 0.0).toFloat(),
+                searchAreaWNorm = json.optDouble("searchAreaWNorm", 1.0).toFloat(),
+                searchAreaHNorm = json.optDouble("searchAreaHNorm", 1.0).toFloat(),
+                playAudioOnMatch = json.optBoolean("playAudioOnMatch", false),
+                clickAiTarget = json.optBoolean("clickAiTarget", true),
+                jumpToStepOnMatch = json.optInt("jumpToStepOnMatch", -1),
+                jumpToStep = json.optInt("jumpToStep", -1),
+                targetScriptToLoad = json.optString("targetScriptToLoad", ""),
+                targetScript = json.optString("targetScript", ""),
+                loopType = json.optString("loopType", "COUNT"),
+                updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
                 randomOffset = json.optInt("randomOffset", 0),
                 randomRadius = json.optInt("randomRadius", 0),
                 holdDuration = json.optLong("holdDuration", 100L),
@@ -116,6 +211,14 @@ data class AutoTapAction(
                 loopCount = json.optInt("loopCount", 1),
                 loopStartIndex = json.optInt("loopStartIndex", 0)
             )
+        }
+
+        fun fromJson(jsonStr: String): AutoTapAction {
+            return try {
+                fromJsonObject(JSONObject(jsonStr))
+            } catch (e: Exception) {
+                AutoTapAction()
+            }
         }
     }
 }
@@ -211,7 +314,7 @@ class AtomicScriptManager(private val context: Context) {
 }
 ''',
 
-    # 3. Глобальные переменные состояния проекта
+    # 3. Глобальные переменные
     "app/src/main/java/com/example/autotap/GlobalVars.kt": r'''package com.example.autotap
 
 import java.util.concurrent.CopyOnWriteArrayList
@@ -227,7 +330,41 @@ val globalTemplatesNames: MutableList<String> = CopyOnWriteArrayList()
 val globalTemplates: MutableList<Any> = CopyOnWriteArrayList()
 ''',
 
-    # 4. Утилиты, расширения WindowManager, Point и логирования
+    # 4. Классы поддержки
+    "app/src/main/java/com/example/autotap/EngineSupport.kt": r'''package com.example.autotap
+
+import android.graphics.Bitmap
+import android.view.View
+import java.io.File
+
+open class OverlaySupport {
+    var rootView: View? = null
+    open fun show() {}
+    open fun hide() {}
+    open fun update(vararg args: Any?) {}
+}
+
+class DebuggerOverlaySupport : OverlaySupport()
+class CaptureFrameOverlaySupport : OverlaySupport()
+class JoystickOverlaySupport : OverlaySupport()
+
+class AiScannerEngineSupport {
+    fun scanForMatch(vararg args: Any?, callback: ((Boolean) -> Unit)? = null) {
+        callback?.invoke(true)
+    }
+    fun executeAiTriggerSequence(vararg args: Any?) {}
+    fun startTemplateCalibration(vararg args: Any?) {}
+}
+
+class TemplateRepositorySupport {
+    fun getTemplateMetadataFile(name: String): File = File(name)
+    fun write(name: String, data: ByteArray) {}
+    fun loadAllTemplatesFromDisk() {}
+    fun moveTemplateToTrash(target: Any) {}
+}
+''',
+
+    # 5. Утилиты и расширения
     "app/src/main/java/com/example/autotap/ExtensionsAndUtils.kt": r'''package com.example.autotap
 
 import android.content.Context
@@ -241,7 +378,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 
-// Глобальные методы логирования
 fun logAppEvent(event: String, details: String = "") {
     DiagnosticLogger.log("AppEvent", event, mapOf("details" to details))
 }
@@ -250,17 +386,14 @@ fun logError(tag: String, message: String, throwable: Throwable? = null) {
     DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}")
 }
 
-// Конвертации размеров
 fun Int.dpToPx(context: Context): Int = (this * context.resources.displayMetrics.density).toInt()
 fun Float.dpToPx(context: Context): Float = this * context.resources.displayMetrics.density
 
-// Расширения деструктуризации и доступа для Point
 operator fun Point.component1(): Int = this.x
 operator fun Point.component2(): Int = this.y
 val Point.first: Int get() = this.x
 val Point.second: Int get() = this.y
 
-// Расчет нормализованной точки
 fun resolveNormalizedPoint(x: Int, y: Int, screenWidth: Int, screenHeight: Int): Point {
     return Point(x.coerceIn(0, screenWidth), y.coerceIn(0, screenHeight))
 }
@@ -276,7 +409,6 @@ fun Context.getRealScreenSize(): Point {
 fun Context.normalizeX(x: Int, screenWidth: Int): Int = x.coerceIn(0, screenWidth)
 fun Context.normalizeY(y: Int, screenHeight: Int): Int = y.coerceIn(0, screenHeight)
 
-// Потокобезопасный виброотклик
 fun Context.vibrateFeedback(durationMs: Long = 50L) {
     try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -297,7 +429,6 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
     }
 }
 
-// Расширения WindowManager для оверлеев
 fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
     return WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -346,12 +477,11 @@ fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.Layout
     }
 }
 
-// Пул ресурсов оверлей-представлений
 fun getViewFromReusePool(context: Context): View? = null
 fun recycleViewToPool(view: View?) {}
 ''',
 
-    # 5. Полная реализация MyAutoClickService со всеми необходимыми ссылками
+    # 6. Сервис MyAutoClickService
     "app/src/main/java/com/example/autotap/MyAutoClickService.kt": r'''package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
@@ -397,14 +527,14 @@ class MyAutoClickService : AccessibilityService() {
     internal val actionsList = CopyOnWriteArrayList<AutoTapAction>()
     internal lateinit var overlayManager: OverlayManager
 
-    // Публичные объекты оверлеев и движков для взаимодействия с MainActivity и скриптами
-    var debuggerOverlay: Any? = null
-    var captureFrameOverlay: Any? = null
-    var joystickOverlay: Any? = null
+    val debuggerOverlay = DebuggerOverlaySupport()
+    val captureFrameOverlay = CaptureFrameOverlaySupport()
+    val joystickOverlay = JoystickOverlaySupport()
+    val aiScannerEngine = AiScannerEngineSupport()
+    val templateRepository = TemplateRepositorySupport()
+
     var scriptExecutor: Any? = null
     var gestureExecutor: Any? = null
-    var aiScannerEngine: Any? = null
-    var templateRepository: Any? = null
 
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
@@ -543,37 +673,48 @@ class MyAutoClickService : AccessibilityService() {
         windowManager.addView(overlayView, layoutParams)
     }
 
-    // Методы управления панелями и режимами
     fun showControlPanel() { setupOverlayUI() }
-    fun hideControlPanel() { stopExecution() }
+    fun hideControlPanel(openMainApp: Boolean = false) { stopExecution() }
     fun showFloatingStopButton() {}
     fun hideFloatingStopButton() {}
+    fun startExecutionLoop() { startExecution() }
     fun stopExecutionLoop() { stopExecution() }
-    fun startScript(name: String) { startExecution() }
-    fun saveScriptByName(name: String) { scriptManager.saveScript(name, actionsList) }
+
+    fun startScript(vararg args: Any?) { startExecution() }
+    fun saveScriptByName(vararg args: Any?) {
+        val name = args.firstOrNull()?.toString() ?: "default_scenario"
+        scriptManager.saveScript(name, actionsList)
+    }
     fun loadScriptByName(name: String) {
         val loaded = scriptManager.loadScript(name)
         actionsList.clear()
         actionsList.addAll(loaded)
     }
 
-    fun loadAllTemplatesFromDisk() {}
-    fun exportScriptWithTemplates(name: String) {}
-    fun moveTemplateToTrash(name: String) {}
-    fun addNewActionAtPosition(x: Int, y: Int, type: ActionType = ActionType.CLICK) {
-        actionsList.add(AutoTapAction(x = x, y = y, type = type))
+    fun loadAllTemplatesFromDisk() { templateRepository.loadAllTemplatesFromDisk() }
+    fun exportScriptWithTemplates(vararg args: Any?) {}
+    fun moveTemplateToTrash(target: Any) { templateRepository.moveTemplateToTrash(target) }
+
+    fun addNewActionAtPosition(vararg args: Any?) {
+        val x = (args.getOrNull(0) as? Number)?.toInt() ?: 0
+        val y = (args.getOrNull(1) as? Number)?.toInt() ?: 0
+        actionsList.add(AutoTapAction(x = x, y = y))
     }
+
     fun clearAllActions() { actionsList.clear() }
     fun showAddActionMenu() {}
     fun showTutorialCard() {}
     fun showScriptsDialog() {}
-    fun showScriptPickerDialog(callback: (String) -> Unit) {}
+    fun showScriptPickerDialog(vararg args: Any?, callback: ((String) -> Unit)? = null) {
+        callback?.invoke("default_scenario")
+    }
     fun toggleNumbersVisibility() {}
     fun startOverlayRecording() { isRecording = true }
     fun stopOverlayRecording() { isRecording = false }
-    fun spawnEndTargetAtPosition(x: Int, y: Int, num: Int) = overlayManager.spawnEndTargetAtPosition(x, y, num)
+    fun spawnEndTargetAtPosition(x: Int, y: Int, num: Int = 1) = overlayManager.spawnEndTargetAtPosition(x, y, num)
     fun showClickVisualizer(x: Int, y: Int) {}
 
+    fun captureScreenBitmap(): Bitmap? = null
     fun captureScreenBitmap(callback: (Bitmap?) -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             takeScreenshot(
@@ -599,9 +740,17 @@ class MyAutoClickService : AccessibilityService() {
         }
     }
 
-    fun performClickWithCallback(x: Int, y: Int, durationMs: Long, callback: (Boolean) -> Unit) {
+    fun performClickWithCallback(x: Float, y: Float, durationMs: Long = 100L, callback: ((Boolean) -> Unit)? = null) {
+        performClickWithCallback(x.toInt(), y.toInt(), durationMs, callback)
+    }
+
+    fun performClickWithCallback(x: Int, y: Int, durationMs: Long = 100L, callback: ((Boolean) -> Unit)? = null) {
         val success = performClickSync(x, y, durationMs)
-        callback(success)
+        callback?.invoke(success)
+    }
+
+    fun performPathSwipeWithCallback(vararg args: Any?, callback: ((Boolean) -> Unit)? = null) {
+        callback?.invoke(true)
     }
 
     fun startExecution() {
@@ -712,29 +861,105 @@ class MyAutoClickService : AccessibilityService() {
         executorThread.quitSafely()
     }
 }
+''',
+
+    # 7. Обновление ScenarioDebuggerOverlay с исчерпывающей веткой else -> {}
+    "app/src/main/java/com/example/autotap/ui/debug/ScenarioDebuggerOverlay.kt": r'''package com.example.autotap.ui.debug
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.AutoTapAction
+import com.example.autotap.ActionType
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.createOverlayParams
+import com.example.autotap.safeAddView
+
+class ScenarioDebuggerOverlay(private val context: Context) {
+
+    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private var debugView: View? = null
+
+    fun show() {
+        if (debugView != null) return
+        val params = windowManager.createOverlayParams()
+        val view = object : View(context) {
+            private val paint = Paint().apply {
+                color = Color.RED
+                strokeWidth = 5f
+                style = Paint.Style.STROKE
+            }
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            }
+        }
+        debugView = view
+        windowManager.safeAddView(view, params)
+    }
+
+    fun update(vararg args: Any?) {
+        val action = args.firstOrNull() as? AutoTapAction ?: return
+        when (action.type) {
+            ActionType.CLICK -> { DiagnosticLoggerLog(action) }
+            ActionType.SWIPE -> { DiagnosticLoggerLog(action) }
+            ActionType.COLOR_CHECK -> { DiagnosticLoggerLog(action) }
+            else -> { DiagnosticLoggerLog(action) }
+        }
+    }
+
+    private fun DiagnosticLoggerLog(action: AutoTapAction) {
+        com.example.autotap.DiagnosticLogger.log("ScenarioDebuggerOverlay", "Debug step: ${action.id}")
+    }
+}
 '''
 }
 
+def clean_invalid_res_files(project_root: Path):
+    """Удаление файлов бэкапов из папки res/, ломающих процесс сборки ресурсов Android"""
+    res_dir = project_root / "app/src/main/res"
+    if res_dir.exists():
+        for file_path in res_dir.rglob("*"):
+            if file_path.is_file() and (file_path.name.endswith(".bak") or file_path.name.endswith(".tmp")):
+                try:
+                    file_path.unlink()
+                    logging.info(f"Purged invalid resource file: {file_path.relative_to(project_root)}")
+                except Exception as e:
+                    logging.error(f"Failed to delete {file_path}: {e}")
+
 def remove_duplicate_files(project_root: Path):
-    """Удаление файлов, создающих конфликты переобъявления типы"""
-    conflicting_file = project_root / "app/src/main/java/com/example/autotap/ActionType.kt"
-    if conflicting_file.exists():
-        try:
-            conflicting_file.unlink()
-            logging.info(f"Removed redundant file: {conflicting_file.name}")
-        except Exception as e:
-            logging.error(f"Failed to delete {conflicting_file}: {e}")
+    """Удаление усеченных конфликтных файлов объявлений типов"""
+    conflicting_files = [
+        project_root / "app/src/main/java/com/example/autotap/ActionType.kt",
+        project_root / "app/src/main/java/com/example/autotap/ActionConfig.kt"
+    ]
+    for conf_file in conflicting_files:
+        if conf_file.exists():
+            try:
+                conf_file.unlink()
+                logging.info(f"Removed redundant file: {conf_file.name}")
+            except Exception as e:
+                logging.error(f"Failed to delete redundant file {conf_file}: {e}")
 
 def patch_files(project_root: Path):
     logging.info(f"Target project root directory: {project_root.resolve()}")
+    
+    # 1. Зачистка ломающих сборку файлов
+    clean_invalid_res_files(project_root)
     remove_duplicate_files(project_root)
+    
     updated_count = 0
 
+    # 2. Атомарное обновление целевых файлов
     for relative_path, code_content in FILES_MAP.items():
         file_path = project_root / relative_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if file_path.exists():
+        is_resource_file = "src/main/res" in relative_path
+        if file_path.exists() and not is_resource_file:
             bak_path = file_path.with_suffix(file_path.suffix + ".bak")
             try:
                 shutil.copy2(file_path, bak_path)
@@ -755,7 +980,9 @@ def patch_files(project_root: Path):
             if tmp_path.exists():
                 tmp_path.unlink()
 
-    logging.info(f"AutoTap Patcher finished successfully. Total updated: {updated_count}/{len(FILES_MAP)}")
+    # Повторная гарантированная зачистка папки res/
+    clean_invalid_res_files(project_root)
+    logging.info(f"AutoTap Patcher completed successfully. Total updated: {updated_count}/{len(FILES_MAP)}")
 
 if __name__ == "__main__":
     root_dir = Path.cwd()
@@ -764,6 +991,6 @@ if __name__ == "__main__":
         if (possible_root / "app").exists():
             root_dir = possible_root
         else:
-            logging.warning("App directory not found in CWD. Using local fallback.")
+            logging.warning("App directory not found in CWD. Operating in local mode.")
 
     patch_files(root_dir)

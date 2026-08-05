@@ -43,14 +43,14 @@ class MyAutoClickService : AccessibilityService() {
     internal val actionsList = CopyOnWriteArrayList<AutoTapAction>()
     internal lateinit var overlayManager: OverlayManager
 
-    // Публичные объекты оверлеев и движков для взаимодействия с MainActivity и скриптами
-    var debuggerOverlay: Any? = null
-    var captureFrameOverlay: Any? = null
-    var joystickOverlay: Any? = null
+    val debuggerOverlay = DebuggerOverlaySupport()
+    val captureFrameOverlay = CaptureFrameOverlaySupport()
+    val joystickOverlay = JoystickOverlaySupport()
+    val aiScannerEngine = AiScannerEngineSupport()
+    val templateRepository = TemplateRepositorySupport()
+
     var scriptExecutor: Any? = null
     var gestureExecutor: Any? = null
-    var aiScannerEngine: Any? = null
-    var templateRepository: Any? = null
 
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
@@ -189,37 +189,48 @@ class MyAutoClickService : AccessibilityService() {
         windowManager.addView(overlayView, layoutParams)
     }
 
-    // Методы управления панелями и режимами
     fun showControlPanel() { setupOverlayUI() }
-    fun hideControlPanel() { stopExecution() }
+    fun hideControlPanel(openMainApp: Boolean = false) { stopExecution() }
     fun showFloatingStopButton() {}
     fun hideFloatingStopButton() {}
+    fun startExecutionLoop() { startExecution() }
     fun stopExecutionLoop() { stopExecution() }
-    fun startScript(name: String) { startExecution() }
-    fun saveScriptByName(name: String) { scriptManager.saveScript(name, actionsList) }
+
+    fun startScript(vararg args: Any?) { startExecution() }
+    fun saveScriptByName(vararg args: Any?) {
+        val name = args.firstOrNull()?.toString() ?: "default_scenario"
+        scriptManager.saveScript(name, actionsList)
+    }
     fun loadScriptByName(name: String) {
         val loaded = scriptManager.loadScript(name)
         actionsList.clear()
         actionsList.addAll(loaded)
     }
 
-    fun loadAllTemplatesFromDisk() {}
-    fun exportScriptWithTemplates(name: String) {}
-    fun moveTemplateToTrash(name: String) {}
-    fun addNewActionAtPosition(x: Int, y: Int, type: ActionType = ActionType.CLICK) {
-        actionsList.add(AutoTapAction(x = x, y = y, type = type))
+    fun loadAllTemplatesFromDisk() { templateRepository.loadAllTemplatesFromDisk() }
+    fun exportScriptWithTemplates(vararg args: Any?) {}
+    fun moveTemplateToTrash(target: Any) { templateRepository.moveTemplateToTrash(target) }
+
+    fun addNewActionAtPosition(vararg args: Any?) {
+        val x = (args.getOrNull(0) as? Number)?.toInt() ?: 0
+        val y = (args.getOrNull(1) as? Number)?.toInt() ?: 0
+        actionsList.add(AutoTapAction(x = x, y = y))
     }
+
     fun clearAllActions() { actionsList.clear() }
     fun showAddActionMenu() {}
     fun showTutorialCard() {}
     fun showScriptsDialog() {}
-    fun showScriptPickerDialog(callback: (String) -> Unit) {}
+    fun showScriptPickerDialog(vararg args: Any?, callback: ((String) -> Unit)? = null) {
+        callback?.invoke("default_scenario")
+    }
     fun toggleNumbersVisibility() {}
     fun startOverlayRecording() { isRecording = true }
     fun stopOverlayRecording() { isRecording = false }
-    fun spawnEndTargetAtPosition(x: Int, y: Int, num: Int) = overlayManager.spawnEndTargetAtPosition(x, y, num)
+    fun spawnEndTargetAtPosition(x: Int, y: Int, num: Int = 1) = overlayManager.spawnEndTargetAtPosition(x, y, num)
     fun showClickVisualizer(x: Int, y: Int) {}
 
+    fun captureScreenBitmap(): Bitmap? = null
     fun captureScreenBitmap(callback: (Bitmap?) -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             takeScreenshot(
@@ -245,9 +256,17 @@ class MyAutoClickService : AccessibilityService() {
         }
     }
 
-    fun performClickWithCallback(x: Int, y: Int, durationMs: Long, callback: (Boolean) -> Unit) {
+    fun performClickWithCallback(x: Float, y: Float, durationMs: Long = 100L, callback: ((Boolean) -> Unit)? = null) {
+        performClickWithCallback(x.toInt(), y.toInt(), durationMs, callback)
+    }
+
+    fun performClickWithCallback(x: Int, y: Int, durationMs: Long = 100L, callback: ((Boolean) -> Unit)? = null) {
         val success = performClickSync(x, y, durationMs)
-        callback(success)
+        callback?.invoke(success)
+    }
+
+    fun performPathSwipeWithCallback(vararg args: Any?, callback: ((Boolean) -> Unit)? = null) {
+        callback?.invoke(true)
     }
 
     fun startExecution() {

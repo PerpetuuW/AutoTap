@@ -11,47 +11,42 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 
-// Функция глобального логирования событий
+// Глобальные методы логирования
 fun logAppEvent(event: String, details: String = "") {
     DiagnosticLogger.log("AppEvent", event, mapOf("details" to details))
 }
 
-// Функция глобального логирования ошибок
 fun logError(tag: String, message: String, throwable: Throwable? = null) {
     DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}")
 }
 
-// Расширения конвертации dp в px
-fun Int.dpToPx(context: Context): Int {
-    return (this * context.resources.displayMetrics.density).toInt()
-}
+// Конвертации размеров
+fun Int.dpToPx(context: Context): Int = (this * context.resources.displayMetrics.density).toInt()
+fun Float.dpToPx(context: Context): Float = this * context.resources.displayMetrics.density
 
-fun Float.dpToPx(context: Context): Float {
-    return this * context.resources.displayMetrics.density
-}
-
-// Деструктуризация класса Point
+// Расширения деструктуризации и доступа для Point
 operator fun Point.component1(): Int = this.x
 operator fun Point.component2(): Int = this.y
+val Point.first: Int get() = this.x
+val Point.second: Int get() = this.y
 
-// Получение реальных размеров экрана через Context
+// Расчет нормализованной точки
+fun resolveNormalizedPoint(x: Int, y: Int, screenWidth: Int, screenHeight: Int): Point {
+    return Point(x.coerceIn(0, screenWidth), y.coerceIn(0, screenHeight))
+}
+
 fun Context.getRealScreenSize(): Point {
-    val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    val display = windowManager.defaultDisplay
+    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    val display = wm.defaultDisplay
     val size = Point()
     display.getRealSize(size)
     return size
 }
 
-fun Context.normalizeX(x: Int, screenWidth: Int): Int {
-    return x.coerceIn(0, screenWidth)
-}
+fun Context.normalizeX(x: Int, screenWidth: Int): Int = x.coerceIn(0, screenWidth)
+fun Context.normalizeY(y: Int, screenHeight: Int): Int = y.coerceIn(0, screenHeight)
 
-fun Context.normalizeY(y: Int, screenHeight: Int): Int {
-    return y.coerceIn(0, screenHeight)
-}
-
-// Полноценный виброотклик с исправлением имени константы VIBRATOR_MANAGER_SERVICE
+// Потокобезопасный виброотклик
 fun Context.vibrateFeedback(durationMs: Long = 50L) {
     try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -72,7 +67,7 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
     }
 }
 
-// Вспомогательные методы WindowManager
+// Расширения WindowManager для оверлеев
 fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
     return WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -120,3 +115,7 @@ fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.Layout
         logError("WindowManager", "safeUpdateViewLayout failed: ${e.message}")
     }
 }
+
+// Пул ресурсов оверлей-представлений
+fun getViewFromReusePool(context: Context): View? = null
+fun recycleViewToPool(view: View?) {}

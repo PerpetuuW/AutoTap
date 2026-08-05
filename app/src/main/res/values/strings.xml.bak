@@ -1,4 +1,0 @@
-<resources>
-    <string name="app_name">AutoTap</string>
-    <string name="accessibility_description">Служба авто-кликера AutoTap v38.1 Enterprise: полноэкранные жесты, траектории джойстика, ИИ-сканер с локальным обучением масок.</string>
-</resources>
