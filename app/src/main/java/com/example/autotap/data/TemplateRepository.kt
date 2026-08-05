@@ -10,7 +10,20 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 
-class TemplateRepository(private val context: Context) {
+class TemplateRepository private constructor(private val context: Context) {
+
+    companion object {
+        @Volatile private var INSTANCE: TemplateRepository? = null
+
+        fun init(context: Context): TemplateRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: TemplateRepository(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+
+        val instance: TemplateRepository
+            get() = INSTANCE ?: throw IllegalStateException("TemplateRepository not initialized. Call init(context) first.")
+    }
 
     val globalTemplates = ArrayList<Bitmap>()
     val globalTemplatesNames = ArrayList<String>()

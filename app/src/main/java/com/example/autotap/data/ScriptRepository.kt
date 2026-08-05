@@ -10,7 +10,20 @@ import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-class ScriptRepository(private val context: Context) {
+class ScriptRepository private constructor(private val context: Context) {
+
+    companion object {
+        @Volatile private var INSTANCE: ScriptRepository? = null
+
+        fun init(context: Context): ScriptRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: ScriptRepository(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+
+        val instance: ScriptRepository
+            get() = INSTANCE ?: throw IllegalStateException("ScriptRepository not initialized. Call init(context) first.")
+    }
 
     private fun getScriptsDir(): File {
         val dir = File(context.filesDir, "scripts")

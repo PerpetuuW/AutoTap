@@ -6,12 +6,22 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PointF
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import com.example.autotap.core.GestureExecutor
 import com.example.autotap.data.ScriptRepository
 import com.example.autotap.data.TemplateRepository
 import com.example.autotap.engine.AiScannerEngine
+import com.example.autotap.engine.ScenarioRunner
 import com.example.autotap.engine.ScriptExecutor
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.debug.ScenarioDebuggerOverlay
@@ -42,6 +52,7 @@ class MyAutoClickService : AccessibilityService() {
     lateinit var overlayManager: OverlayManager
     lateinit var gestureExecutor: GestureExecutor
     lateinit var scriptExecutor: ScriptExecutor
+    lateinit var scenarioRunner: ScenarioRunner
     lateinit var aiScannerEngine: AiScannerEngine
     lateinit var templateRepository: TemplateRepository
     lateinit var scriptRepository: ScriptRepository
@@ -51,6 +62,7 @@ class MyAutoClickService : AccessibilityService() {
     lateinit var joystickOverlay: JoystickOverlay
     lateinit var captureFrameOverlay: CaptureFrameOverlay
     lateinit var debuggerOverlay: ScenarioDebuggerOverlay
+    lateinit var clickVisualizerOverlay: ClickVisualizerOverlay
 
     // --- STATE ---
     val actionsList = ArrayList<ActionConfig>()
@@ -70,19 +82,22 @@ class MyAutoClickService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
 
-        // Initialize core subsystems
+        // Initialize singletons & core subsystems
+        templateRepository = TemplateRepository.init(this)
+        scriptRepository = ScriptRepository.init(this)
+
         overlayManager = OverlayManager(this)
         gestureExecutor = GestureExecutor(this)
         scriptExecutor = ScriptExecutor(this)
+        scenarioRunner = ScenarioRunner(this)
         aiScannerEngine = AiScannerEngine(this)
-        templateRepository = TemplateRepository(this)
-        scriptRepository = ScriptRepository(this)
 
         // Initialize overlays
         controlPanelOverlay = ControlPanelOverlay(this)
         joystickOverlay = JoystickOverlay(this)
         captureFrameOverlay = CaptureFrameOverlay(this)
         debuggerOverlay = ScenarioDebuggerOverlay(this)
+        clickVisualizerOverlay = ClickVisualizerOverlay(this)
 
         templateRepository.loadAllTemplatesFromDisk()
 
@@ -93,14 +108,12 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        Toast.makeText(this, "AutoTap v35.6.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "AutoTap v35.7.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {}
-
-    // --- PUBLIC API FOR SUBSYSTEMS & OVERLAYS ---
 
     fun vibrateFeedback(ms: Long = 25L) = gestureExecutor.vibrateFeedback(ms)
 
@@ -128,20 +141,18 @@ class MyAutoClickService : AccessibilityService() {
             Toast.makeText(this, "Сценарий пуст!", Toast.LENGTH_SHORT).show()
             return
         }
-        isPlaying = true
-        scriptExecutor.startExecutionLoop()
+        scenarioRunner.start()
     }
 
     fun stopExecutionLoop() {
-        isPlaying = false
-        scriptExecutor.stopExecutionLoop()
+        scenarioRunner.stop()
     }
 
     fun startOverlayRecording() {
         isRecording = true
         actionsList.forEach { act ->
-            act.startView?.visibility = android.view.View.INVISIBLE
-            act.endView?.visibility = android.view.View.INVISIBLE
+            act.startView?.visibility = View.INVISIBLE
+            act.endView?.visibility = View.INVISIBLE
         }
         controlPanelOverlay.hide()
         showFloatingStopButton()
@@ -152,16 +163,16 @@ class MyAutoClickService : AccessibilityService() {
         controlPanelOverlay.show()
         hideFloatingStopButton()
         actionsList.forEach { act ->
-            act.startView?.visibility = if (isNumbersHidden) android.view.View.INVISIBLE else android.view.View.VISIBLE
-            act.endView?.visibility = if (isNumbersHidden) android.view.View.INVISIBLE else android.view.View.VISIBLE
+            act.startView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+            act.endView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
         }
     }
 
     fun toggleNumbersVisibility() {
         isNumbersHidden = !isNumbersHidden
         actionsList.forEach { act ->
-            act.startView?.visibility = if (isNumbersHidden) android.view.View.INVISIBLE else android.view.View.VISIBLE
-            act.endView?.visibility = if (isNumbersHidden) android.view.View.INVISIBLE else android.view.View.VISIBLE
+            act.startView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+            act.endView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
         }
         Toast.makeText(this, if (isNumbersHidden) "👁 Номера скрыты" else "👁 Номера показаны", Toast.LENGTH_SHORT).show()
     }
@@ -201,14 +212,9 @@ class MyAutoClickService : AccessibilityService() {
         return Pair((nx * w).coerceIn(0f, w.toFloat()), (ny * h).coerceIn(0f, h.toFloat()))
     }
 
-    fun randomOffset(radius: Int): PointF {
-        if (radius <= 0) return PointF(0f, 0f)
-        val dx = (-radius..radius).random().toFloat()
-        val dy = (-radius..radius).random().toFloat()
-        return PointF(dx, dy)
-    }
+    fun randomOffset(radius: Int): PointF = gestureExecutor.randomOffset(radius)
 
-    fun showClickVisualizer(x: Float, y: Float) = controlPanelOverlay.showClickVisualizer(x, y)
+    fun showClickVisualizer(x: Float, y: Float) = clickVisualizerOverlay.showClickAt(x, y)
 
     fun captureScreenBitmap(): Bitmap? = captureFrameOverlay.capture()
 
