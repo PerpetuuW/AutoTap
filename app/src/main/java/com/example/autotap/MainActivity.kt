@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
 
         val tvVersion = findViewById<TextView>(R.id.tvVersion)
-        tvVersion?.text = "AutoTap v36.9.0-PRO"
+        tvVersion?.text = "AutoTap v37.2.0-PRO"
 
         val btnAppDetails = findViewById<Button>(R.id.btnAppDetails)
         val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
@@ -186,7 +186,7 @@ class MainActivity : AppCompatActivity() {
             if (templatesDir.exists()) zipDirToZip(filesDir, templatesDir, zos)
 
             zos.close()
-            shareZip(zipFile, "Полный бэкап AutoTap v36.9")
+            shareZip(zipFile, "Полный бэкап AutoTap v37.2")
         } catch (e: Exception) {
             MyAutoClickService.logError(this, e)
             Toast.makeText(this, "Ошибка бэкапа!", Toast.LENGTH_SHORT).show()
@@ -367,7 +367,7 @@ class MainActivity : AppCompatActivity() {
 
         val clickInfo = "• Клики (Click):\nТочечное нажатие по координатам с регулируемой задержкой, повторами и случайным разбросом.\n\n• Зажатие (Hold):\nУдержание точки на заданное время (в мс)."
         val swipeInfo = "• Свайпы (Swipe):\nПлавное перемещение от точки (S) к (E).\n\n• Траектория Джойстика:\nЗапись сложных свайпов через плавающий джойстик."
-        val aiInfo = "• ИИ-Сканер (AI Trigger v36):\nПоиск заданного изображения на экране с калибровкой, выбором порога (%) и эстафетой сценариев."
+        val aiInfo = "• ИИ-Сканер (AI Trigger v37):\nПоиск заданного изображения на экране с калибровкой, выбором порога (%) и эстафетой сценариев."
 
         tvContent?.text = clickInfo
 

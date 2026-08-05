@@ -73,8 +73,11 @@ class ControlPanelOverlay(service: MyAutoClickService) :
                     val h = if (view.height > 0) view.height else service.dpToPx(50)
                     val maxX = (screenW - w).coerceAtLeast(0)
                     val maxY = (screenH - h).coerceAtLeast(0)
+
+                    p.gravity = Gravity.TOP or Gravity.START
                     p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
                     p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, maxY)
+
                     service.overlayManager.safeUpdateViewLayout(view, p)
                     true
                 }
@@ -154,8 +157,18 @@ class ControlPanelOverlay(service: MyAutoClickService) :
         rootView?.requestLayout()
         val p = rootView?.layoutParams as? WindowManager.LayoutParams
         if (p != null && rootView != null) {
+            val (screenW, screenH) = service.overlayManager.getRealScreenSize()
             p.width = WindowManager.LayoutParams.WRAP_CONTENT
             p.height = WindowManager.LayoutParams.WRAP_CONTENT
+            p.gravity = Gravity.TOP or Gravity.START
+
+            rootView?.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+            val h = if (rootView?.measuredHeight ?: 0 > 0) rootView!!.measuredHeight else service.dpToPx(105)
+            val w = if (rootView?.measuredWidth ?: 0 > 0) rootView!!.measuredWidth else service.dpToPx(200)
+
+            p.x = p.x.coerceIn(0, (screenW - w).coerceAtLeast(0))
+            p.y = p.y.coerceIn(0, (screenH - h).coerceAtLeast(0))
+
             service.overlayManager.safeUpdateViewLayout(rootView, p)
         }
     }
@@ -165,12 +178,47 @@ class ControlPanelOverlay(service: MyAutoClickService) :
         val view = LayoutInflater.from(service).inflate(R.layout.floating_stop_button, null)
         stopButtonView = view
 
-        val params = service.overlayManager.createOverlayParams().apply { gravity = Gravity.CENTER }
+        val (screenW, _) = service.overlayManager.getRealScreenSize()
+        val params = service.overlayManager.createOverlayParams().apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (screenW - service.dpToPx(80)) / 2
+            y = service.dpToPx(60)
+        }
+
+        val handleDrag = view.findViewById<TextView>(R.id.handleDragStop)
+        var initX = 0; var initY = 0
+        var touchX = 0f; var touchY = 0f
+
+        handleDrag?.setOnTouchListener { _, event ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initX = p.x
+                    initY = p.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val (sw, sh) = service.overlayManager.getRealScreenSize()
+                    val w = if (view.width > 0) view.width else service.dpToPx(80)
+                    val h = if (view.height > 0) view.height else service.dpToPx(40)
+                    p.gravity = Gravity.TOP or Gravity.START
+                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, (sw - w).coerceAtLeast(0))
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, (sh - h).coerceAtLeast(0))
+                    service.overlayManager.safeUpdateViewLayout(view, p)
+                    true
+                }
+                else -> false
+            }
+        }
+
         val btnStop = view.findViewById<ImageButton>(R.id.btnFloatingStop)
         btnStop?.setOnClickListener {
             service.vibrateFeedback(20L)
             service.stopExecutionLoop()
         }
+
         service.overlayManager.safeAddView(view, params)
     }
 

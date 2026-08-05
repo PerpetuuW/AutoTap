@@ -6,10 +6,10 @@ def write_file(rel_path, content):
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
     with open(full_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"  [✓] Записан модуль 360-Guard: {rel_path}")
+    print(f"  [✓] Записан модуль v37.2: {rel_path}")
 
-def run_total_360_audit_patch():
-    print("🚀 Запуск тотального 360-градусного патча AutoTap v37.1.0-PRO Enterprise...")
+def fix_vertical_drag_and_consequential_bugs():
+    print("🚀 Устранение ошибки вертикальной привязки оверлея v37.2.0-PRO...")
 
     # 1. app/build.gradle.kts
     gradle_code = r"""plugins {
@@ -25,8 +25,8 @@ android {
         applicationId = "com.example.autotap"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2540
-        versionName = "37.1.0-PRO"
+        versionCode = 2550
+        versionName = "37.2.0-PRO"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -58,1011 +58,805 @@ dependencies {
 """
     write_file("app/build.gradle.kts", gradle_code)
 
-    # 2. ActionType.kt
-    action_type_code = r"""package com.example.autotap
+    # 2. OverlayManager.kt (Явный Gravity.TOP|START + Мгновенный updateViewLayout)
+    overlay_manager_code = r"""package com.example.autotap.ui.base
 
-enum class ActionType {
-    CLICK,
-    LONG_PRESS,
-    SWIPE,
-    SWIPE_PATH,
-    TRIGGER,
-    WAIT,
-    LOOP,
-    HOLD
-}
-"""
-    write_file("app/src/main/java/com/example/autotap/ActionType.kt", action_type_code)
-
-    # 3. ActionConfig.kt
-    action_config_code = r"""package com.example.autotap
-
-import android.graphics.PointF
-import android.graphics.Rect
-import android.view.View
-import com.example.autotap.data.TemplateMetadata
-import org.json.JSONArray
-import org.json.JSONObject
-
-data class ActionConfig(
-    var id: Int = 0,
-    var type: ActionType = ActionType.CLICK,
-
-    var xNorm: Float = 0f,
-    var yNorm: Float = 0f,
-    var endXNorm: Float = 0f,
-    var endYNorm: Float = 0f,
-
-    var delay: Long = 500L,
-    var repeatCount: Int = 1,
-    var randomRadius: Int = 0,
-    var holdDuration: Long = 1000L,
-
-    var waitType: String = "TIME",
-    var loopType: String = "COUNT",
-    var loopStartIndex: Int = 0,
-    var loopCount: Int = 1,
-
-    var selectedTemplateIndex: Int = -1,
-    var multiTemplateIndices: ArrayList<Int> = ArrayList(),
-    var clickAiTarget: Boolean = true,
-    var targetScriptToLoad: String = "",
-    var jumpToStepOnMatch: Int = -1,
-
-    var aiTimeoutSeconds: Int = 15,
-    var similarityPercent: Int = 70,
-    var scanIntervalSeconds: Int = 5,
-    var postMatchDelaySeconds: Int = 3,
-    var playAudioOnMatch: Boolean = false,
-
-    var isFastMode: Boolean = true,
-    var exactMatchOnly: Boolean = false,
-    var bestMatchAuto: Boolean = true,
-    var semiTransparentMode: Boolean = false,
-    var showSearchVisualizer: Boolean = true,
-    var shapeOnlyMode: Boolean = false,
-    var hybridCascadeMode: Boolean = true,
-    var multiScaleSearch: Boolean = false,
-    var autoTuningMode: Boolean = false,
-
-    var customSearchArea: Boolean = false,
-    var searchAreaXNorm: Float = 0f,
-    var searchAreaYNorm: Float = 0f,
-    var searchAreaWNorm: Float = 1f,
-    var searchAreaHNorm: Float = 1f,
-
-    var joystickPath: ArrayList<PointF> = ArrayList(),
-    var calibratedRectNorm: Rect? = null,
-    var templateMetadata: TemplateMetadata? = null,
-
-    var dpi: Int = 480,
-    var scaleFactor: Float = 1.0f,
-    var version: Int = 35,
-    var createdAt: Long = System.currentTimeMillis(),
-    var updatedAt: Long = System.currentTimeMillis(),
-
-    @Transient var startView: View? = null,
-    @Transient var endView: View? = null
-) {
-    companion object {
-        fun fromJson(obj: JSONObject): ActionConfig {
-            val cfg = ActionConfig()
-
-            cfg.id = obj.optInt("id", 0)
-            cfg.type = ActionType.valueOf(obj.optString("type", "CLICK"))
-
-            cfg.xNorm = obj.optDouble("xNorm", 0.0).toFloat()
-            cfg.yNorm = obj.optDouble("yNorm", 0.0).toFloat()
-            cfg.endXNorm = obj.optDouble("endXNorm", 0.0).toFloat()
-            cfg.endYNorm = obj.optDouble("endYNorm", 0.0).toFloat()
-
-            cfg.delay = obj.optLong("delay", 500L)
-            cfg.repeatCount = obj.optInt("repeatCount", 1)
-            cfg.randomRadius = obj.optInt("randomRadius", 0)
-            cfg.holdDuration = obj.optLong("holdDuration", 1000L)
-
-            cfg.waitType = obj.optString("waitType", "TIME")
-            cfg.loopType = obj.optString("loopType", "COUNT")
-            cfg.loopStartIndex = obj.optInt("loopStartIndex", 0)
-            cfg.loopCount = obj.optInt("loopCount", 1)
-
-            cfg.selectedTemplateIndex = obj.optInt("selectedTemplateIndex", -1)
-
-            val arrMulti = obj.optJSONArray("multiTemplateIndices") ?: JSONArray()
-            cfg.multiTemplateIndices = ArrayList<Int>().apply {
-                for (i in 0 until arrMulti.length()) add(arrMulti.optInt(i))
-            }
-
-            cfg.clickAiTarget = obj.optBoolean("clickAiTarget", true)
-            cfg.targetScriptToLoad = obj.optString("targetScriptToLoad", "")
-            cfg.jumpToStepOnMatch = obj.optInt("jumpToStepOnMatch", -1)
-
-            cfg.aiTimeoutSeconds = obj.optInt("aiTimeoutSeconds", 15)
-            cfg.similarityPercent = obj.optInt("similarityPercent", 70)
-            cfg.scanIntervalSeconds = obj.optInt("scanIntervalSeconds", 5)
-            cfg.postMatchDelaySeconds = obj.optInt("postMatchDelaySeconds", 3)
-            cfg.playAudioOnMatch = obj.optBoolean("playAudioOnMatch", false)
-
-            cfg.isFastMode = obj.optBoolean("isFastMode", true)
-            cfg.exactMatchOnly = obj.optBoolean("exactMatchOnly", false)
-            cfg.bestMatchAuto = obj.optBoolean("bestMatchAuto", true)
-            cfg.semiTransparentMode = obj.optBoolean("semiTransparentMode", false)
-            cfg.showSearchVisualizer = obj.optBoolean("showSearchVisualizer", true)
-            cfg.shapeOnlyMode = obj.optBoolean("shapeOnlyMode", false)
-            cfg.hybridCascadeMode = obj.optBoolean("hybridCascadeMode", true)
-            cfg.multiScaleSearch = obj.optBoolean("multiScaleSearch", false)
-            cfg.autoTuningMode = obj.optBoolean("autoTuningMode", false)
-
-            cfg.customSearchArea = obj.optBoolean("customSearchArea", false)
-            cfg.searchAreaXNorm = obj.optDouble("searchAreaXNorm", 0.0).toFloat()
-            cfg.searchAreaYNorm = obj.optDouble("searchAreaYNorm", 0.0).toFloat()
-            cfg.searchAreaWNorm = obj.optDouble("searchAreaWNorm", 1.0).toFloat()
-            cfg.searchAreaHNorm = obj.optDouble("searchAreaHNorm", 1.0).toFloat()
-
-            cfg.dpi = obj.optInt("dpi", 480)
-            cfg.scaleFactor = obj.optDouble("scaleFactor", 1.0).toFloat()
-            cfg.version = obj.optInt("version", 35)
-            cfg.createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-            cfg.updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
-
-            if (obj.has("templateMetadata")) {
-                cfg.templateMetadata = TemplateMetadata.fromJson(obj.getJSONObject("templateMetadata"))
-            }
-
-            val arrPath = obj.optJSONArray("joystickPath") ?: JSONArray()
-            cfg.joystickPath = ArrayList<PointF>().apply {
-                for (i in 0 until arrPath.length()) {
-                    val p = arrPath.optJSONObject(i)
-                    add(PointF(p.optDouble("x", 0.0).toFloat(), p.optDouble("y", 0.0).toFloat()))
-                }
-            }
-
-            return cfg
-        }
-    }
-
-    fun toJson(): JSONObject {
-        val obj = JSONObject()
-        obj.put("id", id)
-        obj.put("type", type.name)
-        obj.put("xNorm", xNorm)
-        obj.put("yNorm", yNorm)
-        obj.put("endXNorm", endXNorm)
-        obj.put("endYNorm", endYNorm)
-        obj.put("delay", delay)
-        obj.put("repeatCount", repeatCount)
-        obj.put("randomRadius", randomRadius)
-        obj.put("holdDuration", holdDuration)
-        obj.put("waitType", waitType)
-        obj.put("loopType", loopType)
-        obj.put("loopStartIndex", loopStartIndex)
-        obj.put("loopCount", loopCount)
-        obj.put("selectedTemplateIndex", selectedTemplateIndex)
-        obj.put("multiTemplateIndices", JSONArray(multiTemplateIndices))
-        obj.put("clickAiTarget", clickAiTarget)
-        obj.put("targetScriptToLoad", targetScriptToLoad)
-        obj.put("jumpToStepOnMatch", jumpToStepOnMatch)
-        obj.put("aiTimeoutSeconds", aiTimeoutSeconds)
-        obj.put("similarityPercent", similarityPercent)
-        obj.put("scanIntervalSeconds", scanIntervalSeconds)
-        obj.put("postMatchDelaySeconds", postMatchDelaySeconds)
-        obj.put("playAudioOnMatch", playAudioOnMatch)
-        obj.put("isFastMode", isFastMode)
-        obj.put("exactMatchOnly", exactMatchOnly)
-        obj.put("bestMatchAuto", bestMatchAuto)
-        obj.put("semiTransparentMode", semiTransparentMode)
-        obj.put("showSearchVisualizer", showSearchVisualizer)
-        obj.put("shapeOnlyMode", shapeOnlyMode)
-        obj.put("hybridCascadeMode", hybridCascadeMode)
-        obj.put("multiScaleSearch", multiScaleSearch)
-        obj.put("autoTuningMode", autoTuningMode)
-        obj.put("customSearchArea", customSearchArea)
-        obj.put("searchAreaXNorm", searchAreaXNorm)
-        obj.put("searchAreaYNorm", searchAreaYNorm)
-        obj.put("searchAreaWNorm", searchAreaWNorm)
-        obj.put("searchAreaHNorm", searchAreaHNorm)
-        obj.put("dpi", dpi)
-        obj.put("scaleFactor", scaleFactor.toDouble())
-        obj.put("version", version)
-        obj.put("createdAt", createdAt)
-        obj.put("updatedAt", System.currentTimeMillis())
-
-        templateMetadata?.let { obj.put("templateMetadata", it.toJson()) }
-
-        val arrPath = JSONArray()
-        joystickPath.forEach { p ->
-            arrPath.put(JSONObject().apply {
-                put("x", p.x)
-                put("y", p.y)
-            })
-        }
-        obj.put("joystickPath", arrPath)
-        return obj
-    }
-}
-"""
-    write_file("app/src/main/java/com/example/autotap/ActionConfig.kt", action_config_code)
-
-    # 4. GestureExecutor.kt
-    gesture_code = r"""package com.example.autotap.core
-
-import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.GestureDescription
 import android.content.Context
-import android.graphics.Path
-import android.graphics.PointF
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
-import com.example.autotap.MyAutoClickService
-import java.util.ArrayDeque
-
-class GestureExecutor(private val service: AccessibilityService) {
-
-    private val gestureQueue = ArrayDeque<Runnable>()
-    private var isProcessingQueue = false
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    fun vibrateFeedback(durationMs: Long = 25L) {
-        try {
-            val vibrator = service.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-            if (vibrator != null && vibrator.hasVibrator()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(durationMs)
-                }
-            }
-        } catch (_: Exception) {}
-    }
-
-    fun randomOffset(radius: Int): PointF {
-        if (radius <= 0) return PointF(0f, 0f)
-        val dx = (-radius..radius).random().toFloat()
-        val dy = (-radius..radius).random().toFloat()
-        return PointF(dx, dy)
-    }
-
-    private fun processNextGesture() {
-        if (isProcessingQueue || gestureQueue.isEmpty()) return
-        isProcessingQueue = true
-        val task = gestureQueue.poll()
-        task?.run()
-    }
-
-    private fun finishGestureTask() {
-        isProcessingQueue = false
-        mainHandler.postDelayed({ processNextGesture() }, 20L)
-    }
-
-    fun performClickWithCallback(x: Float, y: Float, duration: Long = 100L, onComplete: ((Boolean) -> Unit)? = null) {
-        gestureQueue.add(Runnable {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-                MyAutoClickService.logAppEvent(service, "GESTURE", "❌ Ошибка: API Android < 24 не поддерживает жесты")
-                onComplete?.invoke(false)
-                finishGestureTask()
-                return@Runnable
-            }
-
-            MyAutoClickService.logAppEvent(service, "GESTURE", "📤 Отправка клика в ОС: pos=($x, $y) | duration=${duration}ms")
-
-            val path = Path().apply { moveTo(x, y) }
-            val stroke = GestureDescription.StrokeDescription(path, 0, duration)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-
-            val res = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription?) {
-                    MyAutoClickService.logAppEvent(service, "GESTURE", "✅ Клик выполнен ОС Android: ($x, $y)")
-                    onComplete?.invoke(true)
-                    finishGestureTask()
-                }
-                override fun onCancelled(gestureDescription: GestureDescription?) {
-                    MyAutoClickService.logAppEvent(service, "GESTURE", "⚠️ Клик отменен ОС Android: ($x, $y)")
-                    onComplete?.invoke(false)
-                    finishGestureTask()
-                }
-            }, null)
-
-            if (!res) {
-                MyAutoClickService.logAppEvent(service, "GESTURE", "❌ dispatchGesture вернул false для клика ($x, $y)")
-                onComplete?.invoke(false)
-                finishGestureTask()
-            }
-        })
-        processNextGesture()
-    }
-
-    fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, duration: Long = 300L, onComplete: ((Boolean) -> Unit)? = null) {
-        performPathSwipeWithCallback(emptyList(), startX, startY, endX, endY, duration, onComplete)
-    }
-
-    fun performPathSwipeWithCallback(pathPoints: List<PointF>, startX: Float, startY: Float, endX: Float, endY: Float, duration: Long = 300L, onComplete: ((Boolean) -> Unit)? = null) {
-        gestureQueue.add(Runnable {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-                onComplete?.invoke(false)
-                finishGestureTask()
-                return@Runnable
-            }
-
-            val smoothed = smoothPath(pathPoints)
-            val pointCount = if (smoothed.isNotEmpty()) smoothed.size else 2
-            MyAutoClickService.logAppEvent(service, "GESTURE", "📤 Отправка свайпа в ОС: ($startX, $startY) -> ($endX, $endY) | точек=$pointCount | duration=${duration}ms")
-
-            val path = Path().apply {
-                if (smoothed.size >= 2) {
-                    moveTo(smoothed.first().x, smoothed.first().y)
-                    for (i in 1 until smoothed.size) {
-                        lineTo(smoothed[i].x, smoothed[i].y)
-                    }
-                } else {
-                    moveTo(startX, startY)
-                    lineTo(endX, endY)
-                }
-            }
-
-            val stroke = GestureDescription.StrokeDescription(path, 0, duration)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-
-            val res = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription?) {
-                    MyAutoClickService.logAppEvent(service, "GESTURE", "✅ Свайп выполнен ОС Android")
-                    onComplete?.invoke(true)
-                    finishGestureTask()
-                }
-                override fun onCancelled(gestureDescription: GestureDescription?) {
-                    MyAutoClickService.logAppEvent(service, "GESTURE", "⚠️ Свайп отменен ОС Android")
-                    onComplete?.invoke(false)
-                    finishGestureTask()
-                }
-            }, null)
-
-            if (!res) {
-                MyAutoClickService.logAppEvent(service, "GESTURE", "❌ dispatchGesture вернул false для свайпа")
-                onComplete?.invoke(false)
-                finishGestureTask()
-            }
-        })
-        processNextGesture()
-    }
-
-    private fun smoothPath(raw: List<PointF>): List<PointF> {
-        if (raw.size < 3) return raw
-        val smoothed = ArrayList<PointF>()
-        smoothed.add(raw.first())
-        for (i in 1 until raw.size - 1) {
-            val prev = raw[i - 1]
-            val curr = raw[i]
-            val next = raw[i + 1]
-            val smX = (prev.x + curr.x + next.x) / 3f
-            val smY = (prev.y + curr.y + next.y) / 3f
-            smoothed.add(PointF(smX, smY))
-        }
-        smoothed.add(raw.last())
-        return smoothed
-    }
-}
-"""
-    write_file("app/src/main/java/com/example/autotap/core/GestureExecutor.kt", gesture_code)
-
-    # 5. MyAutoClickService.kt (Явные полные имена android.graphics.Color)
-    service_code = r"""package com.example.autotap
-
-import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
-import android.accessibilityservice.GestureDescription
-import android.animation.ObjectAnimator
-import android.animation.PropertyValuesHolder
-import android.content.Context
-import android.content.Intent
-import android.content.res.ColorStateList
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.PixelFormat
-import android.graphics.PointF
-import android.graphics.Rect
-import android.graphics.RectF
-import android.graphics.Typeface
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
 import android.util.DisplayMetrics
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.MyAutoClickService
+import java.util.concurrent.ConcurrentHashMap
+
+class OverlayManager(private val context: Context) {
+
+    private val windowManager: WindowManager =
+        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    private val attachedViews = ConcurrentHashMap<View, Boolean>()
+    private val viewPool = ConcurrentHashMap<Int, MutableList<View>>()
+    private val activeOverlays = ConcurrentHashMap<OverlayLayer, MutableList<OverlayBase>>()
+
+    fun safeAddView(view: View?, params: WindowManager.LayoutParams) {
+        if (view == null || attachedViews[view] == true) return
+        try {
+            windowManager.addView(view, params)
+            attachedViews[view] = true
+        } catch (e: Exception) {
+            MyAutoClickService.logError(context, e)
+        }
+    }
+
+    fun safeRemoveView(view: View?) {
+        if (view == null || attachedViews[view] != true) return
+        try {
+            windowManager.removeView(view)
+        } catch (e: Exception) {
+            MyAutoClickService.logError(context, e)
+        } finally {
+            attachedViews.remove(view)
+        }
+    }
+
+    fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams) {
+        if (view == null || attachedViews[view] != true) return
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            MyAutoClickService.logError(context, e)
+        }
+    }
+
+    fun getViewFromReusePool(layoutResId: Int): View? {
+        val pool = viewPool[layoutResId]
+        return if (!pool.isNullOrEmpty()) pool.removeAt(0) else null
+    }
+
+    fun recycleViewToPool(layoutResId: Int, view: View) {
+        val pool = viewPool.getOrPut(layoutResId) { mutableListOf() }
+        if (pool.size < 5 && !pool.contains(view)) {
+            pool.add(view)
+        }
+    }
+
+    fun pushOverlay(overlay: OverlayBase) {
+        val list = activeOverlays.getOrPut(overlay.layer) { mutableListOf() }
+        list.add(overlay)
+        overlay.show()
+    }
+
+    fun popOverlay(layer: OverlayLayer) {
+        val list = activeOverlays[layer]
+        if (!list.isNullOrEmpty()) {
+            val overlay = list.removeAt(list.size - 1)
+            overlay.hide()
+        }
+    }
+
+    fun clearLayer(layer: OverlayLayer) {
+        activeOverlays[layer]?.forEach { it.hide() }
+        activeOverlays[layer]?.clear()
+    }
+
+    fun detachOnStop() {
+        clearLayer(OverlayLayer.DEBUG)
+        clearLayer(OverlayLayer.CAPTURE)
+        clearLayer(OverlayLayer.JOYSTICK)
+        clearLayer(OverlayLayer.CANDIDATE)
+        clearLayer(OverlayLayer.VISUALIZER)
+    }
+
+    fun detachOnScriptChange() {
+        detachOnStop()
+    }
+
+    fun detachOnError() {
+        detachOnStop()
+    }
+
+    fun detachOnOrientationChange() {
+        activeOverlays.values.forEach { list ->
+            list.forEach { if (it.isShowing) { it.hide(); it.show() } }
+        }
+    }
+
+    fun dpToPx(dp: Int): Int = (dp * context.resources.displayMetrics.density).toInt()
+    fun dpToPx(dp: Float): Int = (dp * context.resources.displayMetrics.density).toInt()
+
+    fun getRealScreenSize(): Pair<Int, Int> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            Pair(bounds.width(), bounds.height())
+        } else {
+            val dm = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(dm)
+            Pair(dm.widthPixels, dm.heightPixels)
+        }
+    }
+
+    fun getOverlayType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    }
+
+    fun createOverlayParams(): WindowManager.LayoutParams {
+        return WindowManager.LayoutParams().apply {
+            type = getOverlayType()
+            format = PixelFormat.TRANSLUCENT
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
+            gravity = Gravity.TOP or Gravity.START
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+
+            width = WindowManager.LayoutParams.WRAP_CONTENT
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+        }
+    }
+}
+"""
+    write_file("app/src/main/java/com/example/autotap/ui/base/OverlayManager.kt", overlay_manager_code)
+
+    # 3. ControlPanelOverlay.kt (Фикс вертикального перетаскивания и авто-выравнивания)
+    control_panel_code = r"""package com.example.autotap.ui.overlays
+
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.accessibility.AccessibilityEvent
-import android.widget.Button
-import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
-import androidx.core.content.FileProvider
-import com.example.autotap.core.GestureExecutor
-import com.example.autotap.data.ScriptRepository
-import com.example.autotap.data.TemplateRepository
-import com.example.autotap.engine.ActionEditorEngine
-import com.example.autotap.engine.AiScannerEngine
-import com.example.autotap.engine.ScenarioRunner
-import com.example.autotap.engine.ScriptExecutor
-import com.example.autotap.ui.base.OverlayManager
-import com.example.autotap.ui.debug.ScenarioDebuggerOverlay
-import com.example.autotap.ui.overlays.CaptureFrameOverlay
-import com.example.autotap.ui.overlays.ClickVisualizerOverlay
-import com.example.autotap.ui.overlays.ControlPanelOverlay
-import com.example.autotap.ui.overlays.EditActionDialog
-import com.example.autotap.ui.overlays.JoystickOverlay
-import com.example.autotap.ui.overlays.ScriptsDialog
-import java.io.File
-import java.io.FileOutputStream
-import java.io.PrintWriter
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
-import kotlin.math.abs
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayPriority
 
-class MyAutoClickService : AccessibilityService() {
+class ControlPanelOverlay(service: MyAutoClickService) :
+    OverlayBase(service, R.layout.floating_control_panel, OverlayLayer.PANEL, OverlayPriority.MEDIUM) {
 
-    companion object {
-        var instance: MyAutoClickService? = null
-        private val logLock = Any()
+    private var stopButtonView: View? = null
+    private var panelState = 0
 
-        @JvmStatic
-        fun logError(ctx: Context, e: Throwable) {
-            android.util.Log.e("AutoTap", "Caught Exception", e)
-            synchronized(logLock) {
-                try {
-                    val logFile = File(ctx.filesDir, "error_log.txt")
-                    if (logFile.exists() && logFile.length() > 512 * 1024) {
-                        val tailContent = logFile.readText().takeLast(256 * 1024)
-                        logFile.writeText("...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + tailContent)
-                    }
+    private var btnPlay: ImageButton? = null
+    private var btnAdd: ImageButton? = null
+    private var btnCapturePool: ImageButton? = null
+    private var btnHelpTutorial: ImageButton? = null
+    private var btnToggleMenu: ImageButton? = null
 
-                    FileOutputStream(logFile, true).use { out ->
-                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                        val writer = PrintWriter(out)
-                        writer.println("=== [${sdf.format(Date())}] [ERROR] ===")
-                        e.printStackTrace(writer)
-                        writer.println()
-                        writer.flush()
-                    }
-                } catch (_: Exception) {}
-            }
-        }
+    private var btnClearAll: ImageButton? = null
+    private var btnRecord: ImageButton? = null
+    private var btnToggleJoystick: ImageButton? = null
+    private var btnLoadScript: ImageButton? = null
+    private var btnHideNumbers: ImageButton? = null
+    private var btnClose: ImageButton? = null
+    private var btnSingleBubble: ImageButton? = null
 
-        @JvmStatic
-        fun logAppEvent(ctx: Context, tag: String, msg: String) {
-            android.util.Log.d("AutoTap", "[$tag] $msg")
-            synchronized(logLock) {
-                try {
-                    val logFile = File(ctx.filesDir, "error_log.txt")
-                    if (logFile.exists() && logFile.length() > 512 * 1024) {
-                        val tailContent = logFile.readText().takeLast(256 * 1024)
-                        logFile.writeText("...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + tailContent)
-                    }
+    private var layoutMainRow: View? = null
+    private var layoutSubMenu: View? = null
 
-                    FileOutputStream(logFile, true).use { out ->
-                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
-                        val writer = PrintWriter(out)
-                        writer.println("[${sdf.format(Date())}] [$tag] $msg")
-                        writer.flush()
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-    }
+    override fun onViewInflated(view: View) {
+        val handleDrag = view.findViewById<TextView>(R.id.handleDrag)
+        layoutMainRow = view.findViewById(R.id.layoutMainRow)
+        layoutSubMenu = view.findViewById(R.id.layoutSubMenu)
+        btnSingleBubble = view.findViewById(R.id.btnSingleBubble)
 
-    // --- CORE SUBSYSTEMS ---
-    lateinit var overlayManager: OverlayManager
-    lateinit var gestureExecutor: GestureExecutor
-    lateinit var scriptExecutor: ScriptExecutor
-    lateinit var scenarioRunner: ScenarioRunner
-    lateinit var aiScannerEngine: AiScannerEngine
-    lateinit var templateRepository: TemplateRepository
-    lateinit var scriptRepository: ScriptRepository
+        btnPlay = view.findViewById(R.id.btnPlay)
+        btnAdd = view.findViewById(R.id.btnAdd)
+        btnCapturePool = view.findViewById(R.id.btnCapturePool)
+        btnHelpTutorial = view.findViewById(R.id.btnHelpTutorial)
+        btnToggleMenu = view.findViewById(R.id.btnToggleMenu)
 
-    // --- UI OVERLAYS ---
-    lateinit var controlPanelOverlay: ControlPanelOverlay
-    lateinit var joystickOverlay: JoystickOverlay
-    lateinit var captureFrameOverlay: CaptureFrameOverlay
-    lateinit var debuggerOverlay: ScenarioDebuggerOverlay
-    lateinit var clickVisualizerOverlay: ClickVisualizerOverlay
+        btnClearAll = view.findViewById(R.id.btnClearAll)
+        btnRecord = view.findViewById(R.id.btnRecord)
+        btnToggleJoystick = view.findViewById(R.id.btnToggleJoystick)
+        btnLoadScript = view.findViewById(R.id.btnLoadScript)
+        btnHideNumbers = view.findViewById(R.id.btnHideNumbers)
+        btnClose = view.findViewById(R.id.btnClose)
 
-    // --- TUTORIAL STATE ---
-    private var tutorialCardView: View? = null
-    private var currentTutorialStep = 0
-    private var isTutorialActive = false
-    private var highlightedButtonAnim: ObjectAnimator? = null
+        var initX = 0; var initY = 0; var touchX = 0f; var touchY = 0f
 
-    // --- STATE ---
-    val actionsList = ArrayList<ActionConfig>()
-    var isPlaying = false
-    var isRecording = false
-    var isNumbersHidden = false
-
-    var globalClickDurationMs: Long = 120L
-    var globalScriptLoopCount: Int = 1
-    var isGlobalScriptInfinite: Boolean = false
-    var globalRelayNextScript: String = ""
-
-    val globalTemplates: ArrayList<Bitmap>
-        get() = templateRepository.globalTemplates
-
-    val globalTemplatesNames: ArrayList<String>
-        get() = templateRepository.globalTemplatesNames
-
-    private val uiHandler = Handler(Looper.getMainLooper())
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        instance = this
-
-        templateRepository = TemplateRepository.init(this)
-        scriptRepository = ScriptRepository.init(this)
-
-        overlayManager = OverlayManager(this)
-        gestureExecutor = GestureExecutor(this)
-        scriptExecutor = ScriptExecutor(this)
-        scenarioRunner = ScenarioRunner(this)
-        aiScannerEngine = AiScannerEngine(this)
-
-        controlPanelOverlay = ControlPanelOverlay(this)
-        joystickOverlay = JoystickOverlay(this)
-        captureFrameOverlay = CaptureFrameOverlay(this)
-        debuggerOverlay = ScenarioDebuggerOverlay(this)
-        clickVisualizerOverlay = ClickVisualizerOverlay(this)
-
-        templateRepository.loadAllTemplatesFromDisk()
-
-        serviceInfo = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        }
-
-        logAppEvent(this, "SERVICE", "🚀 Служба AutoTap v37.1.0-PRO запущен")
-        Toast.makeText(this, "AutoTap v37.1.0-PRO запущен", Toast.LENGTH_SHORT).show()
-    }
-
-    override fun onInterrupt() {}
-
-    fun vibrateFeedback(ms: Long = 25L) = gestureExecutor.vibrateFeedback(ms)
-
-    fun getRealScreenSize(): Pair<Int, Int> = overlayManager.getRealScreenSize()
-    fun dpToPx(dp: Int): Int = overlayManager.dpToPx(dp)
-    fun dpToPx(dp: Float): Int = overlayManager.dpToPx(dp)
-
-    fun showControlPanel() {
-        logAppEvent(this, "OVERLAY", "Показ главной панели управления")
-        controlPanelOverlay.show()
-    }
-
-    fun hideControlPanel(openMainApp: Boolean = false) {
-        hideTutorial()
-        controlPanelOverlay.hide()
-        if (openMainApp) {
-            try {
-                val intent = Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        handleDrag?.setOnTouchListener { _, event ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initX = p.x
+                    initY = p.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
                 }
-                startActivity(intent)
-            } catch (e: Exception) { logError(this, e) }
-        }
-    }
+                MotionEvent.ACTION_MOVE -> {
+                    val (screenW, screenH) = service.overlayManager.getRealScreenSize()
+                    val w = if (view.width > 0) view.width else service.dpToPx(180)
+                    val h = if (view.height > 0) view.height else service.dpToPx(50)
+                    val maxX = (screenW - w).coerceAtLeast(0)
+                    val maxY = (screenH - h).coerceAtLeast(0)
 
-    fun showFloatingStopButton() = controlPanelOverlay.showFloatingStopButton()
-    fun hideFloatingStopButton() = controlPanelOverlay.hideFloatingStopButton()
+                    p.gravity = Gravity.TOP or Gravity.START
+                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, maxY)
 
-    fun startScript(name: String) {
-        actionsList.clear()
-        actionsList.addAll(scriptRepository.loadScriptByName(name))
-        if (actionsList.isEmpty()) {
-            logAppEvent(this, "SCRIPT", "⚠️ Попытка запуска пустого сценария '$name'")
-            Toast.makeText(this, "Сценарий пуст!", Toast.LENGTH_SHORT).show()
-            return
-        }
-        logAppEvent(this, "SCRIPT", "▶️ Запуск сценария '$name' (${actionsList.size} шагов)")
-        scenarioRunner.start()
-    }
-
-    fun stopExecutionLoop() {
-        logAppEvent(this, "SCRIPT", "⏹ Остановка выполнения сценария")
-        scenarioRunner.stop()
-    }
-
-    fun startOverlayRecording() {
-        isRecording = true
-        logAppEvent(this, "RECORDING", "🔴 Запуск живой записи жестов по экрану")
-        actionsList.forEach { act ->
-            act.startView?.visibility = View.INVISIBLE
-            act.endView?.visibility = View.INVISIBLE
-        }
-        controlPanelOverlay.hide()
-        showFloatingStopButton()
-    }
-
-    fun stopOverlayRecording() {
-        isRecording = false
-        logAppEvent(this, "RECORDING", "⏹ Запись жестов завершена. Всего записано шагов: ${actionsList.size}")
-        controlPanelOverlay.show()
-        hideFloatingStopButton()
-        actionsList.forEach { act ->
-            act.startView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
-            act.endView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
-        }
-    }
-
-    fun toggleNumbersVisibility() {
-        isNumbersHidden = !isNumbersHidden
-        logAppEvent(this, "UI", "Переключение видимости бейджей: isHidden=$isNumbersHidden")
-        actionsList.forEach { act ->
-            act.startView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
-            act.endView?.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
-        }
-        Toast.makeText(this, if (isNumbersHidden) "👁 Номера скрыты" else "👁 Номера показаны", Toast.LENGTH_SHORT).show()
-    }
-
-    fun clearAllActions() {
-        logAppEvent(this, "SCRIPT", "🗑 Очистка всех шагов сценария (${actionsList.size} шагов было)")
-        actionsList.forEach { act ->
-            act.startView?.let { overlayManager.safeRemoveView(it) }
-            act.endView?.let { overlayManager.safeRemoveView(it) }
-        }
-        actionsList.clear()
-        Toast.makeText(this, "🗑 Все шаги очищены", Toast.LENGTH_SHORT).show()
-    }
-
-    fun addNewActionAtPosition(x: Float, y: Float, delay: Long, type: ActionType, id: Int) {
-        val actionId = if (id == -1) (actionsList.size + 1) else id
-        logAppEvent(this, "STEP_ADD", "Добавлен шаг #$actionId [$type] в ($x, $y) с задержкой ${delay}мс")
-
-        val cfg = ActionConfig(
-            id = actionId,
-            type = type,
-            xNorm = normalizeX(x),
-            yNorm = normalizeY(y),
-            delay = delay
-        )
-        actionsList.add(cfg)
-    }
-
-    fun spawnEndTargetAtPosition(config: ActionConfig, posX: Float, posY: Float) {
-        val endView = LayoutInflater.from(this).inflate(R.layout.floating_target_end, null)
-        val tvNumEnd = endView.findViewById<TextView>(R.id.tvTargetNumberEnd)
-        tvNumEnd?.text = "${config.id}E"
-
-        val sizePx = overlayManager.dpToPx(36)
-        val params = overlayManager.createOverlayParams().apply {
-            width = sizePx
-            height = sizePx
-            gravity = Gravity.TOP or Gravity.START
-            x = (posX - sizePx / 2f).toInt()
-            y = (posY - sizePx / 2f).toInt()
-        }
-
-        config.endView = endView
-        overlayManager.safeAddView(endView, params)
-    }
-
-    fun normalizeX(px: Float): Float {
-        val (w, _) = overlayManager.getRealScreenSize()
-        return (px / w.toFloat()).coerceIn(0f, 1f)
-    }
-
-    fun normalizeY(px: Float): Float {
-        val (_, h) = overlayManager.getRealScreenSize()
-        return (px / h.toFloat()).coerceIn(0f, 1f)
-    }
-
-    fun resolveNormalizedPoint(nx: Float, ny: Float): Pair<Float, Float> {
-        val (w, h) = overlayManager.getRealScreenSize()
-        return Pair((nx * w).coerceIn(0f, w.toFloat()), (ny * h).coerceIn(0f, h.toFloat()))
-    }
-
-    fun randomOffset(radius: Int): PointF = gestureExecutor.randomOffset(radius)
-
-    fun performClickWithCallback(x: Float, y: Float, duration: Long = globalClickDurationMs, onComplete: ((Boolean) -> Unit)? = null) {
-        gestureExecutor.performClickWithCallback(x, y, duration, onComplete)
-    }
-
-    fun showClickVisualizer(x: Float, y: Float) = clickVisualizerOverlay.showClickAt(x, y)
-
-    fun captureScreenBitmap(): Bitmap? = captureFrameOverlay.capture()
-
-    fun showScriptsDialog() = ScriptsDialog(this).show()
-    fun showEditDialog(config: ActionConfig) = EditActionDialog(this).show(config)
-
-    fun showScriptPickerDialog(title: String, onSelected: (String) -> Unit) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_select_script_for_export, null)
-        val tvTitle = dialogView.findViewById<TextView>(R.id.tvPickerTitle)
-        val layoutList = dialogView.findViewById<LinearLayout>(R.id.layoutPickerList)
-        val btnClose = dialogView.findViewById<Button>(R.id.btnClosePicker)
-
-        tvTitle?.text = title
-        val params = overlayManager.createOverlayParams().apply {
-            width = WindowManager.LayoutParams.WRAP_CONTENT
-            height = WindowManager.LayoutParams.WRAP_CONTENT
-            gravity = Gravity.CENTER
-            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            dimAmount = 0.5f
-        }
-
-        val dir = File(filesDir, "scripts")
-        if (dir.exists()) {
-            dir.listFiles()?.forEach { file ->
-                if (file.name.endsWith(".json")) {
-                    val btn = Button(this).apply {
-                        text = file.nameWithoutExtension
-                        setTextColor(android.graphics.Color.WHITE)
-                        setBackgroundColor(android.graphics.Color.parseColor("#1C2541"))
-                        setOnClickListener {
-                            onSelected(file.nameWithoutExtension)
-                            overlayManager.safeRemoveView(dialogView)
-                        }
-                    }
-                    layoutList?.addView(btn)
+                    service.overlayManager.safeUpdateViewLayout(view, p)
+                    true
                 }
+                else -> false
             }
         }
 
-        btnClose?.setOnClickListener { overlayManager.safeRemoveView(dialogView) }
-        overlayManager.safeAddView(dialogView, params)
-    }
+        btnToggleMenu?.setOnClickListener { service.vibrateFeedback(20L); updatePanelState(panelState + 1) }
+        btnSingleBubble?.setOnClickListener { service.vibrateFeedback(20L); updatePanelState(0) }
 
-    fun showAddActionMenu() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_action, null)
-        val params = overlayManager.createOverlayParams().apply {
-            gravity = Gravity.CENTER
-            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            dimAmount = 0.5f
-        }
-
-        val btnClick = dialogView.findViewById<Button>(R.id.btnAddClick)
-        val btnSwipe = dialogView.findViewById<Button>(R.id.btnAddSwipe)
-        val btnAi = dialogView.findViewById<Button>(R.id.btnAddTrigger)
-        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelAdd)
-
-        val screenSize = overlayManager.getRealScreenSize()
-        val spawnX = screenSize.first / 2f
-        val spawnY = screenSize.second / 2f
-
-        btnClick?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.CLICK, -1); overlayManager.safeRemoveView(dialogView) }
-        btnSwipe?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.SWIPE, -1); spawnEndTargetAtPosition(actionsList.last(), spawnX + 100f, spawnY + 100f); overlayManager.safeRemoveView(dialogView) }
-        btnAi?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.TRIGGER, 0); overlayManager.safeRemoveView(dialogView) }
-        btnCancel?.setOnClickListener { vibrateFeedback(20L); overlayManager.safeRemoveView(dialogView) }
-
-        overlayManager.safeAddView(dialogView, params)
-    }
-
-    fun showTutorialCard() {
-        isTutorialActive = true
-        if (tutorialCardView != null) {
-            tutorialCardView?.visibility = View.VISIBLE
-            updateTutorialContent()
-            return
-        }
-
-        val view = LayoutInflater.from(this).inflate(R.layout.floating_tutorial_card, null)
-        tutorialCardView = view
-
-        val params = overlayManager.createOverlayParams().apply {
-            gravity = Gravity.TOP or Gravity.START
-        }
-
-        val btnPrev = view.findViewById<Button>(R.id.btnTutPrev)
-        val btnNext = view.findViewById<Button>(R.id.btnTutNext)
-        val btnSkip = view.findViewById<Button>(R.id.btnTutSkip)
-
-        btnPrev?.setOnClickListener {
-            vibrateFeedback(20L)
-            if (currentTutorialStep > 0) {
-                currentTutorialStep--
-                updateTutorialContent()
-            }
-        }
-
-        btnNext?.setOnClickListener {
-            vibrateFeedback(20L)
-            if (currentTutorialStep < 10) {
-                currentTutorialStep++
-                updateTutorialContent()
+        btnPlay?.setOnClickListener {
+            service.vibrateFeedback(30L)
+            if (service.isPlaying) {
+                btnPlay?.setImageResource(R.drawable.ic_play)
+                service.stopExecutionLoop()
             } else {
-                hideTutorial()
+                btnPlay?.setImageResource(R.drawable.ic_pause)
+                service.startScript("default")
             }
         }
 
-        btnSkip?.setOnClickListener {
-            vibrateFeedback(20L)
-            hideTutorial()
+        btnAdd?.setOnClickListener { service.vibrateFeedback(20L); service.showAddActionMenu() }
+        btnCapturePool?.setOnClickListener { service.vibrateFeedback(20L); service.captureFrameOverlay.show() }
+        btnHelpTutorial?.setOnClickListener { service.vibrateFeedback(20L); service.showTutorialCard() }
+        btnClearAll?.setOnClickListener { service.vibrateFeedback(30L); service.clearAllActions() }
+        btnRecord?.setOnClickListener { service.vibrateFeedback(20L); if (service.isRecording) service.stopOverlayRecording() else service.startOverlayRecording() }
+        btnToggleJoystick?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            if (service.joystickOverlay.rootView != null) service.joystickOverlay.hide() else service.joystickOverlay.show()
         }
-
-        overlayManager.safeAddView(view, params)
-        updateTutorialContent()
+        btnLoadScript?.setOnClickListener { service.vibrateFeedback(20L); service.showScriptsDialog() }
+        btnHideNumbers?.setOnClickListener { service.vibrateFeedback(20L); service.toggleNumbersVisibility() }
+        btnClose?.setOnClickListener { service.vibrateFeedback(20L); service.hideControlPanel(openMainApp = true) }
     }
 
-    private fun updateTutorialContent() {
-        if (tutorialCardView == null) return
-
-        if (currentTutorialStep >= 5) {
-            controlPanelOverlay.ensureSubMenuVisible()
-        }
-
-        val targetButton: View? = controlPanelOverlay.getButtonForStep(currentTutorialStep)
-        highlightButton(targetButton)
-
-        uiHandler.post {
-            positionTutorialCardAnchored(targetButton)
-        }
-
-        val tvTitle = tutorialCardView?.findViewById<TextView>(R.id.tvTutTitle)
-        val tvDesc = tutorialCardView?.findViewById<TextView>(R.id.tvTutDesc)
-        val btnNext = tutorialCardView?.findViewById<Button>(R.id.btnTutNext)
-
-        when (currentTutorialStep) {
-            0 -> {
-                tvTitle?.text = "1/11: Запуск [▶]"
-                tvDesc?.text = "Запускает и останавливает выполнение всех созданных шагов."
-                btnNext?.text = "Далее ►"
-            }
-            1 -> {
-                tvTitle?.text = "2/11: Добавить [+]"
-                tvDesc?.text = "Добавляет новый обычный клик, свайп или ИИ-триггер."
-                btnNext?.text = "Далее ►"
-            }
-            2 -> {
-                tvTitle?.text = "3/11: ИИ-Сканер [📸]"
-                tvDesc?.text = "Открывает прицел для вырезания картинки с экрана и создания ИИ-маски."
-                btnNext?.text = "Далее ►"
-            }
-            3 -> {
-                tvTitle?.text = "4/11: Справка [❓]"
-                tvDesc?.text = "Повторный вызов этого интерактивного обучения по кнопкам."
-                btnNext?.text = "Далее ►"
-            }
-            4 -> {
-                tvTitle?.text = "5/11: Меню [☰]"
-                tvDesc?.text = "Разворачивает и сворачивает дополнительную панель инструментов."
-                btnNext?.text = "Далее ►"
-            }
-            5 -> {
-                tvTitle?.text = "6/11: Очистить [🗑]"
-                tvDesc?.text = "Удаляет абсолютно все мишени и шаги с экрана."
-                btnNext?.text = "Далее ►"
-            }
-            6 -> {
-                tvTitle?.text = "7/11: Запись [🔴]"
-                tvDesc?.text = "Включает живую запись ваших кликов и свайпов прямо по экрану!"
-                btnNext?.text = "Далее ►"
-            }
-            7 -> {
-                tvTitle?.text = "8/11: Джойстик [🕹]"
-                tvDesc?.text = "Включает плавающий джойстик для записи жестов свайпа."
-                btnNext?.text = "Далее ►"
-            }
-            8 -> {
-                tvTitle?.text = "9/11: Скрипты [📁]"
-                tvDesc?.text = "Сохранение текущей схемы шагов в файл и загрузка сохраненных."
-                btnNext?.text = "Далее ►"
-            }
-            9 -> {
-                tvTitle?.text = "10/11: Глаз [👁]"
-                tvDesc?.text = "Скрывает или показывает бейджи с номерами поверх шагов."
-                btnNext?.text = "Далее ►"
-            }
-            10 -> {
-                tvTitle?.text = "11/11: Закрыть [❌]"
-                tvDesc?.text = "Выход из панели кликера и возвращение в главное меню."
-                btnNext?.text = "Завершить ✔"
-            }
+    fun ensureSubMenuVisible() {
+        if (panelState != 1) {
+            updatePanelState(1)
         }
     }
 
-    private fun positionTutorialCardAnchored(targetButton: View?) {
-        val card = tutorialCardView ?: return
-        val panel = controlPanelOverlay.rootView ?: return
-
-        val (screenW, screenH) = overlayManager.getRealScreenSize()
-        val loc = IntArray(2)
-        if (targetButton != null && targetButton.width > 0) {
-            targetButton.getLocationOnScreen(loc)
-        } else {
-            panel.getLocationOnScreen(loc)
-        }
-
-        val anchorX = loc[0]
-        val anchorY = loc[1]
-
-        val cardW = dpToPx(240)
-        val cardH = dpToPx(150)
-
-        var cardX = anchorX + dpToPx(50)
-        var cardY = anchorY + dpToPx(50)
-
-        if (cardX + cardW > screenW - dpToPx(16)) {
-            cardX = anchorX - cardW - dpToPx(10)
-        }
-        if (cardY + cardH > screenH - dpToPx(16)) {
-            cardY = anchorY - cardH - dpToPx(10)
-        }
-
-        cardX = cardX.coerceIn(dpToPx(10), (screenW - cardW - dpToPx(10)).coerceAtLeast(dpToPx(10)))
-        cardY = cardY.coerceIn(dpToPx(40), (screenH - cardH - dpToPx(10)).coerceAtLeast(dpToPx(40)))
-
-        val params = card.layoutParams as? WindowManager.LayoutParams ?: return
-        params.gravity = Gravity.TOP or Gravity.START
-        params.x = cardX
-        params.y = cardY
-        overlayManager.safeUpdateViewLayout(card, params)
-    }
-
-    private fun highlightButton(button: View?) {
-        clearButtonHighlights()
-        if (button == null) return
-
-        highlightedButtonAnim = ObjectAnimator.ofPropertyValuesHolder(
-            button,
-            PropertyValuesHolder.ofFloat(View.SCALE_X, 1.0f, 1.25f, 1.0f),
-            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.0f, 1.25f, 1.0f)
-        ).apply {
-            duration = 600
-            repeatCount = ObjectAnimator.INFINITE
-            start()
+    fun getButtonForStep(step: Int): View? {
+        return when (step) {
+            0 -> btnPlay
+            1 -> btnAdd
+            2 -> btnCapturePool
+            3 -> btnHelpTutorial
+            4 -> btnToggleMenu
+            5 -> btnClearAll
+            6 -> btnRecord
+            7 -> btnToggleJoystick
+            8 -> btnLoadScript
+            9 -> btnHideNumbers
+            10 -> btnClose
+            else -> null
         }
     }
 
-    private fun clearButtonHighlights() {
-        highlightedButtonAnim?.cancel()
-        highlightedButtonAnim = null
-        controlPanelOverlay.resetAllButtonScales()
-    }
-
-    fun hideTutorial() {
-        clearButtonHighlights()
-        isTutorialActive = false
-        tutorialCardView?.let {
-            overlayManager.safeRemoveView(it)
-            tutorialCardView = null
+    fun resetAllButtonScales() {
+        val buttons = listOf(
+            btnPlay, btnAdd, btnCapturePool, btnHelpTutorial, btnToggleMenu,
+            btnClearAll, btnRecord, btnToggleJoystick, btnLoadScript, btnHideNumbers, btnClose
+        )
+        buttons.forEach { btn ->
+            btn?.scaleX = 1.0f
+            btn?.scaleY = 1.0f
         }
     }
 
-    fun loadScriptByName(name: String): List<ActionConfig> = scriptRepository.loadScriptByName(name)
-    fun saveScriptByName(name: String, actions: List<ActionConfig>) = scriptRepository.saveScriptByName(name, actions)
+    fun updatePanelState(state: Int) {
+        panelState = state % 3
+        when (panelState) {
+            0 -> { layoutMainRow?.visibility = View.VISIBLE; layoutSubMenu?.visibility = View.GONE; btnSingleBubble?.visibility = View.GONE }
+            1 -> { layoutMainRow?.visibility = View.VISIBLE; layoutSubMenu?.visibility = View.VISIBLE; btnSingleBubble?.visibility = View.GONE }
+            2 -> { layoutMainRow?.visibility = View.GONE; layoutSubMenu?.visibility = View.GONE; btnSingleBubble?.visibility = View.VISIBLE }
+        }
+        rootView?.requestLayout()
+        val p = rootView?.layoutParams as? WindowManager.LayoutParams
+        if (p != null && rootView != null) {
+            val (screenW, screenH) = service.overlayManager.getRealScreenSize()
+            p.width = WindowManager.LayoutParams.WRAP_CONTENT
+            p.height = WindowManager.LayoutParams.WRAP_CONTENT
+            p.gravity = Gravity.TOP or Gravity.START
 
-    fun loadAllTemplatesFromDisk() = templateRepository.loadAllTemplatesFromDisk()
-    fun moveTemplateToTrash(index: Int) = templateRepository.moveTemplateToTrash(index)
-    fun exportScriptWithTemplates(context: Context, scriptName: String) = scriptRepository.exportScriptWithTemplates(scriptName)
+            rootView?.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+            val h = if (rootView?.measuredHeight ?: 0 > 0) rootView!!.measuredHeight else service.dpToPx(105)
+            val w = if (rootView?.measuredWidth ?: 0 > 0) rootView!!.measuredWidth else service.dpToPx(200)
 
-    override fun onDestroy() {
-        logAppEvent(this, "SERVICE", "🛑 Служба AutoTap остановлена")
-        stopExecutionLoop()
-        hideControlPanel()
-        instance = null
-        super.onDestroy()
+            p.x = p.x.coerceIn(0, (screenW - w).coerceAtLeast(0))
+            p.y = p.y.coerceIn(0, (screenH - h).coerceAtLeast(0))
+
+            service.overlayManager.safeUpdateViewLayout(rootView, p)
+        }
+    }
+
+    fun showFloatingStopButton() {
+        if (stopButtonView != null) return
+        val view = LayoutInflater.from(service).inflate(R.layout.floating_stop_button, null)
+        stopButtonView = view
+
+        val (screenW, _) = service.overlayManager.getRealScreenSize()
+        val params = service.overlayManager.createOverlayParams().apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (screenW - service.dpToPx(80)) / 2
+            y = service.dpToPx(60)
+        }
+
+        val handleDrag = view.findViewById<TextView>(R.id.handleDragStop)
+        var initX = 0; var initY = 0
+        var touchX = 0f; var touchY = 0f
+
+        handleDrag?.setOnTouchListener { _, event ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initX = p.x
+                    initY = p.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val (sw, sh) = service.overlayManager.getRealScreenSize()
+                    val w = if (view.width > 0) view.width else service.dpToPx(80)
+                    val h = if (view.height > 0) view.height else service.dpToPx(40)
+                    p.gravity = Gravity.TOP or Gravity.START
+                    p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, (sw - w).coerceAtLeast(0))
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, (sh - h).coerceAtLeast(0))
+                    service.overlayManager.safeUpdateViewLayout(view, p)
+                    true
+                }
+                else -> false
+            }
+        }
+
+        val btnStop = view.findViewById<ImageButton>(R.id.btnFloatingStop)
+        btnStop?.setOnClickListener {
+            service.vibrateFeedback(20L)
+            service.stopExecutionLoop()
+        }
+
+        service.overlayManager.safeAddView(view, params)
+    }
+
+    fun hideFloatingStopButton() {
+        stopButtonView?.let { service.overlayManager.safeRemoveView(it) }
+        stopButtonView = null
+    }
+
+    fun showClickVisualizer(x: Float, y: Float) {
+        val view = LayoutInflater.from(service).inflate(R.layout.floating_beacon_ring, null)
+        val params = service.overlayManager.createOverlayParams().apply {
+            gravity = Gravity.TOP or Gravity.START
+            this.x = x.toInt()
+            this.y = y.toInt()
+        }
+        service.overlayManager.safeAddView(view, params)
+        view.animate().alpha(0f).setDuration(300).withEndAction { service.overlayManager.safeRemoveView(view) }.start()
     }
 }
 """
-    write_file("app/src/main/java/com/example/autotap/MyAutoClickService.kt", service_code)
+    write_file("app/src/main/java/com/example/autotap/ui/overlays/ControlPanelOverlay.kt", control_panel_code)
 
-    print("✨ Тотальный 360-градусный аудит и патч v37.1.0-PRO успешно применены!")
+    # 4. MainActivity.kt (Версия 37.2.0-PRO)
+    main_activity_code = r"""package com.example.autotap
+
+import android.app.AlertDialog
+import android.content.Context
+import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.net.Uri
+import android.os.Bundle
+import android.os.StrictMode
+import android.provider.Settings
+import android.view.LayoutInflater
+import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
+import java.io.*
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+
+@Suppress("SpellCheckingInspection", "DEPRECATION")
+class MainActivity : AppCompatActivity() {
+
+    private var hasAutoShownPermissions = false
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
+
+        val tvVersion = findViewById<TextView>(R.id.tvVersion)
+        tvVersion?.text = "AutoTap v37.2.0-PRO"
+
+        val btnAppDetails = findViewById<Button>(R.id.btnAppDetails)
+        val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
+        val btnOverlay = findViewById<Button>(R.id.btnOverlay)
+        val btnExport = findViewById<Button>(R.id.btnExport)
+        val btnImport = findViewById<Button>(R.id.btnImport)
+        val btnStartPanel = findViewById<Button>(R.id.btnStartPanel)
+        val btnShowLogs = findViewById<Button>(R.id.btnShowLogs)
+        val btnManageTemplates = findViewById<Button>(R.id.btnManageTemplates)
+        val btnPermissionsHelp = findViewById<Button>(R.id.btnPermissionsHelp)
+        val btnInfoHelp = findViewById<Button>(R.id.btnInfoHelp)
+
+        btnAppDetails?.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            })
+        }
+
+        btnAccessibility?.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+
+        btnOverlay?.setOnClickListener {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+            }
+        }
+
+        btnExport?.setOnClickListener { showExportDialog() }
+        btnImport?.setOnClickListener { startImportFlow() }
+        btnShowLogs?.setOnClickListener { showLogsDialog() }
+        btnManageTemplates?.setOnClickListener { showTemplatesManagerDialog() }
+        btnPermissionsHelp?.setOnClickListener { showPermissionsHelpDialog() }
+        btnInfoHelp?.setOnClickListener { showInfoHelpDialog() }
+
+        btnStartPanel?.setOnClickListener {
+            val service = MyAutoClickService.instance
+            if (service == null) {
+                Toast.makeText(this, "Служба не активна!", Toast.LENGTH_SHORT).show()
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                return@setOnClickListener
+            }
+
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Разрешите показ поверх окон!", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            service.showControlPanel()
+            moveTaskToBack(true)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updatePermissionButtonStates()
+
+        val isServiceRunning = MyAutoClickService.instance != null
+        val isOverlayGranted = Settings.canDrawOverlays(this)
+
+        if ((!isServiceRunning || !isOverlayGranted) && !hasAutoShownPermissions) {
+            hasAutoShownPermissions = true
+            showPermissionsHelpDialog()
+        }
+    }
+
+    private fun updatePermissionButtonStates() {
+        val btnAccessibility = findViewById<Button>(R.id.btnAccessibility)
+        val btnOverlay = findViewById<Button>(R.id.btnOverlay)
+
+        val isServiceBound = MyAutoClickService.instance != null
+        val isSystemEnabled = isAccessibilityServiceEnabled()
+        val isOverlayGranted = Settings.canDrawOverlays(this)
+
+        btnAccessibility?.text =
+            if (isServiceBound) "Служба кликера: ВКЛЮЧЕНА"
+            else if (isSystemEnabled) "Перезапустить службу"
+            else "Разрешить работу кликера"
+
+        btnAccessibility?.backgroundTintList =
+            ColorStateList.valueOf(if (isServiceBound) Color.parseColor("#1E3A2B") else Color.parseColor("#8B0000"))
+
+        btnOverlay?.text =
+            if (isOverlayGranted) "Показ поверх окон: РАЗРЕШЕНО"
+            else "Показ поверх окон: ОТКЛЮЧЕНО"
+
+        btnOverlay?.backgroundTintList =
+            ColorStateList.valueOf(if (isOverlayGranted) Color.parseColor("#1E3A2B") else Color.parseColor("#21262D"))
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
+        val enabled = am?.getEnabledAccessibilityServiceList(
+            android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+        ) ?: emptyList()
+
+        if (enabled.any { it.resolveInfo.serviceInfo.packageName == packageName }) return true
+
+        val raw = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+        return raw.split(':').any { it.substringBefore('/').equals(packageName, true) }
+    }
+
+    private fun showExportDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_export_select, null)
+        val ad = AlertDialog.Builder(this).setView(dialogView).create()
+
+        dialogView.findViewById<Button>(R.id.btnExpSingleScript)?.setOnClickListener {
+            ad.dismiss()
+            exportFullBackup()
+        }
+
+        dialogView.findViewById<Button>(R.id.btnExpTemplatesOnly)?.setOnClickListener {
+            ad.dismiss()
+            exportTemplatesOnly()
+        }
+
+        dialogView.findViewById<Button>(R.id.btnExpFullBackup)?.setOnClickListener {
+            ad.dismiss()
+            exportFullBackup()
+        }
+
+        dialogView.findViewById<Button>(R.id.btnCloseExpSelect)?.setOnClickListener {
+            ad.dismiss()
+        }
+
+        ad.show()
+    }
+
+    private fun exportTemplatesOnly() {
+        val baseDir = File(filesDir, "templates")
+        if (!baseDir.exists() || baseDir.listFiles()?.isEmpty() == true) {
+            Toast.makeText(this, "Пул шаблонов пуст!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val zipFile = File(externalCacheDir ?: cacheDir, "autotap_templates.zip")
+        zipFolder(baseDir, zipFile)
+        shareZip(zipFile, "ИИ-шаблоны AutoTap")
+    }
+
+    private fun exportFullBackup() {
+        try {
+            val zipFile = File(externalCacheDir ?: cacheDir, "autotap_backup.zip")
+            val zos = ZipOutputStream(FileOutputStream(zipFile))
+
+            val scriptsDir = File(filesDir, "scripts")
+            if (scriptsDir.exists()) zipDirToZip(filesDir, scriptsDir, zos)
+
+            val templatesDir = File(filesDir, "templates")
+            if (templatesDir.exists()) zipDirToZip(filesDir, templatesDir, zos)
+
+            zos.close()
+            shareZip(zipFile, "Полный бэкап AutoTap v37.2")
+        } catch (e: Exception) {
+            MyAutoClickService.logError(this, e)
+            Toast.makeText(this, "Ошибка бэкапа!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun startImportFlow() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            type = "application/zip"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        startActivityForResult(intent, 1002)
+    }
+
+    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
+        super.onActivityResult(req, res, data)
+        if (req == 1002 && res == RESULT_OK) {
+            val uri = data?.data ?: return
+            importZip(uri)
+        }
+    }
+
+    private fun importZip(uri: Uri) {
+        try {
+            val input = contentResolver.openInputStream(uri) ?: return
+            val zis = ZipInputStream(BufferedInputStream(input))
+
+            var entry: ZipEntry?
+            while (zis.nextEntry.also { entry = it } != null) {
+                val name = entry!!.name
+                val outFile = File(filesDir, name)
+
+                outFile.parentFile?.mkdirs()
+                BufferedOutputStream(FileOutputStream(outFile)).use { bos ->
+                    zis.copyTo(bos)
+                }
+            }
+            zis.close()
+
+            MyAutoClickService.instance?.loadAllTemplatesFromDisk()
+            Toast.makeText(this, "Импорт завершён!", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            MyAutoClickService.logError(this, e)
+            Toast.makeText(this, "Ошибка импорта!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun zipFolder(folder: File, zipFile: File) {
+        val zos = ZipOutputStream(FileOutputStream(zipFile))
+        folder.listFiles()?.forEach { file ->
+            val entry = ZipEntry(file.name)
+            zos.putNextEntry(entry)
+            zos.write(file.readBytes())
+            zos.closeEntry()
+        }
+        zos.close()
+    }
+
+    private fun zipDirToZip(root: File, src: File, zos: ZipOutputStream) {
+        src.listFiles()?.forEach { file ->
+            if (file.isDirectory) {
+                zipDirToZip(root, file, zos)
+            } else {
+                val entryName = file.absolutePath.substring(root.absolutePath.length + 1)
+                zos.putNextEntry(ZipEntry(entryName))
+                zos.write(file.readBytes())
+                zos.closeEntry()
+            }
+        }
+    }
+
+    private fun shareZip(zipFile: File, title: String) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", zipFile)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, title))
+    }
+
+    private fun showLogsDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_logs, null)
+        val tvLogs = dialogView.findViewById<TextView>(R.id.tvLogsContent)
+        val btnShare = dialogView.findViewById<Button>(R.id.btnShareLogs)
+        val btnClear = dialogView.findViewById<Button>(R.id.btnClearLogs)
+        val btnClose = dialogView.findViewById<Button>(R.id.btnCloseLogs)
+
+        val logFile = File(filesDir, "error_log.txt")
+        tvLogs?.text = if (logFile.exists() && logFile.length() > 0) logFile.readText() else "Логи отсутствуют."
+
+        val ad = AlertDialog.Builder(this).setView(dialogView).create()
+
+        btnShare?.setOnClickListener {
+            if (logFile.exists() && logFile.length() > 0) {
+                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", logFile)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(intent, "Поделиться логами"))
+            } else {
+                Toast.makeText(this, "Логи пусты", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnClear?.setOnClickListener {
+            if (logFile.exists()) logFile.delete()
+            tvLogs?.text = "Логи очищены."
+            Toast.makeText(this, "Логи очищены", Toast.LENGTH_SHORT).show()
+        }
+
+        btnClose?.setOnClickListener { ad.dismiss() }
+        ad.show()
+    }
+
+    private fun showTemplatesManagerDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_templates_manager, null)
+        val layoutList = dialogView.findViewById<LinearLayout>(R.id.layoutTemplatesList)
+        val btnClose = dialogView.findViewById<Button>(R.id.btnCloseTemplatesManager)
+
+        val ad = AlertDialog.Builder(this).setView(dialogView).create()
+
+        fun refresh() {
+            layoutList?.removeAllViews()
+            val baseDir = File(filesDir, "templates")
+
+            baseDir.listFiles()?.forEach { folder ->
+                if (folder.isDirectory) {
+                    folder.listFiles()?.forEach { file ->
+                        if (file.name.startsWith("mask_") && file.name.endsWith(".png")) {
+                            val item = LayoutInflater.from(this).inflate(R.layout.item_template, null)
+
+                            val iv = item.findViewById<ImageView>(R.id.ivTemplatePreview)
+                            val tv = item.findViewById<TextView>(R.id.tvTemplateName)
+                            val btnDelete = item.findViewById<Button>(R.id.btnDeleteTemplateFile)
+
+                            iv?.setImageBitmap(BitmapFactory.decodeFile(file.absolutePath))
+                            tv?.text = "${folder.name}\n${file.nameWithoutExtension}"
+
+                            btnDelete?.setOnClickListener {
+                                MyAutoClickService.instance?.moveTemplateToTrash(
+                                    MyAutoClickService.instance?.globalTemplatesNames?.indexOf(file.absolutePath) ?: -1
+                                )
+                                MyAutoClickService.instance?.loadAllTemplatesFromDisk()
+                                refresh()
+                            }
+
+                            layoutList?.addView(item)
+                        }
+                    }
+                }
+            }
+        }
+
+        refresh()
+        btnClose?.setOnClickListener { ad.dismiss() }
+        ad.show()
+    }
+
+    private fun showPermissionsHelpDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_permissions, null)
+        val ad = AlertDialog.Builder(this).setView(dialogView).create()
+        dialogView.findViewById<Button>(R.id.btnClosePermissionsDialog)?.setOnClickListener { ad.dismiss() }
+        ad.show()
+    }
+
+    private fun showInfoHelpDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_info, null)
+        val ad = AlertDialog.Builder(this).setView(dialogView).create()
+
+        val tvContent = dialogView.findViewById<TextView>(R.id.tvTabContent)
+        val tabClick = dialogView.findViewById<Button>(R.id.tabClick)
+        val tabSwipe = dialogView.findViewById<Button>(R.id.tabSwipe)
+        val tabAi = dialogView.findViewById<Button>(R.id.tabAi)
+        val btnClose = dialogView.findViewById<Button>(R.id.btnCloseInfoDialog)
+
+        val clickInfo = "• Клики (Click):\nТочечное нажатие по координатам с регулируемой задержкой, повторами и случайным разбросом.\n\n• Зажатие (Hold):\nУдержание точки на заданное время (в мс)."
+        val swipeInfo = "• Свайпы (Swipe):\nПлавное перемещение от точки (S) к (E).\n\n• Траектория Джойстика:\nЗапись сложных свайпов через плавающий джойстик."
+        val aiInfo = "• ИИ-Сканер (AI Trigger v37):\nПоиск заданного изображения на экране с калибровкой, выбором порога (%) и эстафетой сценариев."
+
+        tvContent?.text = clickInfo
+
+        tabClick?.setOnClickListener {
+            tvContent?.text = clickInfo
+            tabClick.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
+            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+        }
+
+        tabSwipe?.setOnClickListener {
+            tvContent?.text = swipeInfo
+            tabClick?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
+            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+        }
+
+        tabAi?.setOnClickListener {
+            tvContent?.text = aiInfo
+            tabClick?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+            tabSwipe?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0D1117"))
+            tabAi?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#58A6FF"))
+        }
+
+        btnClose?.setOnClickListener { ad.dismiss() }
+        ad.show()
+    }
+}
+"""
+    write_file("app/src/main/java/com/example/autotap/MainActivity.kt", main_activity_code)
+
+    print("✨ Плавное 120 FPS перетаскивание и фикс вертикальной привязки оверлеев успешно применены!")
 
 if __name__ == "__main__":
-    run_total_360_audit_patch()
+    fix_vertical_drag_and_consequential_bugs()

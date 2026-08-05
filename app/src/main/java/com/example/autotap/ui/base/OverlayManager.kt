@@ -3,9 +3,8 @@ package com.example.autotap.ui.base
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.util.DisplayMetrics
+import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import com.example.autotap.MyAutoClickService
@@ -19,8 +18,6 @@ class OverlayManager(private val context: Context) {
     private val attachedViews = ConcurrentHashMap<View, Boolean>()
     private val viewPool = ConcurrentHashMap<Int, MutableList<View>>()
     private val activeOverlays = ConcurrentHashMap<OverlayLayer, MutableList<OverlayBase>>()
-    private val updateHandler = Handler(Looper.getMainLooper())
-    private val pendingUpdates = ConcurrentHashMap<View, WindowManager.LayoutParams>()
 
     fun safeAddView(view: View?, params: WindowManager.LayoutParams) {
         if (view == null || attachedViews[view] == true) return
@@ -45,18 +42,11 @@ class OverlayManager(private val context: Context) {
 
     fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams) {
         if (view == null || attachedViews[view] != true) return
-        pendingUpdates[view] = params
-        updateHandler.removeCallbacksAndMessages(null)
-        updateHandler.postDelayed({
-            try {
-                val p = pendingUpdates[view] ?: return@postDelayed
-                windowManager.updateViewLayout(view, p)
-            } catch (e: Exception) {
-                MyAutoClickService.logError(context, e)
-            } finally {
-                pendingUpdates.remove(view)
-            }
-        }, 8)
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            MyAutoClickService.logError(context, e)
+        }
     }
 
     fun getViewFromReusePool(layoutResId: Int): View? {
@@ -143,6 +133,8 @@ class OverlayManager(private val context: Context) {
             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
+            gravity = Gravity.TOP or Gravity.START
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode =
