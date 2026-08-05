@@ -15,6 +15,7 @@ fun Float.dpToPx(context: Context): Float {
     return this * context.resources.displayMetrics.density
 }
 
+// Позволяет делать val (width, height) = getRealScreenSize()
 operator fun Point.component1(): Int = this.x
 operator fun Point.component2(): Int = this.y
 

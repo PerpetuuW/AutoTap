@@ -18,7 +18,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -35,11 +34,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MyAutoClickService : AccessibilityService() {
 
-    // Сделано internal для исправления ошибки: Cannot access 'val actionsList': it is private
     internal val actionsList = CopyOnWriteArrayList<AutoTapAction>()
-
-    // Интеграция менеджмента оверлеев
     internal lateinit var overlayManager: OverlayManager
+
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private var statusTextView: TextView? = null
@@ -56,7 +53,7 @@ class MyAutoClickService : AccessibilityService() {
         overlayManager = OverlayManager(this)
         executorThread = HandlerThread("AutoTapExecutorThread").apply { start() }
         executorHandler = Handler(executorThread.looper)
-        DiagnosticLogger.log("MyAutoClickService", "Service onCreate successfully executed")
+        DiagnosticLogger.log("MyAutoClickService", "Service onCreate executed")
     }
 
     override fun onServiceConnected() {
@@ -70,7 +67,7 @@ class MyAutoClickService : AccessibilityService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(PowerManager::class.java)
             if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
-                DiagnosticLogger.log("MyAutoClickService", "Requesting battery optimization exemption")
+                DiagnosticLogger.log("MyAutoClickService", "Requesting ignore battery optimizations")
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                     data = Uri.parse("package:$packageName")
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -81,8 +78,8 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun getRealScreenSize(): Point {
-        val windowManager = getSystemService(WindowManager::class.java)
-        val display = windowManager.defaultDisplay
+        val wm = getSystemService(WindowManager::class.java)
+        val display = wm.defaultDisplay
         val size = Point()
         display.getRealSize(size)
         return size
@@ -93,8 +90,6 @@ class MyAutoClickService : AccessibilityService() {
         if (!Settings.canDrawOverlays(this)) return
 
         windowManager = getSystemService(WindowManager::class.java)
-
-        // Деструктуризация благодаря расширению component1() / component2()
         val (screenWidth, screenHeight) = getRealScreenSize()
 
         val layoutParams = WindowManager.LayoutParams().apply {
@@ -188,7 +183,7 @@ class MyAutoClickService : AccessibilityService() {
                 val (screenWidth, screenHeight) = getRealScreenSize()
                 actionsList.add(
                     AutoTapAction(
-                        id = "default_action",
+                        id = "action_1",
                         type = ActionType.CLICK,
                         x = screenWidth / 2,
                         y = screenHeight / 2
@@ -225,7 +220,7 @@ class MyAutoClickService : AccessibilityService() {
                         val normEndX = normalizeX(action.endX, screenWidth)
                         val normEndY = normalizeY(action.endY, screenHeight)
                         performSwipeWithCallback(normX, normY, normEndX, normEndY, action.durationMs) { success ->
-                            DiagnosticLogger.log("MyAutoClickService", "Swipe finished: $success")
+                            DiagnosticLogger.log("MyAutoClickService", "Swipe status: $success")
                         }
                     }
                     ActionType.COLOR_CHECK -> {
@@ -272,7 +267,6 @@ class MyAutoClickService : AccessibilityService() {
         return result
     }
 
-    // Добавлен отсутствующий метод performSwipeWithCallback
     fun performSwipeWithCallback(
         startX: Int,
         startY: Int,
@@ -298,6 +292,34 @@ class MyAutoClickService : AccessibilityService() {
                 callback(false)
             }
         }, null)
+    }
+
+    fun performSwipeWithCallback(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        durationMs: Long,
+        callback: ((Boolean) -> Unit)? = null
+    ) {
+        performSwipeWithCallback(
+            startX.toInt(),
+            startY.toInt(),
+            endX.toInt(),
+            endY.toInt(),
+            durationMs,
+            callback ?: {}
+        )
+    }
+
+    fun performSwipeWithCallback(
+        startX: Int,
+        startY: Int,
+        endX: Int,
+        endY: Int,
+        durationMs: Long
+    ) {
+        performSwipeWithCallback(startX, startY, endX, endY, durationMs, {})
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
@@ -331,8 +353,8 @@ class MyAutoClickService : AccessibilityService() {
                                     val b2 = Color.blue(action.targetColor)
 
                                     isMatch = Math.abs(r1 - r2) <= action.colorTolerance &&
-                                            Math.abs(g1 - g2) <= action.colorTolerance &&
-                                            Math.abs(b1 - b2) <= action.colorTolerance
+                                              Math.abs(g1 - g2) <= action.colorTolerance &&
+                                              Math.abs(b1 - b2) <= action.colorTolerance
                                 }
                             }
                             bitmap.recycle()

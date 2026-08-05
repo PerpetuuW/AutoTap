@@ -130,6 +130,7 @@ class JoystickOverlay(
                 val endX = startX + deltaX * 200f
                 val endY = startY + deltaY * 200f
 
+                // Вызов метода с приведением к Float/Int и обработкой коллбэка (Строка 136)
                 service.performSwipeWithCallback(
                     startX = startX,
                     startY = startY,
@@ -149,7 +150,7 @@ class JoystickOverlay(
         overlayView = joystick
         windowManager.addView(overlayView, layoutParams)
         context.vibrateFeedback(30L)
-        DiagnosticLogger.log("JoystickOverlay", "Joystick overlay attached")
+        DiagnosticLogger.log("JoystickOverlay", "Joystick overlay successfully attached to WindowManager")
     }
 
     fun dismiss() {
