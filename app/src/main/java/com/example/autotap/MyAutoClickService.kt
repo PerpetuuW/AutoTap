@@ -26,6 +26,7 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.DisplayMetrics
+import android.view.Display
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -62,6 +63,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -158,6 +160,7 @@ class MyAutoClickService : AccessibilityService() {
         get() = templateRepository.globalTemplatesNames
 
     private val uiHandler = Handler(Looper.getMainLooper())
+    private val bgScannerExecutor = Executors.newSingleThreadExecutor()
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
@@ -189,8 +192,8 @@ class MyAutoClickService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
-        logAppEvent(this, "SERVICE", "🚀 Служба AutoTap v37.1.0-PRO запущен")
-        Toast.makeText(this, "AutoTap v37.1.0-PRO запущен", Toast.LENGTH_SHORT).show()
+        logAppEvent(this, "SERVICE", "🚀 Служба AutoTap v37.5.0-PRO успешно подключена к системе")
+        Toast.makeText(this, "AutoTap v37.5.0-PRO запущен", Toast.LENGTH_SHORT).show()
     }
 
     override fun onInterrupt() {}
@@ -283,16 +286,74 @@ class MyAutoClickService : AccessibilityService() {
 
     fun addNewActionAtPosition(x: Float, y: Float, delay: Long, type: ActionType, id: Int) {
         val actionId = if (id == -1) (actionsList.size + 1) else id
-        logAppEvent(this, "STEP_ADD", "Добавлен шаг #$actionId [$type] в ($x, $y) с задержкой ${delay}мс")
+        val startView = LayoutInflater.from(this).inflate(R.layout.floating_target, null)
+        val tvNum = startView.findViewById<TextView>(R.id.tvTargetNumber)
+        tvNum?.text = actionId.toString()
 
-        val cfg = ActionConfig(
+        val sizePx = overlayManager.dpToPx(if (type == ActionType.TRIGGER) 50 else 36)
+        val params = overlayManager.createOverlayParams().apply {
+            width = sizePx
+            height = sizePx
+            gravity = Gravity.TOP or Gravity.START
+            this.x = (x - sizePx / 2f).toInt()
+            this.y = (y - sizePx / 2f).toInt()
+        }
+
+        val config = ActionConfig(
             id = actionId,
+            startView = startView,
             type = type,
+            delay = delay,
             xNorm = normalizeX(x),
-            yNorm = normalizeY(y),
-            delay = delay
+            yNorm = normalizeY(y)
         )
-        actionsList.add(cfg)
+
+        startView.setOnTouchListener(object : View.OnTouchListener {
+            private var initX = 0; private var initY = 0
+            private var touchX = 0f; private var touchY = 0f
+            private var isMoving = false
+
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                if (isPlaying) return false
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initX = params.x; initY = params.y
+                        touchX = event.rawX; touchY = event.rawY
+                        isMoving = false
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = abs(event.rawX - touchX)
+                        val dy = abs(event.rawY - touchY)
+                        if (dx > 8 || dy > 8) {
+                            isMoving = true
+                            val (sw, sh) = overlayManager.getRealScreenSize()
+                            val sz = if (startView.width > 0) startView.width else overlayManager.dpToPx(36)
+                            params.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, (sw - sz).coerceAtLeast(0))
+                            params.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, (sh - sz).coerceAtLeast(0))
+                            config.xNorm = normalizeX(params.x + sz / 2f)
+                            config.yNorm = normalizeY(params.y + sz / 2f)
+                            overlayManager.safeUpdateViewLayout(startView, params)
+                        }
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        v.performClick()
+                        if (!isMoving && !isPlaying) {
+                            vibrateFeedback(25L)
+                            showEditDialog(config)
+                        }
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        if (isRecording || isNumbersHidden) startView.visibility = View.INVISIBLE
+        actionsList.add(config)
+        overlayManager.safeAddView(startView, params)
+        logAppEvent(this, "STEP_ADD", "✅ Мишень шага #$actionId успешно создана и добавлена на экран")
     }
 
     fun spawnEndTargetAtPosition(config: ActionConfig, posX: Float, posY: Float) {
@@ -336,71 +397,67 @@ class MyAutoClickService : AccessibilityService() {
 
     fun showClickVisualizer(x: Float, y: Float) = clickVisualizerOverlay.showClickAt(x, y)
 
-    fun captureScreenBitmap(): Bitmap? = captureFrameOverlay.capture()
+    // Настоящий захват снимка экрана через Accessibility API
+    fun captureScreenBitmap(): Bitmap? {
+        var resultBitmap: Bitmap? = null
+        val latch = CountDownLatch(1)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            takeScreenshot(Display.DEFAULT_DISPLAY, bgScannerExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(screenshotResult: ScreenshotResult) {
+                    val hwBuffer = screenshotResult.hardwareBuffer
+                    try {
+                        val hwBitmap = Bitmap.wrapHardwareBuffer(hwBuffer, screenshotResult.colorSpace)
+                        resultBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+                    } catch (e: Exception) {
+                        logError(this@MyAutoClickService, e)
+                    } finally {
+                        hwBuffer.close()
+                        latch.countDown()
+                    }
+                }
+
+                override fun onFailure(errorCode: Int) {
+                    logAppEvent(this@MyAutoClickService, "SCREENSHOT", "❌ Сбой вызова takeScreenshot с кодом $errorCode")
+                    latch.countDown()
+                }
+            })
+
+            try { latch.await(1500L, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Exception) {}
+        }
+
+        if (resultBitmap == null) {
+            val (w, h) = getRealScreenSize()
+            resultBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        }
+
+        return resultBitmap
+    }
 
     fun showScriptsDialog() = ScriptsDialog(this).show()
     fun showEditDialog(config: ActionConfig) = EditActionDialog(this).show(config)
 
-    fun showScriptPickerDialog(title: String, onSelected: (String) -> Unit) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_select_script_for_export, null)
-        val tvTitle = dialogView.findViewById<TextView>(R.id.tvPickerTitle)
-        val layoutList = dialogView.findViewById<LinearLayout>(R.id.layoutPickerList)
-        val btnClose = dialogView.findViewById<Button>(R.id.btnClosePicker)
+    // --- ANCHOR TUTORIAL & HIGHLIGHTING ---
 
-        tvTitle?.text = title
-        val params = overlayManager.createOverlayParams().apply {
-            width = WindowManager.LayoutParams.WRAP_CONTENT
-            height = WindowManager.LayoutParams.WRAP_CONTENT
-            gravity = Gravity.CENTER
-            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            dimAmount = 0.5f
+    private fun highlightButton(button: View?) {
+        clearButtonHighlights()
+        if (button == null) return
+
+        highlightedButtonAnim = ObjectAnimator.ofPropertyValuesHolder(
+            button,
+            PropertyValuesHolder.ofFloat(View.SCALE_X, 1.0f, 1.25f, 1.0f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.0f, 1.25f, 1.0f)
+        ).apply {
+            duration = 600
+            repeatCount = ObjectAnimator.INFINITE
+            start()
         }
-
-        val dir = File(filesDir, "scripts")
-        if (dir.exists()) {
-            dir.listFiles()?.forEach { file ->
-                if (file.name.endsWith(".json")) {
-                    val btn = Button(this).apply {
-                        text = file.nameWithoutExtension
-                        setTextColor(android.graphics.Color.WHITE)
-                        setBackgroundColor(android.graphics.Color.parseColor("#1C2541"))
-                        setOnClickListener {
-                            onSelected(file.nameWithoutExtension)
-                            overlayManager.safeRemoveView(dialogView)
-                        }
-                    }
-                    layoutList?.addView(btn)
-                }
-            }
-        }
-
-        btnClose?.setOnClickListener { overlayManager.safeRemoveView(dialogView) }
-        overlayManager.safeAddView(dialogView, params)
     }
 
-    fun showAddActionMenu() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_action, null)
-        val params = overlayManager.createOverlayParams().apply {
-            gravity = Gravity.CENTER
-            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            dimAmount = 0.5f
-        }
-
-        val btnClick = dialogView.findViewById<Button>(R.id.btnAddClick)
-        val btnSwipe = dialogView.findViewById<Button>(R.id.btnAddSwipe)
-        val btnAi = dialogView.findViewById<Button>(R.id.btnAddTrigger)
-        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelAdd)
-
-        val screenSize = overlayManager.getRealScreenSize()
-        val spawnX = screenSize.first / 2f
-        val spawnY = screenSize.second / 2f
-
-        btnClick?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.CLICK, -1); overlayManager.safeRemoveView(dialogView) }
-        btnSwipe?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.SWIPE, -1); spawnEndTargetAtPosition(actionsList.last(), spawnX + 100f, spawnY + 100f); overlayManager.safeRemoveView(dialogView) }
-        btnAi?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.TRIGGER, 0); overlayManager.safeRemoveView(dialogView) }
-        btnCancel?.setOnClickListener { vibrateFeedback(20L); overlayManager.safeRemoveView(dialogView) }
-
-        overlayManager.safeAddView(dialogView, params)
+    private fun clearButtonHighlights() {
+        highlightedButtonAnim?.cancel()
+        highlightedButtonAnim = null
+        controlPanelOverlay.resetAllButtonScales()
     }
 
     fun showTutorialCard() {
@@ -543,46 +600,26 @@ class MyAutoClickService : AccessibilityService() {
 
         val cardW = dpToPx(240)
         val cardH = dpToPx(150)
+        val margin = dpToPx(12)
 
         var cardX = anchorX + dpToPx(50)
         var cardY = anchorY + dpToPx(50)
 
-        if (cardX + cardW > screenW - dpToPx(16)) {
-            cardX = anchorX - cardW - dpToPx(10)
+        if (cardX + cardW > screenW - margin) {
+            cardX = anchorX - cardW - margin
         }
-        if (cardY + cardH > screenH - dpToPx(16)) {
-            cardY = anchorY - cardH - dpToPx(10)
+        if (cardY + cardH > screenH - margin) {
+            cardY = anchorY - cardH - margin
         }
 
-        cardX = cardX.coerceIn(dpToPx(10), (screenW - cardW - dpToPx(10)).coerceAtLeast(dpToPx(10)))
-        cardY = cardY.coerceIn(dpToPx(40), (screenH - cardH - dpToPx(10)).coerceAtLeast(dpToPx(40)))
+        cardX = cardX.coerceIn(margin, (screenW - cardW - margin).coerceAtLeast(margin))
+        cardY = cardY.coerceIn(dpToPx(60), (screenH - cardH - margin).coerceAtLeast(dpToPx(60)))
 
         val params = card.layoutParams as? WindowManager.LayoutParams ?: return
         params.gravity = Gravity.TOP or Gravity.START
         params.x = cardX
         params.y = cardY
         overlayManager.safeUpdateViewLayout(card, params)
-    }
-
-    private fun highlightButton(button: View?) {
-        clearButtonHighlights()
-        if (button == null) return
-
-        highlightedButtonAnim = ObjectAnimator.ofPropertyValuesHolder(
-            button,
-            PropertyValuesHolder.ofFloat(View.SCALE_X, 1.0f, 1.25f, 1.0f),
-            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.0f, 1.25f, 1.0f)
-        ).apply {
-            duration = 600
-            repeatCount = ObjectAnimator.INFINITE
-            start()
-        }
-    }
-
-    private fun clearButtonHighlights() {
-        highlightedButtonAnim?.cancel()
-        highlightedButtonAnim = null
-        controlPanelOverlay.resetAllButtonScales()
     }
 
     fun hideTutorial() {
@@ -592,6 +629,68 @@ class MyAutoClickService : AccessibilityService() {
             overlayManager.safeRemoveView(it)
             tutorialCardView = null
         }
+    }
+
+    fun showScriptPickerDialog(title: String, onSelected: (String) -> Unit) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_select_script_for_export, null)
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvPickerTitle)
+        val layoutList = dialogView.findViewById<LinearLayout>(R.id.layoutPickerList)
+        val btnClose = dialogView.findViewById<Button>(R.id.btnClosePicker)
+
+        tvTitle?.text = title
+        val params = overlayManager.createOverlayParams().apply {
+            width = WindowManager.LayoutParams.WRAP_CONTENT
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+            gravity = Gravity.CENTER
+            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            dimAmount = 0.5f
+        }
+
+        val dir = File(filesDir, "scripts")
+        if (dir.exists()) {
+            dir.listFiles()?.forEach { file ->
+                if (file.name.endsWith(".json")) {
+                    val btn = Button(this).apply {
+                        text = file.nameWithoutExtension
+                        setTextColor(android.graphics.Color.WHITE)
+                        setBackgroundColor(android.graphics.Color.parseColor("#1C2541"))
+                        setOnClickListener {
+                            onSelected(file.nameWithoutExtension)
+                            overlayManager.safeRemoveView(dialogView)
+                        }
+                    }
+                    layoutList?.addView(btn)
+                }
+            }
+        }
+
+        btnClose?.setOnClickListener { overlayManager.safeRemoveView(dialogView) }
+        overlayManager.safeAddView(dialogView, params)
+    }
+
+    fun showAddActionMenu() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_action, null)
+        val params = overlayManager.createOverlayParams().apply {
+            gravity = Gravity.CENTER
+            flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            dimAmount = 0.5f
+        }
+
+        val btnClick = dialogView.findViewById<Button>(R.id.btnAddClick)
+        val btnSwipe = dialogView.findViewById<Button>(R.id.btnAddSwipe)
+        val btnAi = dialogView.findViewById<Button>(R.id.btnAddTrigger)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelAdd)
+
+        val screenSize = overlayManager.getRealScreenSize()
+        val spawnX = screenSize.first / 2f
+        val spawnY = screenSize.second / 2f
+
+        btnClick?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.CLICK, -1); overlayManager.safeRemoveView(dialogView) }
+        btnSwipe?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.SWIPE, -1); spawnEndTargetAtPosition(actionsList.last(), spawnX + 100f, spawnY + 100f); overlayManager.safeRemoveView(dialogView) }
+        btnAi?.setOnClickListener { vibrateFeedback(20L); addNewActionAtPosition(spawnX, spawnY, 1000L, ActionType.TRIGGER, 0); overlayManager.safeRemoveView(dialogView) }
+        btnCancel?.setOnClickListener { vibrateFeedback(20L); overlayManager.safeRemoveView(dialogView) }
+
+        overlayManager.safeAddView(dialogView, params)
     }
 
     fun loadScriptByName(name: String): List<ActionConfig> = scriptRepository.loadScriptByName(name)
@@ -606,6 +705,7 @@ class MyAutoClickService : AccessibilityService() {
         stopExecutionLoop()
         hideControlPanel()
         instance = null
+        bgScannerExecutor.shutdown()
         super.onDestroy()
     }
 }

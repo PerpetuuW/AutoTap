@@ -76,8 +76,8 @@ class ControlPanelOverlay(service: MyAutoClickService) :
 
                     p.gravity = Gravity.TOP or Gravity.START
                     p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, maxX)
-                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, maxY)
-
+                    // Ограничиваем сверху 60dp, чтобы не цеплять шторку
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(service.dpToPx(60), maxY)
                     service.overlayManager.safeUpdateViewLayout(view, p)
                     true
                 }
@@ -111,6 +111,14 @@ class ControlPanelOverlay(service: MyAutoClickService) :
         btnLoadScript?.setOnClickListener { service.vibrateFeedback(20L); service.showScriptsDialog() }
         btnHideNumbers?.setOnClickListener { service.vibrateFeedback(20L); service.toggleNumbersVisibility() }
         btnClose?.setOnClickListener { service.vibrateFeedback(20L); service.hideControlPanel(openMainApp = true) }
+    }
+
+    override fun createParams(): WindowManager.LayoutParams {
+        return service.overlayManager.createOverlayParams().apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = service.dpToPx(20)
+            y = service.dpToPx(240) // Смещено ниже от шторки Android
+        }
     }
 
     fun ensureSubMenuVisible() {
@@ -167,7 +175,7 @@ class ControlPanelOverlay(service: MyAutoClickService) :
             val w = if (rootView?.measuredWidth ?: 0 > 0) rootView!!.measuredWidth else service.dpToPx(200)
 
             p.x = p.x.coerceIn(0, (screenW - w).coerceAtLeast(0))
-            p.y = p.y.coerceIn(0, (screenH - h).coerceAtLeast(0))
+            p.y = p.y.coerceIn(service.dpToPx(60), (screenH - h).coerceAtLeast(service.dpToPx(60)))
 
             service.overlayManager.safeUpdateViewLayout(rootView, p)
         }
@@ -182,7 +190,7 @@ class ControlPanelOverlay(service: MyAutoClickService) :
         val params = service.overlayManager.createOverlayParams().apply {
             gravity = Gravity.TOP or Gravity.START
             x = (screenW - service.dpToPx(80)) / 2
-            y = service.dpToPx(60)
+            y = service.dpToPx(80)
         }
 
         val handleDrag = view.findViewById<TextView>(R.id.handleDragStop)
@@ -205,7 +213,7 @@ class ControlPanelOverlay(service: MyAutoClickService) :
                     val h = if (view.height > 0) view.height else service.dpToPx(40)
                     p.gravity = Gravity.TOP or Gravity.START
                     p.x = (initX + (event.rawX - touchX).toInt()).coerceIn(0, (sw - w).coerceAtLeast(0))
-                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(0, (sh - h).coerceAtLeast(0))
+                    p.y = (initY + (event.rawY - touchY).toInt()).coerceIn(service.dpToPx(50), (sh - h).coerceAtLeast(service.dpToPx(50)))
                     service.overlayManager.safeUpdateViewLayout(view, p)
                     true
                 }
