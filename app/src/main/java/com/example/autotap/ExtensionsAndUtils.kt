@@ -21,7 +21,10 @@ fun logError(tag: String, message: String, throwable: Throwable? = null) {
     DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}")
 }
 
-// 1. Полиморфные перегрузки dpToPx
+// 1. ПОЛИМОРФНЫЙ dpToPx
+val Int.dpToPx: Int get() = (this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)).toInt()
+val Float.dpToPx: Float get() = this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)
+
 fun Int.dpToPx(context: Context): Int = (this * context.resources.displayMetrics.density).toInt()
 fun Float.dpToPx(context: Context): Float = this * context.resources.displayMetrics.density
 fun Context.dpToPx(valPx: Int): Int = (valPx * resources.displayMetrics.density).toInt()
@@ -34,21 +37,22 @@ operator fun Point.component2(): Int = this.y
 val Point.first: Int get() = this.x
 val Point.second: Int get() = this.y
 
-fun resolveNormalizedPoint(x: Int, y: Int, screenWidth: Int, screenHeight: Int): Point {
-    return Point(x.coerceIn(0, screenWidth), y.coerceIn(0, screenHeight))
-}
-
-fun resolveNormalizedPoint(x: Float, y: Float, screenWidth: Int, screenHeight: Int): Point {
+fun resolveNormalizedPoint(x: Number, y: Number, screenWidth: Int, screenHeight: Int): Point {
     return Point(x.toInt().coerceIn(0, screenWidth), y.toInt().coerceIn(0, screenHeight))
 }
 
-// 3. Полиморфный getRealScreenSize
+// 3. ПОЛИМОРФНЫЙ getRealScreenSize
+fun getRealScreenSize(): Point {
+    val service = MyAutoClickService.instance
+    return service?.getRealScreenSize() ?: Point(1080, 2400)
+}
+
 fun Context.getRealScreenSize(): Point {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    val display = wm.defaultDisplay
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    val display = wm?.defaultDisplay
     val size = Point()
-    display.getRealSize(size)
-    return size
+    display?.getRealSize(size)
+    return if (size.x > 0) size else Point(1080, 2400)
 }
 
 fun WindowManager.getRealScreenSize(): Point {
@@ -83,8 +87,8 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
     }
 }
 
-// 4. Полиморфный createOverlayParams
-fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+// 4. ПОЛИМОРФНЫЙ createOverlayParams
+fun createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
     return WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         format = PixelFormat.TRANSLUCENT
@@ -100,12 +104,30 @@ fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.
     }
 }
 
-fun Context.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    return wm.createOverlayParams(widthPx, heightPx)
+fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+    return com.example.autotap.createOverlayParams(widthPx, heightPx)
 }
 
-// 5. Полиморфный safeAddView / safeRemoveView / safeUpdateViewLayout
+fun Context.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+    return com.example.autotap.createOverlayParams(widthPx, heightPx)
+}
+
+// 5. ПОЛИМОРФНЫЙ safeAddView / safeRemoveView / safeUpdateViewLayout
+fun safeAddView(view: View?, params: WindowManager.LayoutParams?) {
+    val wm = MyAutoClickService.instance?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeAddView(view, params)
+}
+
+fun safeRemoveView(view: View?) {
+    val wm = MyAutoClickService.instance?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeRemoveView(view)
+}
+
+fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) {
+    val wm = MyAutoClickService.instance?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeUpdateViewLayout(view, params)
+}
+
 fun WindowManager.safeAddView(view: View?, params: WindowManager.LayoutParams?) {
     if (view == null || params == null) return
     try {
@@ -118,8 +140,8 @@ fun WindowManager.safeAddView(view: View?, params: WindowManager.LayoutParams?) 
 }
 
 fun Context.safeAddView(view: View?, params: WindowManager.LayoutParams?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeAddView(view, params)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeAddView(view, params)
 }
 
 fun WindowManager.safeRemoveView(view: View?) {
@@ -134,8 +156,8 @@ fun WindowManager.safeRemoveView(view: View?) {
 }
 
 fun Context.safeRemoveView(view: View?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeRemoveView(view)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeRemoveView(view)
 }
 
 fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) {
@@ -150,8 +172,8 @@ fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.Layout
 }
 
 fun Context.safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeUpdateViewLayout(view, params)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeUpdateViewLayout(view, params)
 }
 
 fun getViewFromReusePool(context: Context): View? = null

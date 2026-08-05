@@ -14,7 +14,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Полная карта исправляемых файлов репозитория
+# Карта всех файлов проекта для обеспечения 100% совместимости
 FILES_MAP = {
     # 1. Ресурсные строки Android (AAPT2 Fix)
     "app/src/main/res/values/strings.xml": r'''<?xml version="1.0" encoding="utf-8"?>
@@ -24,7 +24,7 @@ FILES_MAP = {
 </resources>
 ''',
 
-    # 2. Модель AutoTapAction со 100% полиморфизмом типов
+    # 2. Модель AutoTapAction со 100% гибким приведением типов
     "app/src/main/java/com/example/autotap/ActionModels.kt": r'''package com.example.autotap
 
 import android.content.Context
@@ -324,7 +324,7 @@ class AtomicScriptManager(private val context: Context) {
 }
 ''',
 
-    # 3. Полная матрица расширений получателей (Poly-Receiver Matrix)
+    # 3. Полный полиморфный модуль расширений (Poly-Receiver Extension Matrix)
     "app/src/main/java/com/example/autotap/ExtensionsAndUtils.kt": r'''package com.example.autotap
 
 import android.content.Context
@@ -346,7 +346,10 @@ fun logError(tag: String, message: String, throwable: Throwable? = null) {
     DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}")
 }
 
-// 1. Полиморфные перегрузки dpToPx
+// 1. ПОЛИМОРФНЫЙ dpToPx
+val Int.dpToPx: Int get() = (this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)).toInt()
+val Float.dpToPx: Float get() = this * (MyAutoClickService.instance?.resources?.displayMetrics?.density ?: 2.0f)
+
 fun Int.dpToPx(context: Context): Int = (this * context.resources.displayMetrics.density).toInt()
 fun Float.dpToPx(context: Context): Float = this * context.resources.displayMetrics.density
 fun Context.dpToPx(valPx: Int): Int = (valPx * resources.displayMetrics.density).toInt()
@@ -359,21 +362,22 @@ operator fun Point.component2(): Int = this.y
 val Point.first: Int get() = this.x
 val Point.second: Int get() = this.y
 
-fun resolveNormalizedPoint(x: Int, y: Int, screenWidth: Int, screenHeight: Int): Point {
-    return Point(x.coerceIn(0, screenWidth), y.coerceIn(0, screenHeight))
-}
-
-fun resolveNormalizedPoint(x: Float, y: Float, screenWidth: Int, screenHeight: Int): Point {
+fun resolveNormalizedPoint(x: Number, y: Number, screenWidth: Int, screenHeight: Int): Point {
     return Point(x.toInt().coerceIn(0, screenWidth), y.toInt().coerceIn(0, screenHeight))
 }
 
-// 3. Полиморфный getRealScreenSize
+// 3. ПОЛИМОРФНЫЙ getRealScreenSize
+fun getRealScreenSize(): Point {
+    val service = MyAutoClickService.instance
+    return service?.getRealScreenSize() ?: Point(1080, 2400)
+}
+
 fun Context.getRealScreenSize(): Point {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    val display = wm.defaultDisplay
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    val display = wm?.defaultDisplay
     val size = Point()
-    display.getRealSize(size)
-    return size
+    display?.getRealSize(size)
+    return if (size.x > 0) size else Point(1080, 2400)
 }
 
 fun WindowManager.getRealScreenSize(): Point {
@@ -408,8 +412,8 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
     }
 }
 
-// 4. Полиморфный createOverlayParams
-fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+// 4. ПОЛИМОРФНЫЙ createOverlayParams
+fun createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
     return WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         format = PixelFormat.TRANSLUCENT
@@ -425,12 +429,30 @@ fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.
     }
 }
 
-fun Context.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    return wm.createOverlayParams(widthPx, heightPx)
+fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+    return com.example.autotap.createOverlayParams(widthPx, heightPx)
 }
 
-// 5. Полиморфный safeAddView / safeRemoveView / safeUpdateViewLayout
+fun Context.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
+    return com.example.autotap.createOverlayParams(widthPx, heightPx)
+}
+
+// 5. ПОЛИМОРФНЫЙ safeAddView / safeRemoveView / safeUpdateViewLayout
+fun safeAddView(view: View?, params: WindowManager.LayoutParams?) {
+    val wm = MyAutoClickService.instance?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeAddView(view, params)
+}
+
+fun safeRemoveView(view: View?) {
+    val wm = MyAutoClickService.instance?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeRemoveView(view)
+}
+
+fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) {
+    val wm = MyAutoClickService.instance?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeUpdateViewLayout(view, params)
+}
+
 fun WindowManager.safeAddView(view: View?, params: WindowManager.LayoutParams?) {
     if (view == null || params == null) return
     try {
@@ -443,8 +465,8 @@ fun WindowManager.safeAddView(view: View?, params: WindowManager.LayoutParams?) 
 }
 
 fun Context.safeAddView(view: View?, params: WindowManager.LayoutParams?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeAddView(view, params)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeAddView(view, params)
 }
 
 fun WindowManager.safeRemoveView(view: View?) {
@@ -459,8 +481,8 @@ fun WindowManager.safeRemoveView(view: View?) {
 }
 
 fun Context.safeRemoveView(view: View?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeRemoveView(view)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeRemoveView(view)
 }
 
 fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) {
@@ -475,15 +497,15 @@ fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.Layout
 }
 
 fun Context.safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams?) {
-    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    wm.safeUpdateViewLayout(view, params)
+    val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    wm?.safeUpdateViewLayout(view, params)
 }
 
 fun getViewFromReusePool(context: Context): View? = null
 fun recycleViewToPool(view: View?) {}
 ''',
 
-    # 4. Движки Поддержки (EngineSupport.kt)
+    # 4. Классы поддержки всех сервисных движков
     "app/src/main/java/com/example/autotap/EngineSupport.kt": r'''package com.example.autotap
 
 import android.graphics.Bitmap
@@ -1000,7 +1022,7 @@ def auto_inject_imports(project_root: Path):
             logging.error(f"Failed to inject import into {kt_file}: {e}")
 
 def clean_invalid_res_files(project_root: Path):
-    """Удаление файлов бэкапов из папки res/"""
+    """Удаление нелегитимных файлов бэкапов из папки res/"""
     res_dir = project_root / "app" / "src" / "main" / "res"
     if res_dir.exists():
         for file_path in res_dir.rglob("*"):
