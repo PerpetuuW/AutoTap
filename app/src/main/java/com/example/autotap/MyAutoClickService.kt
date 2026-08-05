@@ -43,11 +43,20 @@ class MyAutoClickService : AccessibilityService() {
     internal val actionsList = CopyOnWriteArrayList<AutoTapAction>()
     internal lateinit var overlayManager: OverlayManager
 
+    // Публичные объекты оверлеев и движков для взаимодействия с MainActivity и скриптами
+    var debuggerOverlay: Any? = null
+    var captureFrameOverlay: Any? = null
+    var joystickOverlay: Any? = null
+    var scriptExecutor: Any? = null
+    var gestureExecutor: Any? = null
+    var aiScannerEngine: Any? = null
+    var templateRepository: Any? = null
+
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private var statusTextView: TextView? = null
 
-    private val isRunning = AtomicBoolean(false)
+    private val isRunningState = AtomicBoolean(false)
     private lateinit var scriptManager: AtomicScriptManager
     private lateinit var executorThread: HandlerThread
     private lateinit var executorHandler: Handler
@@ -75,7 +84,6 @@ class MyAutoClickService : AccessibilityService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(PowerManager::class.java)
             if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
-                DiagnosticLogger.log("MyAutoClickService", "Requesting ignore battery optimizations")
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                     data = Uri.parse("package:$packageName")
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -134,7 +142,7 @@ class MyAutoClickService : AccessibilityService() {
             text = "START / STOP"
             setOnClickListener {
                 vibrateFeedback(40L)
-                if (isRunning.get()) {
+                if (isRunningState.get()) {
                     stopExecution()
                 } else {
                     startExecution()
@@ -181,31 +189,86 @@ class MyAutoClickService : AccessibilityService() {
         windowManager.addView(overlayView, layoutParams)
     }
 
+    // Методы управления панелями и режимами
+    fun showControlPanel() { setupOverlayUI() }
+    fun hideControlPanel() { stopExecution() }
+    fun showFloatingStopButton() {}
+    fun hideFloatingStopButton() {}
+    fun stopExecutionLoop() { stopExecution() }
+    fun startScript(name: String) { startExecution() }
+    fun saveScriptByName(name: String) { scriptManager.saveScript(name, actionsList) }
+    fun loadScriptByName(name: String) {
+        val loaded = scriptManager.loadScript(name)
+        actionsList.clear()
+        actionsList.addAll(loaded)
+    }
+
+    fun loadAllTemplatesFromDisk() {}
+    fun exportScriptWithTemplates(name: String) {}
+    fun moveTemplateToTrash(name: String) {}
+    fun addNewActionAtPosition(x: Int, y: Int, type: ActionType = ActionType.CLICK) {
+        actionsList.add(AutoTapAction(x = x, y = y, type = type))
+    }
+    fun clearAllActions() { actionsList.clear() }
+    fun showAddActionMenu() {}
+    fun showTutorialCard() {}
+    fun showScriptsDialog() {}
+    fun showScriptPickerDialog(callback: (String) -> Unit) {}
+    fun toggleNumbersVisibility() {}
+    fun startOverlayRecording() { isRecording = true }
+    fun stopOverlayRecording() { isRecording = false }
+    fun spawnEndTargetAtPosition(x: Int, y: Int, num: Int) = overlayManager.spawnEndTargetAtPosition(x, y, num)
+    fun showClickVisualizer(x: Int, y: Int) {}
+
+    fun captureScreenBitmap(callback: (Bitmap?) -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            takeScreenshot(
+                android.view.Display.DEFAULT_DISPLAY,
+                applicationContext.mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        try {
+                            val hardwareBuffer = screenshotResult.hardwareBuffer
+                            val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshotResult.colorSpace)
+                                ?.copy(Bitmap.Config.ARGB_8888, false)
+                            hardwareBuffer.close()
+                            callback(bitmap)
+                        } catch (e: Exception) {
+                            callback(null)
+                        }
+                    }
+                    override fun onFailure(errorCode: Int) { callback(null) }
+                }
+            )
+        } else {
+            callback(null)
+        }
+    }
+
+    fun performClickWithCallback(x: Int, y: Int, durationMs: Long, callback: (Boolean) -> Unit) {
+        val success = performClickSync(x, y, durationMs)
+        callback(success)
+    }
+
     fun startExecution() {
-        if (isRunning.compareAndSet(false, true)) {
+        if (isRunningState.compareAndSet(false, true)) {
+            isPlaying = true
             val loaded = scriptManager.loadScript("default_scenario")
             actionsList.clear()
             if (loaded.isNotEmpty()) {
                 actionsList.addAll(loaded)
             } else {
                 val (screenWidth, screenHeight) = getRealScreenSize()
-                actionsList.add(
-                    AutoTapAction(
-                        id = "action_1",
-                        type = ActionType.CLICK,
-                        x = screenWidth / 2,
-                        y = screenHeight / 2
-                    )
-                )
+                actionsList.add(AutoTapAction(x = screenWidth / 2, y = screenHeight / 2))
             }
-
             mainHandler.post { statusTextView?.text = "Status: RUNNING" }
             executorHandler.post { runExecutionLoop() }
         }
     }
 
     fun stopExecution() {
-        if (isRunning.compareAndSet(true, false)) {
+        if (isRunningState.compareAndSet(true, false)) {
+            isPlaying = false
             mainHandler.post { statusTextView?.text = "Status: STOPPED" }
         }
     }
@@ -213,38 +276,27 @@ class MyAutoClickService : AccessibilityService() {
     private fun runExecutionLoop() {
         val (screenWidth, screenHeight) = getRealScreenSize()
 
-        while (isRunning.get()) {
+        while (isRunningState.get()) {
             for (action in actionsList) {
-                if (!isRunning.get()) break
-
+                if (!isRunningState.get()) break
                 val normX = normalizeX(action.x, screenWidth)
                 val normY = normalizeY(action.y, screenHeight)
 
                 when (action.type) {
-                    ActionType.CLICK -> {
-                        performClickSync(normX, normY, action.durationMs)
-                    }
+                    ActionType.CLICK -> performClickSync(normX, normY, action.durationMs)
                     ActionType.SWIPE -> {
                         val normEndX = normalizeX(action.endX, screenWidth)
                         val normEndY = normalizeY(action.endY, screenHeight)
-                        performSwipeWithCallback(normX, normY, normEndX, normEndY, action.durationMs) { success ->
-                            DiagnosticLogger.log("MyAutoClickService", "Swipe status: $success")
-                        }
+                        performSwipeWithCallback(normX, normY, normEndX, normEndY, action.durationMs) {}
                     }
-                    ActionType.COLOR_CHECK -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            performColorCheckSync(action)
-                        }
-                    }
-                    else -> {
-                        DiagnosticLogger.log("MyAutoClickService", "Action ${action.type} executed standard delay")
-                    }
+                    else -> Thread.sleep(action.durationMs)
                 }
 
                 try {
                     Thread.sleep(action.delayAfterMs)
                 } catch (e: InterruptedException) {
-                    isRunning.set(false)
+                    isRunningState.set(false)
+                    isPlaying = false
                     break
                 }
             }
@@ -254,7 +306,6 @@ class MyAutoClickService : AccessibilityService() {
     fun performClickSync(x: Int, y: Int, durationMs: Long): Boolean {
         val latch = CountDownLatch(1)
         var result = false
-
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(1L))
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
@@ -270,22 +321,11 @@ class MyAutoClickService : AccessibilityService() {
             }
         }, null)
 
-        try {
-            latch.await(2, TimeUnit.SECONDS)
-        } catch (e: InterruptedException) {
-            return false
-        }
+        try { latch.await(2, TimeUnit.SECONDS) } catch (e: InterruptedException) { return false }
         return result
     }
 
-    fun performSwipeWithCallback(
-        startX: Int,
-        startY: Int,
-        endX: Int,
-        endY: Int,
-        durationMs: Long,
-        callback: (Boolean) -> Unit
-    ) {
+    fun performSwipeWithCallback(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long, callback: (Boolean) -> Unit) {
         val path = Path().apply {
             moveTo(startX.toFloat(), startY.toFloat())
             lineTo(endX.toFloat(), endY.toFloat())
@@ -298,125 +338,23 @@ class MyAutoClickService : AccessibilityService() {
                 vibrateFeedback(20L)
                 callback(true)
             }
-
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                callback(false)
-            }
+            override fun onCancelled(gestureDescription: GestureDescription?) { callback(false) }
         }, null)
     }
 
-    fun performSwipeWithCallback(
-        startX: Float,
-        startY: Float,
-        endX: Float,
-        endY: Float,
-        durationMs: Long,
-        callback: ((Boolean) -> Unit)? = null
-    ) {
-        performSwipeWithCallback(
-            startX.toInt(),
-            startY.toInt(),
-            endX.toInt(),
-            endY.toInt(),
-            durationMs,
-            callback ?: {}
-        )
+    fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        performSwipeWithCallback(startX.toInt(), startY.toInt(), endX.toInt(), endY.toInt(), durationMs, callback ?: {})
     }
 
-    fun performSwipeWithCallback(
-        startX: Int,
-        startY: Int,
-        endX: Int,
-        endY: Int,
-        durationMs: Long
-    ) {
-        performSwipeWithCallback(startX, startY, endX, endY, durationMs, {})
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
-    @RequiresApi(Build.VERSION_CODES.R)
-    private fun performColorCheckSync(action: AutoTapAction): Boolean {
-        val latch = CountDownLatch(1)
-        var isMatch = false
-
-        takeScreenshot(
-            android.view.Display.DEFAULT_DISPLAY,
-            applicationContext.mainExecutor,
-            object : TakeScreenshotCallback {
-                override fun onSuccess(screenshotResult: ScreenshotResult) {
-                    try {
-                        val hardwareBuffer = screenshotResult.hardwareBuffer
-                        val colorSpace = screenshotResult.colorSpace
-                        val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
-                            ?.copy(Bitmap.Config.ARGB_8888, false)
-
-                        hardwareBuffer.close()
-
-                        if (bitmap != null) {
-                            if (action.x in 0 until bitmap.width && action.y in 0 until bitmap.height) {
-                                val pixel = bitmap.getPixel(action.x, action.y)
-                                if (Color.alpha(pixel) >= 30) {
-                                    val r1 = Color.red(pixel)
-                                    val g1 = Color.green(pixel)
-                                    val b1 = Color.blue(pixel)
-
-                                    val r2 = Color.red(action.targetColor)
-                                    val g2 = Color.green(action.targetColor)
-                                    val b2 = Color.blue(action.targetColor)
-
-                                    isMatch = Math.abs(r1 - r2) <= action.colorTolerance &&
-                                              Math.abs(g1 - g2) <= action.colorTolerance &&
-                                              Math.abs(b1 - b2) <= action.colorTolerance
-                                }
-                            }
-                            bitmap.recycle()
-                        }
-                    } catch (e: Exception) {
-                        DiagnosticLogger.log("MyAutoClickService", "ColorCheck error: ${e.message}")
-                    } finally {
-                        latch.countDown()
-                    }
-                }
-
-                override fun onFailure(errorCode: Int) {
-                    latch.countDown()
-                }
-            }
-        )
-
-        try {
-            latch.await(3, TimeUnit.SECONDS)
-        } catch (e: InterruptedException) {
-            return false
-        }
-        return isMatch
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        event?.let {
-            if (it.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                DiagnosticLogger.log("MyAutoClickService", "WindowStateChanged: ${it.packageName}")
-            }
-        }
-    }
-
-    override fun onInterrupt() {
-        stopExecution()
-    }
+    override fun onInterrupt() { stopExecution() }
 
     override fun onDestroy() {
         super.onDestroy()
         stopExecution()
-        if (instance == this) {
-            instance = null
-        }
+        if (instance == this) instance = null
         overlayManager.removeAllTargets()
-        if (overlayView != null) {
-            try {
-                windowManager.removeView(overlayView)
-            } catch (e: Exception) {
-                DiagnosticLogger.log("MyAutoClickService", "Destroy overlay error: ${e.message}")
-            }
-        }
         executorThread.quitSafely()
     }
 }

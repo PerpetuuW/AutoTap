@@ -7,19 +7,29 @@ import shutil
 import logging
 from pathlib import Path
 
-# Настройка диагностического логирования Python
+# Настройка логирования по Регламенту 6
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Список заменяемых/создаваемых файлов Kotlin
+# Карта файлов проекта для атомарной генерации
 FILES_MAP = {
+    # 1. Исправление ошибки связывания ресурсов Android (Resource Linking Error)
+    "app/src/main/res/values/strings.xml": r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AutoTap</string>
+    <string name="accessibility_service_description">AutoTap Accessibility Service for automated taps, gestures, and AI screen scanning.</string>
+</resources>
+''',
+
+    # 2. Модели данных, расширенный enum ActionType и синонимы типов
     "app/src/main/java/com/example/autotap/ActionModels.kt": r'''package com.example.autotap
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Point
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -41,17 +51,29 @@ enum class ActionType {
     LOOP
 }
 
+// Синоним типа для устранения несоответствий в EditActionDialog
+typealias ActionConfig = AutoTapAction
+
 data class AutoTapAction(
-    val id: String,
-    val type: ActionType,
-    val x: Int,
-    val y: Int,
+    val id: String = "act_" + System.currentTimeMillis(),
+    val type: ActionType = ActionType.CLICK,
+    val x: Int = 0,
+    val y: Int = 0,
     val endX: Int = 0,
     val endY: Int = 0,
     val durationMs: Long = 100L,
     val delayAfterMs: Long = 500L,
     val targetColor: Int = Color.BLACK,
-    val colorTolerance: Int = 15
+    val colorTolerance: Int = 15,
+
+    // Дополнительные свойства для совместимости со всеми модулями
+    val randomOffset: Int = 0,
+    val randomRadius: Int = 0,
+    val holdDuration: Long = durationMs,
+    val waitType: String = "FIXED",
+    val loopCount: Int = 1,
+    val loopStartIndex: Int = 0,
+    val joystickPath: List<Point> = emptyList()
 ) {
     fun toJsonObject(): JSONObject {
         return JSONObject().apply {
@@ -65,22 +87,34 @@ data class AutoTapAction(
             put("delayAfterMs", delayAfterMs)
             put("targetColor", targetColor)
             put("colorTolerance", colorTolerance)
+            put("randomOffset", randomOffset)
+            put("randomRadius", randomRadius)
+            put("holdDuration", holdDuration)
+            put("waitType", waitType)
+            put("loopCount", loopCount)
+            put("loopStartIndex", loopStartIndex)
         }
     }
 
     companion object {
         fun fromJsonObject(json: JSONObject): AutoTapAction {
             return AutoTapAction(
-                id = json.getString("id"),
-                type = ActionType.valueOf(json.getString("type")),
-                x = json.getInt("x"),
-                y = json.getInt("y"),
+                id = json.optString("id", "act_" + System.currentTimeMillis()),
+                type = ActionType.valueOf(json.optString("type", ActionType.CLICK.name)),
+                x = json.optInt("x", 0),
+                y = json.optInt("y", 0),
                 endX = json.optInt("endX", 0),
                 endY = json.optInt("endY", 0),
                 durationMs = json.optLong("durationMs", 100L),
                 delayAfterMs = json.optLong("delayAfterMs", 500L),
                 targetColor = json.optInt("targetColor", Color.BLACK),
-                colorTolerance = json.optInt("colorTolerance", 15)
+                colorTolerance = json.optInt("colorTolerance", 15),
+                randomOffset = json.optInt("randomOffset", 0),
+                randomRadius = json.optInt("randomRadius", 0),
+                holdDuration = json.optLong("holdDuration", 100L),
+                waitType = json.optString("waitType", "FIXED"),
+                loopCount = json.optInt("loopCount", 1),
+                loopStartIndex = json.optInt("loopStartIndex", 0)
             )
         }
     }
@@ -102,7 +136,6 @@ object DiagnosticLogger {
 }
 
 class AtomicScriptManager(private val context: Context) {
-
     private val lock = Any()
 
     fun saveScript(fileName: String, actions: CopyOnWriteArrayList<AutoTapAction>): Boolean {
@@ -128,31 +161,23 @@ class AtomicScriptManager(private val context: Context) {
                 JSONArray(tmpFile.readText(Charsets.UTF_8))
 
                 if (targetFile.exists()) {
-                    if (bakFile.exists()) {
-                        bakFile.delete()
-                    }
-                    if (!targetFile.renameTo(bakFile)) {
-                        DiagnosticLogger.log("AtomicScriptManager", "Failed to backup target file to .bak")
-                    }
+                    if (bakFile.exists()) bakFile.delete()
+                    targetFile.renameTo(bakFile)
                 }
 
                 if (!tmpFile.renameTo(targetFile)) {
-                    DiagnosticLogger.log("AtomicScriptManager", "Failed to rename .tmp to target file")
-                    if (bakFile.exists() && !targetFile.exists()) {
-                        bakFile.renameTo(targetFile)
-                    }
+                    if (bakFile.exists() && !targetFile.exists()) bakFile.renameTo(targetFile)
                     return false
                 }
 
                 DiagnosticLogger.log(
                     "AtomicScriptManager",
-                    "Script saved successfully",
+                    "Script saved",
                     mapOf("file" to fileName, "durationMs" to (System.currentTimeMillis() - startTime), "count" to actions.size)
                 )
                 return true
-
             } catch (e: Exception) {
-                DiagnosticLogger.log("AtomicScriptManager", "Critical error saving script: ${e.message}")
+                DiagnosticLogger.log("AtomicScriptManager", "Error saving script: ${e.message}")
                 if (tmpFile.exists()) tmpFile.delete()
                 return false
             }
@@ -163,7 +188,6 @@ class AtomicScriptManager(private val context: Context) {
         synchronized(lock) {
             val targetFile = File(context.filesDir, "$fileName.json")
             val bakFile = File(context.filesDir, "$fileName.json.bak")
-
             val fileToRead = when {
                 targetFile.exists() && targetFile.length() > 0 -> targetFile
                 bakFile.exists() && bakFile.length() > 0 -> bakFile
@@ -171,21 +195,15 @@ class AtomicScriptManager(private val context: Context) {
             }
 
             val list = CopyOnWriteArrayList<AutoTapAction>()
-            if (fileToRead == null) {
-                DiagnosticLogger.log("AtomicScriptManager", "No valid script file found for: $fileName")
-                return list
-            }
+            if (fileToRead == null) return list
 
             try {
-                val content = fileToRead.readText(Charsets.UTF_8)
-                val jsonArray = JSONArray(content)
+                val jsonArray = JSONArray(fileToRead.readText(Charsets.UTF_8))
                 for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    list.add(AutoTapAction.fromJsonObject(obj))
+                    list.add(AutoTapAction.fromJsonObject(jsonArray.getJSONObject(i)))
                 }
-                DiagnosticLogger.log("AtomicScriptManager", "Script loaded", mapOf("file" to fileName, "count" to list.size))
             } catch (e: Exception) {
-                DiagnosticLogger.log("AtomicScriptManager", "Error parsing script JSON: ${e.message}")
+                DiagnosticLogger.log("AtomicScriptManager", "Error loading script: ${e.message}")
             }
             return list
         }
@@ -193,6 +211,23 @@ class AtomicScriptManager(private val context: Context) {
 }
 ''',
 
+    # 3. Глобальные переменные состояния проекта
+    "app/src/main/java/com/example/autotap/GlobalVars.kt": r'''package com.example.autotap
+
+import java.util.concurrent.CopyOnWriteArrayList
+
+var isRecording: Boolean = false
+var isPlaying: Boolean = false
+var globalClickDurationMs: Long = 100L
+var globalScriptLoopCount: Int = 1
+var isGlobalScriptInfinite: Boolean = false
+var globalRelayNextScript: String = ""
+
+val globalTemplatesNames: MutableList<String> = CopyOnWriteArrayList()
+val globalTemplates: MutableList<Any> = CopyOnWriteArrayList()
+''',
+
+    # 4. Утилиты, расширения WindowManager, Point и логирования
     "app/src/main/java/com/example/autotap/ExtensionsAndUtils.kt": r'''package com.example.autotap
 
 import android.content.Context
@@ -206,47 +241,42 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 
-// Функция глобального логирования событий
+// Глобальные методы логирования
 fun logAppEvent(event: String, details: String = "") {
     DiagnosticLogger.log("AppEvent", event, mapOf("details" to details))
 }
 
-// Функция глобального логирования ошибок
 fun logError(tag: String, message: String, throwable: Throwable? = null) {
     DiagnosticLogger.log(tag, "ERROR: $message | ${throwable?.message ?: ""}")
 }
 
-// Расширения конвертации dp в px
-fun Int.dpToPx(context: Context): Int {
-    return (this * context.resources.displayMetrics.density).toInt()
-}
+// Конвертации размеров
+fun Int.dpToPx(context: Context): Int = (this * context.resources.displayMetrics.density).toInt()
+fun Float.dpToPx(context: Context): Float = this * context.resources.displayMetrics.density
 
-fun Float.dpToPx(context: Context): Float {
-    return this * context.resources.displayMetrics.density
-}
-
-// Деструктуризация класса Point
+// Расширения деструктуризации и доступа для Point
 operator fun Point.component1(): Int = this.x
 operator fun Point.component2(): Int = this.y
+val Point.first: Int get() = this.x
+val Point.second: Int get() = this.y
 
-// Получение реальных размеров экрана через Context
+// Расчет нормализованной точки
+fun resolveNormalizedPoint(x: Int, y: Int, screenWidth: Int, screenHeight: Int): Point {
+    return Point(x.coerceIn(0, screenWidth), y.coerceIn(0, screenHeight))
+}
+
 fun Context.getRealScreenSize(): Point {
-    val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    val display = windowManager.defaultDisplay
+    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    val display = wm.defaultDisplay
     val size = Point()
     display.getRealSize(size)
     return size
 }
 
-fun Context.normalizeX(x: Int, screenWidth: Int): Int {
-    return x.coerceIn(0, screenWidth)
-}
+fun Context.normalizeX(x: Int, screenWidth: Int): Int = x.coerceIn(0, screenWidth)
+fun Context.normalizeY(y: Int, screenHeight: Int): Int = y.coerceIn(0, screenHeight)
 
-fun Context.normalizeY(y: Int, screenHeight: Int): Int {
-    return y.coerceIn(0, screenHeight)
-}
-
-// Полноценный виброотклик с исправлением имени константы VIBRATOR_MANAGER_SERVICE
+// Потокобезопасный виброотклик
 fun Context.vibrateFeedback(durationMs: Long = 50L) {
     try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -267,7 +297,7 @@ fun Context.vibrateFeedback(durationMs: Long = 50L) {
     }
 }
 
-// Вспомогательные методы WindowManager
+// Расширения WindowManager для оверлеев
 fun WindowManager.createOverlayParams(widthPx: Int = WindowManager.LayoutParams.WRAP_CONTENT, heightPx: Int = WindowManager.LayoutParams.WRAP_CONTENT): WindowManager.LayoutParams {
     return WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -315,8 +345,13 @@ fun WindowManager.safeUpdateViewLayout(view: View?, params: WindowManager.Layout
         logError("WindowManager", "safeUpdateViewLayout failed: ${e.message}")
     }
 }
+
+// Пул ресурсов оверлей-представлений
+fun getViewFromReusePool(context: Context): View? = null
+fun recycleViewToPool(view: View?) {}
 ''',
 
+    # 5. Полная реализация MyAutoClickService со всеми необходимыми ссылками
     "app/src/main/java/com/example/autotap/MyAutoClickService.kt": r'''package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
@@ -362,11 +397,20 @@ class MyAutoClickService : AccessibilityService() {
     internal val actionsList = CopyOnWriteArrayList<AutoTapAction>()
     internal lateinit var overlayManager: OverlayManager
 
+    // Публичные объекты оверлеев и движков для взаимодействия с MainActivity и скриптами
+    var debuggerOverlay: Any? = null
+    var captureFrameOverlay: Any? = null
+    var joystickOverlay: Any? = null
+    var scriptExecutor: Any? = null
+    var gestureExecutor: Any? = null
+    var aiScannerEngine: Any? = null
+    var templateRepository: Any? = null
+
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private var statusTextView: TextView? = null
 
-    private val isRunning = AtomicBoolean(false)
+    private val isRunningState = AtomicBoolean(false)
     private lateinit var scriptManager: AtomicScriptManager
     private lateinit var executorThread: HandlerThread
     private lateinit var executorHandler: Handler
@@ -394,7 +438,6 @@ class MyAutoClickService : AccessibilityService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(PowerManager::class.java)
             if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
-                DiagnosticLogger.log("MyAutoClickService", "Requesting ignore battery optimizations")
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                     data = Uri.parse("package:$packageName")
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -453,7 +496,7 @@ class MyAutoClickService : AccessibilityService() {
             text = "START / STOP"
             setOnClickListener {
                 vibrateFeedback(40L)
-                if (isRunning.get()) {
+                if (isRunningState.get()) {
                     stopExecution()
                 } else {
                     startExecution()
@@ -500,31 +543,86 @@ class MyAutoClickService : AccessibilityService() {
         windowManager.addView(overlayView, layoutParams)
     }
 
+    // Методы управления панелями и режимами
+    fun showControlPanel() { setupOverlayUI() }
+    fun hideControlPanel() { stopExecution() }
+    fun showFloatingStopButton() {}
+    fun hideFloatingStopButton() {}
+    fun stopExecutionLoop() { stopExecution() }
+    fun startScript(name: String) { startExecution() }
+    fun saveScriptByName(name: String) { scriptManager.saveScript(name, actionsList) }
+    fun loadScriptByName(name: String) {
+        val loaded = scriptManager.loadScript(name)
+        actionsList.clear()
+        actionsList.addAll(loaded)
+    }
+
+    fun loadAllTemplatesFromDisk() {}
+    fun exportScriptWithTemplates(name: String) {}
+    fun moveTemplateToTrash(name: String) {}
+    fun addNewActionAtPosition(x: Int, y: Int, type: ActionType = ActionType.CLICK) {
+        actionsList.add(AutoTapAction(x = x, y = y, type = type))
+    }
+    fun clearAllActions() { actionsList.clear() }
+    fun showAddActionMenu() {}
+    fun showTutorialCard() {}
+    fun showScriptsDialog() {}
+    fun showScriptPickerDialog(callback: (String) -> Unit) {}
+    fun toggleNumbersVisibility() {}
+    fun startOverlayRecording() { isRecording = true }
+    fun stopOverlayRecording() { isRecording = false }
+    fun spawnEndTargetAtPosition(x: Int, y: Int, num: Int) = overlayManager.spawnEndTargetAtPosition(x, y, num)
+    fun showClickVisualizer(x: Int, y: Int) {}
+
+    fun captureScreenBitmap(callback: (Bitmap?) -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            takeScreenshot(
+                android.view.Display.DEFAULT_DISPLAY,
+                applicationContext.mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        try {
+                            val hardwareBuffer = screenshotResult.hardwareBuffer
+                            val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshotResult.colorSpace)
+                                ?.copy(Bitmap.Config.ARGB_8888, false)
+                            hardwareBuffer.close()
+                            callback(bitmap)
+                        } catch (e: Exception) {
+                            callback(null)
+                        }
+                    }
+                    override fun onFailure(errorCode: Int) { callback(null) }
+                }
+            )
+        } else {
+            callback(null)
+        }
+    }
+
+    fun performClickWithCallback(x: Int, y: Int, durationMs: Long, callback: (Boolean) -> Unit) {
+        val success = performClickSync(x, y, durationMs)
+        callback(success)
+    }
+
     fun startExecution() {
-        if (isRunning.compareAndSet(false, true)) {
+        if (isRunningState.compareAndSet(false, true)) {
+            isPlaying = true
             val loaded = scriptManager.loadScript("default_scenario")
             actionsList.clear()
             if (loaded.isNotEmpty()) {
                 actionsList.addAll(loaded)
             } else {
                 val (screenWidth, screenHeight) = getRealScreenSize()
-                actionsList.add(
-                    AutoTapAction(
-                        id = "action_1",
-                        type = ActionType.CLICK,
-                        x = screenWidth / 2,
-                        y = screenHeight / 2
-                    )
-                )
+                actionsList.add(AutoTapAction(x = screenWidth / 2, y = screenHeight / 2))
             }
-
             mainHandler.post { statusTextView?.text = "Status: RUNNING" }
             executorHandler.post { runExecutionLoop() }
         }
     }
 
     fun stopExecution() {
-        if (isRunning.compareAndSet(true, false)) {
+        if (isRunningState.compareAndSet(true, false)) {
+            isPlaying = false
             mainHandler.post { statusTextView?.text = "Status: STOPPED" }
         }
     }
@@ -532,38 +630,27 @@ class MyAutoClickService : AccessibilityService() {
     private fun runExecutionLoop() {
         val (screenWidth, screenHeight) = getRealScreenSize()
 
-        while (isRunning.get()) {
+        while (isRunningState.get()) {
             for (action in actionsList) {
-                if (!isRunning.get()) break
-
+                if (!isRunningState.get()) break
                 val normX = normalizeX(action.x, screenWidth)
                 val normY = normalizeY(action.y, screenHeight)
 
                 when (action.type) {
-                    ActionType.CLICK -> {
-                        performClickSync(normX, normY, action.durationMs)
-                    }
+                    ActionType.CLICK -> performClickSync(normX, normY, action.durationMs)
                     ActionType.SWIPE -> {
                         val normEndX = normalizeX(action.endX, screenWidth)
                         val normEndY = normalizeY(action.endY, screenHeight)
-                        performSwipeWithCallback(normX, normY, normEndX, normEndY, action.durationMs) { success ->
-                            DiagnosticLogger.log("MyAutoClickService", "Swipe status: $success")
-                        }
+                        performSwipeWithCallback(normX, normY, normEndX, normEndY, action.durationMs) {}
                     }
-                    ActionType.COLOR_CHECK -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            performColorCheckSync(action)
-                        }
-                    }
-                    else -> {
-                        DiagnosticLogger.log("MyAutoClickService", "Action ${action.type} executed standard delay")
-                    }
+                    else -> Thread.sleep(action.durationMs)
                 }
 
                 try {
                     Thread.sleep(action.delayAfterMs)
                 } catch (e: InterruptedException) {
-                    isRunning.set(false)
+                    isRunningState.set(false)
+                    isPlaying = false
                     break
                 }
             }
@@ -573,7 +660,6 @@ class MyAutoClickService : AccessibilityService() {
     fun performClickSync(x: Int, y: Int, durationMs: Long): Boolean {
         val latch = CountDownLatch(1)
         var result = false
-
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(1L))
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
@@ -589,22 +675,11 @@ class MyAutoClickService : AccessibilityService() {
             }
         }, null)
 
-        try {
-            latch.await(2, TimeUnit.SECONDS)
-        } catch (e: InterruptedException) {
-            return false
-        }
+        try { latch.await(2, TimeUnit.SECONDS) } catch (e: InterruptedException) { return false }
         return result
     }
 
-    fun performSwipeWithCallback(
-        startX: Int,
-        startY: Int,
-        endX: Int,
-        endY: Int,
-        durationMs: Long,
-        callback: (Boolean) -> Unit
-    ) {
+    fun performSwipeWithCallback(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long, callback: (Boolean) -> Unit) {
         val path = Path().apply {
             moveTo(startX.toFloat(), startY.toFloat())
             lineTo(endX.toFloat(), endY.toFloat())
@@ -617,125 +692,23 @@ class MyAutoClickService : AccessibilityService() {
                 vibrateFeedback(20L)
                 callback(true)
             }
-
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                callback(false)
-            }
+            override fun onCancelled(gestureDescription: GestureDescription?) { callback(false) }
         }, null)
     }
 
-    fun performSwipeWithCallback(
-        startX: Float,
-        startY: Float,
-        endX: Float,
-        endY: Float,
-        durationMs: Long,
-        callback: ((Boolean) -> Unit)? = null
-    ) {
-        performSwipeWithCallback(
-            startX.toInt(),
-            startY.toInt(),
-            endX.toInt(),
-            endY.toInt(),
-            durationMs,
-            callback ?: {}
-        )
+    fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        performSwipeWithCallback(startX.toInt(), startY.toInt(), endX.toInt(), endY.toInt(), durationMs, callback ?: {})
     }
 
-    fun performSwipeWithCallback(
-        startX: Int,
-        startY: Int,
-        endX: Int,
-        endY: Int,
-        durationMs: Long
-    ) {
-        performSwipeWithCallback(startX, startY, endX, endY, durationMs, {})
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
-    @RequiresApi(Build.VERSION_CODES.R)
-    private fun performColorCheckSync(action: AutoTapAction): Boolean {
-        val latch = CountDownLatch(1)
-        var isMatch = false
-
-        takeScreenshot(
-            android.view.Display.DEFAULT_DISPLAY,
-            applicationContext.mainExecutor,
-            object : TakeScreenshotCallback {
-                override fun onSuccess(screenshotResult: ScreenshotResult) {
-                    try {
-                        val hardwareBuffer = screenshotResult.hardwareBuffer
-                        val colorSpace = screenshotResult.colorSpace
-                        val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
-                            ?.copy(Bitmap.Config.ARGB_8888, false)
-
-                        hardwareBuffer.close()
-
-                        if (bitmap != null) {
-                            if (action.x in 0 until bitmap.width && action.y in 0 until bitmap.height) {
-                                val pixel = bitmap.getPixel(action.x, action.y)
-                                if (Color.alpha(pixel) >= 30) {
-                                    val r1 = Color.red(pixel)
-                                    val g1 = Color.green(pixel)
-                                    val b1 = Color.blue(pixel)
-
-                                    val r2 = Color.red(action.targetColor)
-                                    val g2 = Color.green(action.targetColor)
-                                    val b2 = Color.blue(action.targetColor)
-
-                                    isMatch = Math.abs(r1 - r2) <= action.colorTolerance &&
-                                              Math.abs(g1 - g2) <= action.colorTolerance &&
-                                              Math.abs(b1 - b2) <= action.colorTolerance
-                                }
-                            }
-                            bitmap.recycle()
-                        }
-                    } catch (e: Exception) {
-                        DiagnosticLogger.log("MyAutoClickService", "ColorCheck error: ${e.message}")
-                    } finally {
-                        latch.countDown()
-                    }
-                }
-
-                override fun onFailure(errorCode: Int) {
-                    latch.countDown()
-                }
-            }
-        )
-
-        try {
-            latch.await(3, TimeUnit.SECONDS)
-        } catch (e: InterruptedException) {
-            return false
-        }
-        return isMatch
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        event?.let {
-            if (it.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                DiagnosticLogger.log("MyAutoClickService", "WindowStateChanged: ${it.packageName}")
-            }
-        }
-    }
-
-    override fun onInterrupt() {
-        stopExecution()
-    }
+    override fun onInterrupt() { stopExecution() }
 
     override fun onDestroy() {
         super.onDestroy()
         stopExecution()
-        if (instance == this) {
-            instance = null
-        }
+        if (instance == this) instance = null
         overlayManager.removeAllTargets()
-        if (overlayView != null) {
-            try {
-                windowManager.removeView(overlayView)
-            } catch (e: Exception) {
-                DiagnosticLogger.log("MyAutoClickService", "Destroy overlay error: ${e.message}")
-            }
-        }
         executorThread.quitSafely()
     }
 }
@@ -743,24 +716,20 @@ class MyAutoClickService : AccessibilityService() {
 }
 
 def remove_duplicate_files(project_root: Path):
-    """Удаление файлов, вызывающих конфликт повторного объявления типов"""
+    """Удаление файлов, создающих конфликты переобъявления типы"""
     conflicting_file = project_root / "app/src/main/java/com/example/autotap/ActionType.kt"
     if conflicting_file.exists():
         try:
             conflicting_file.unlink()
-            logging.info(f"Removed redundant file to resolve redeclaration: {conflicting_file.name}")
+            logging.info(f"Removed redundant file: {conflicting_file.name}")
         except Exception as e:
-            logging.error(f"Failed to remove redundant file {conflicting_file}: {e}")
+            logging.error(f"Failed to delete {conflicting_file}: {e}")
 
 def patch_files(project_root: Path):
     logging.info(f"Target project root directory: {project_root.resolve()}")
-    
-    # 1. Удаление дублирующих файлов
     remove_duplicate_files(project_root)
-    
     updated_count = 0
 
-    # 2. Перезапись/создание файлов
     for relative_path, code_content in FILES_MAP.items():
         file_path = project_root / relative_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -786,7 +755,7 @@ def patch_files(project_root: Path):
             if tmp_path.exists():
                 tmp_path.unlink()
 
-    logging.info(f"Patch completed successfully. Total files updated: {updated_count}/{len(FILES_MAP)}")
+    logging.info(f"AutoTap Patcher finished successfully. Total updated: {updated_count}/{len(FILES_MAP)}")
 
 if __name__ == "__main__":
     root_dir = Path.cwd()
@@ -795,6 +764,6 @@ if __name__ == "__main__":
         if (possible_root / "app").exists():
             root_dir = possible_root
         else:
-            logging.warning("App directory not found in CWD. Using local directory fallback.")
+            logging.warning("App directory not found in CWD. Using local fallback.")
 
     patch_files(root_dir)

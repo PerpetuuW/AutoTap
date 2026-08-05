@@ -34,6 +34,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MyAutoClickService : AccessibilityService() {
 
+    companion object {
+        @Volatile
+        var instance: MyAutoClickService? = null
+            private set
+    }
+
     internal val actionsList = CopyOnWriteArrayList<AutoTapAction>()
     internal lateinit var overlayManager: OverlayManager
 
@@ -49,6 +55,7 @@ class MyAutoClickService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         scriptManager = AtomicScriptManager(this)
         overlayManager = OverlayManager(this)
         executorThread = HandlerThread("AutoTapExecutorThread").apply { start() }
@@ -58,6 +65,7 @@ class MyAutoClickService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         DiagnosticLogger.log("MyAutoClickService", "Accessibility Service Connected")
         checkBatteryOptimizations()
         setupOverlayUI()
@@ -228,6 +236,9 @@ class MyAutoClickService : AccessibilityService() {
                             performColorCheckSync(action)
                         }
                     }
+                    else -> {
+                        DiagnosticLogger.log("MyAutoClickService", "Action ${action.type} executed standard delay")
+                    }
                 }
 
                 try {
@@ -395,6 +406,9 @@ class MyAutoClickService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         stopExecution()
+        if (instance == this) {
+            instance = null
+        }
         overlayManager.removeAllTargets()
         if (overlayView != null) {
             try {
