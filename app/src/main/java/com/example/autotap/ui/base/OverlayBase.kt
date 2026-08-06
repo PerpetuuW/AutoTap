@@ -6,12 +6,14 @@ import android.os.Build
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import com.example.autotap.createOverlayParams
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
 import com.example.autotap.safeAddView
 import com.example.autotap.safeRemoveView
+import kotlin.math.abs
 
 abstract class OverlayBase(
     protected val context: Context,
@@ -38,6 +40,8 @@ abstract class OverlayBase(
     protected var layoutParams: WindowManager.LayoutParams? = null
     var isShowing: Boolean = false
         protected set
+
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     abstract fun createView(): View
 
@@ -66,7 +70,7 @@ abstract class OverlayBase(
             val added = windowManager.safeAddView(view, params)
             if (added) {
                 isShowing = true
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен с поддержкой Cutout.")
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен.")
             }
         } catch (e: Exception) {
             logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
@@ -97,7 +101,6 @@ abstract class OverlayBase(
         }
         try {
             windowManager.updateViewLayout(view, lp)
-            logDiagnostic("OVERLAY", "Флаг touchable для ${javaClass.simpleName} установлен в $touchable")
         } catch (e: Exception) {
             logError("OVERLAY", "Ошибка обновления флага touchable", e)
         }
@@ -110,13 +113,14 @@ abstract class OverlayBase(
         return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
     }
 
-    protected fun setupDragAndDrop(view: View) {
+    protected fun setupDragAndDrop(handleView: View) {
         var startX = 0
         var startY = 0
         var touchX = 0f
         var touchY = 0f
+        var isDragging = false
 
-        view.setOnTouchListener { _, event ->
+        handleView.setOnTouchListener { v, event ->
             val lp = layoutParams ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -124,17 +128,37 @@ abstract class OverlayBase(
                     startY = lp.y
                     touchX = event.rawX
                     touchY = event.rawY
-                    true
+                    isDragging = false
+                    false // Пропускаем событие вниз к дочерним кнопкам!
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    lp.x = startX + (event.rawX - touchX).toInt()
-                    lp.y = startY + (event.rawY - touchY).toInt()
-                    try {
-                        windowManager.updateViewLayout(view, lp)
-                    } catch (e: Exception) {
-                        logError("OVERLAY", "Ошибка перемещения оверлея", e)
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+
+                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        isDragging = true
                     }
-                    true
+
+                    if (isDragging) {
+                        lp.x = startX + dx
+                        lp.y = startY + dy
+                        try {
+                            windowManager.updateViewLayout(overlayView ?: v, lp)
+                        } catch (e: Exception) {
+                            logError("OVERLAY", "Ошибка перемещения оверлея", e)
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (isDragging) {
+                        isDragging = false
+                        true
+                    } else {
+                        false // Клик свободно проходит к OnClickListener!
+                    }
                 }
                 else -> false
             }
