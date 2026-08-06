@@ -4,10 +4,12 @@ import android.content.Context
 import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
+import com.example.autotap.dpToPx
 import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
@@ -22,7 +24,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     private var btnPlayView: View? = null
     private var btnRecordView: View? = null
     private var btnJoystickView: View? = null
-    private var panelState = 0 // 0 = 2 строки (Full), 1 = 1 строка (Compact), 2 = 1 кнопка (Bubble)
+    private var panelState = 0 // 0 = Full (2 строки), 1 = Single Bubble (1 шарик), 2 = Compact (1 строка)
 
     init {
         layer = OverlayLayer.PANEL_LAYER
@@ -42,11 +44,18 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
             cyclePanelState(view)
         }
 
-        // КНОПКА ПРИЦЕЛА И СОЗДАНИЯ ШАБЛОНА
-        view.bindClickByNames("btnCapturePool", "btnAdd") {
-            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона (CaptureFrameOverlay).")
+        // Отдельный запуск прицела по кнопке btnCapturePool
+        view.bindClickByNames("btnCapturePool") {
+            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона по btnCapturePool.")
             context.vibrateFeedback()
             overlayManager.captureFrameOverlay.show()
+        }
+
+        // Отдельный запуск меню добавления по кнопке btnAdd
+        view.bindClickByNames("btnAdd") {
+            logDiagnostic("OVERLAY", "Открытие меню добавления действия по btnAdd.")
+            context.vibrateFeedback()
+            overlayManager.addActionDialog.show()
         }
 
         view.bindClickByNames("btnPlay") {
@@ -120,28 +129,43 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         val mainCard = root.findViewByNames("layoutMainCard")
         val singleBubble = root.findViewByNames("btnSingleBubble")
 
+        val lp = layoutParams ?: return
+
         when (panelState) {
             0 -> { // 2 строки (Full)
+                lp.width = WindowManager.LayoutParams.WRAP_CONTENT
+                lp.height = WindowManager.LayoutParams.WRAP_CONTENT
                 mainCard?.visibility = View.VISIBLE
                 mainRow?.visibility = View.VISIBLE
                 subMenu?.visibility = View.VISIBLE
                 singleBubble?.visibility = View.GONE
                 logDiagnostic("OVERLAY", "Панель: Режим 2 строки (Full)")
             }
-            1 -> { // 1 строка (Compact)
+            1 -> { // 1 кнопка (Bubble) - ФИКС: singleBubble = VISIBLE
+                val bubbleSizePx = 56.dpToPx(context)
+                lp.width = bubbleSizePx
+                lp.height = bubbleSizePx
+                mainCard?.visibility = View.GONE
+                mainRow?.visibility = View.GONE
+                subMenu?.visibility = View.GONE
+                singleBubble?.visibility = View.VISIBLE // ФИКС: Шарик полностью виден!
+                logDiagnostic("OVERLAY", "Панель: Режим Одиночный Шарик (Bubble ${bubbleSizePx}px)")
+            }
+            2 -> { // 1 строка (Compact)
+                lp.width = WindowManager.LayoutParams.WRAP_CONTENT
+                lp.height = WindowManager.LayoutParams.WRAP_CONTENT
                 mainCard?.visibility = View.VISIBLE
                 mainRow?.visibility = View.VISIBLE
                 subMenu?.visibility = View.GONE
                 singleBubble?.visibility = View.GONE
                 logDiagnostic("OVERLAY", "Панель: Режим 1 строка (Compact)")
             }
-            2 -> { // 1 кнопка (Bubble)
-                mainCard?.visibility = View.GONE
-                mainRow?.visibility = View.GONE
-                subMenu?.visibility = View.GONE
-                singleBubble?.visibility = View.VISIBLE
-                logDiagnostic("OVERLAY", "Панель: Режим 1 кнопка (Single Bubble)")
-            }
+        }
+
+        try {
+            windowManager.updateViewLayout(overlayView, lp)
+        } catch (e: Exception) {
+            logDiagnostic("OVERLAY", "Ошибка обновления размера окна при сворачивании.")
         }
         context.vibrateFeedback()
     }

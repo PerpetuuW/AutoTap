@@ -7,6 +7,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
@@ -25,8 +26,8 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
     private val minSizePx = 24.dpToPx(context)
-    private var currentFrameWidthPx = 120.dpToPx(context)
-    private var currentFrameHeightPx = 120.dpToPx(context)
+    private var currentFrameWidthPx = 240.dpToPx(context)
+    private var currentFrameHeightPx = 240.dpToPx(context)
 
     init {
         gravity = Gravity.CENTER
@@ -51,10 +52,8 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 val centerXNorm = (lp.x + currentFrameWidthPx / 2f) / metrics.widthPixels.toFloat()
                 val centerYNorm = (lp.y + currentFrameHeightPx / 2f) / metrics.heightPixels.toFloat()
 
-                // Добавление клик-действия
                 svc.addNewActionAtPosition(centerXNorm.coerceIn(0f, 1f), centerYNorm.coerceIn(0f, 1f))
 
-                // Захват и вырезание реального фрагмента изображения
                 val fullBitmap = svc.captureScreenBitmap()
                 if (fullBitmap != null) {
                     val cropX = ((lp.x).coerceAtLeast(0)).coerceAtMost(fullBitmap.width - 20)
@@ -65,7 +64,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     if (cropW > 10 && cropH > 10) {
                         val croppedMask = Bitmap.createBitmap(fullBitmap, cropX, cropY, cropW, cropH)
                         svc.templateRepository.saveTemplate(0, croppedMask)
-                        logDiagnostic("AI_SCANNER", "Реальный шаблон #0 сохранен на диск (${cropW}x${cropH}px) и откалиброван.")
+                        logDiagnostic("AI_SCANNER", "Реальный шаблон #0 сохранен и откалиброван (${cropW}x${cropH}px).")
                     }
                 }
             }
@@ -82,7 +81,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        val moveHandle = view.findViewByNames("handleMoveFrame", "layoutTopBar") ?: view
+        val moveHandle = view.findViewByNames("handleMoveFrame", "layoutTopBar", "layoutCaptureContainer") ?: view
         setupDragAndDrop(moveHandle)
 
         val resizeHandle = view.findViewByNames("handleResize")
