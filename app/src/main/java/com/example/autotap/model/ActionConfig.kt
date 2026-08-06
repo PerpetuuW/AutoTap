@@ -3,7 +3,7 @@ package com.example.autotap.model
 import android.graphics.PointF
 
 enum class ActionType {
-    CLICK, SWIPE, LONG_PRESS, AI_SEARCH, WAIT, LOAD_SCRIPT
+    CLICK, SWIPE, LONG_PRESS, AI_SEARCH, WAIT, LOAD_SCRIPT, JOYSTICK_PATH
 }
 
 data class ActionConfig(

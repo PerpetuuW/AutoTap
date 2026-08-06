@@ -1,169 +1,189 @@
 package com.example.autotap.ui.overlays
 
-import com.example.autotap.*
-
-import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.PixelFormat
-import android.os.Build
+import android.graphics.PointF
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
-import com.example.autotap.DiagnosticLogger
+import android.widget.FrameLayout
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.dpToPx
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.vibrateFeedback
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-class JoystickView(context: Context) : View(context) {
+class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
 
-    private val outerRadius = 80f
-    private val innerRadius = 35f
+    private val joystickPath = mutableListOf<PointF>()
+    private var isRecording = false
+    private var lastInjectTime = 0L
+    private val injectThrottleMs = 40L // 25 FPS rate limit
 
-    private var centerX = 0f
-    private var centerY = 0f
-    private var handleX = 0f
-    private var handleY = 0f
-
-    private val outerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(150, 50, 50, 50)
-        style = Paint.Style.FILL
+    init {
+        width = 240.dpToPx(context)
+        height = 240.dpToPx(context)
+        gravity = Gravity.BOTTOM or Gravity.START
+        initialX = 50
+        initialY = 100
     }
 
-    private val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(230, 255, 87, 34)
-        style = Paint.Style.FILL
+    override fun createView(): View {
+        val root = FrameLayout(context).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+
+        val joystickView = JoystickCustomView(context) { event, knobX, knobY, distanceRatio ->
+            handleJoystickTouch(event, knobX, knobY, distanceRatio)
+        }
+
+        root.addView(joystickView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
+        setupDragAndDrop(root)
+        return root
     }
 
-    var onMoveListener: ((deltaX: Float, deltaY: Float) -> Unit)? = null
+    private fun handleJoystickTouch(event: MotionEvent, knobX: Float, knobY: Float, distanceRatio: Float) {
+        val lp = layoutParams ?: return
+        val currentScreenPoint = PointF(lp.x + knobX, lp.y + knobY)
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        centerX = w / 2f
-        centerY = h / 2f
-        handleX = centerX
-        handleY = centerY
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        canvas.drawCircle(centerX, centerY, outerRadius, outerPaint)
-        canvas.drawCircle(handleX, handleY, innerRadius, innerPaint)
-    }
-
-    @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                val dx = event.x - centerX
-                val dy = event.y - centerY
-                val distance = sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-
-                if (distance < outerRadius) {
-                    handleX = event.x
-                    handleY = event.y
-                } else {
-                    val angle = atan2(dy.toDouble(), dx.toDouble())
-                    handleX = (centerX + cos(angle) * outerRadius).toFloat()
-                    handleY = (centerY + sin(angle) * outerRadius).toFloat()
-                }
-
-                invalidate()
-                val normalizedDx = (handleX - centerX) / outerRadius
-                val normalizedDy = (handleY - centerY) / outerRadius
-                onMoveListener?.invoke(normalizedDx, normalizedDy)
-                return true
+            MotionEvent.ACTION_DOWN -> {
+                isRecording = true
+                joystickPath.clear()
+                joystickPath.add(currentScreenPoint)
+                logDiagnostic("JOYSTICK", "Начата запись траектории джойстика.")
             }
+            MotionEvent.ACTION_MOVE -> {
+                if (isRecording) {
+                    joystickPath.add(currentScreenPoint)
 
+                    val now = System.currentTimeMillis()
+                    if (now - lastInjectTime >= injectThrottleMs && distanceRatio > 0.1f) {
+                        lastInjectTime = now
+                        val centerPoint = PointF(lp.x + width / 2f, lp.y + height / 2f)
+                        injectJoystickSwipe(centerPoint, currentScreenPoint)
+                    }
+                }
+            }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                handleX = centerX
-                handleY = centerY
-                invalidate()
-                onMoveListener?.invoke(0f, 0f)
-                return true
-            }
-        }
-        return super.onTouchEvent(event)
-    }
-}
-
-class JoystickOverlay(
-    private val context: Context,
-    private val service: MyAutoClickService
-) {
-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private var overlayView: View? = null
-
-    @SuppressLint("ClickableViewAccessibility")
-    fun show() {
-        if (overlayView != null) return
-
-        val layoutParams = WindowManager.LayoutParams().apply {
-            type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            format = PixelFormat.TRANSLUCENT
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-
-            gravity = Gravity.BOTTOM or Gravity.START
-            x = 30.dpToPx(context)
-            y = 100.dpToPx(context)
-            width = 200.dpToPx(context)
-            height = 200.dpToPx(context)
-        }
-
-        val joystick = JoystickView(context)
-        joystick.onMoveListener = { deltaX, deltaY ->
-            if (deltaX != 0f || deltaY != 0f) {
-                val screenSize = service.getRealScreenSize()
-                val startX = screenSize.x / 2f
-                val startY = screenSize.y / 2f
-                val endX = startX + deltaX * 200f
-                val endY = startY + deltaY * 200f
-
-                service.performSwipeWithCallback(
-                    startX = startX,
-                    startY = startY,
-                    endX = endX,
-                    endY = endY,
-                    durationMs = 80L
-                ) { success ->
-                    DiagnosticLogger.log(
-                        "JoystickOverlay",
-                        "Joystick gesture step sent",
-                        mapOf("dx" to deltaX, "dy" to deltaY, "success" to success)
-                    )
+                if (isRecording) {
+                    isRecording = false
+                    logDiagnostic("JOYSTICK", "Завершено движение джойстика. Записано точек: ${joystickPath.size}")
+                    saveRecordedTrajectory()
                 }
             }
         }
-
-        overlayView = joystick
-        windowManager.addView(overlayView, layoutParams)
-        context.vibrateFeedback(30L)
-        DiagnosticLogger.log("JoystickOverlay", "Joystick overlay attached")
     }
 
-    fun dismiss() {
-        overlayView?.let { view ->
-            try {
-                windowManager.removeView(view)
-                DiagnosticLogger.log("JoystickOverlay", "Joystick overlay removed")
-            } catch (e: Exception) {
-                DiagnosticLogger.log("JoystickOverlay", "Error dismissing joystick overlay: ${e.message}")
-            } finally {
-                overlayView = null
+    private fun injectJoystickSwipe(center: PointF, target: PointF) {
+        val service = MyAutoClickService.instance ?: return
+        service.gestureExecutor.performSwipe(center.x, center.y, target.x, target.y, 40L, null)
+    }
+
+    private fun saveRecordedTrajectory() {
+        if (joystickPath.isEmpty()) return
+        val service = MyAutoClickService.instance ?: return
+
+        val recordedCopy = joystickPath.toList()
+        val action = ActionConfig(
+            type = ActionType.JOYSTICK_PATH,
+            joystickPath = recordedCopy,
+            holdDuration = (recordedCopy.size * injectThrottleMs).coerceAtLeast(200L)
+        )
+        service.actionsList.add(action)
+        context.vibrateFeedback()
+        logDiagnostic("JOYSTICK", "Траектория джойстика сохранена в сценарий как ActionConfig (точек: ${recordedCopy.size})")
+    }
+
+    private class JoystickCustomView(
+        context: Context,
+        private val onJoystickMove: (event: MotionEvent, knobX: Float, knobY: Float, ratio: Float) -> Unit
+    ) : View(context) {
+
+        private val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#66333333")
+            style = Paint.Style.FILL
+        }
+
+        private val baseStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#AABBBBBB")
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+        }
+
+        private val knobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#DD00E676")
+            style = Paint.Style.FILL
+        }
+
+        private var centerX = 0f
+        private var centerY = 0f
+        private var baseRadius = 0f
+        private var knobRadius = 0f
+
+        private var knobX = 0f
+        private var knobY = 0f
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            centerX = w / 2f
+            centerY = h / 2f
+            baseRadius = (w.coerceAtMost(h) / 2f) * 0.8f
+            knobRadius = baseRadius * 0.35f
+            knobX = centerX
+            knobY = centerY
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
+            canvas.drawCircle(centerX, centerY, baseRadius, baseStrokePaint)
+            canvas.drawCircle(knobX, knobY, knobRadius, knobPaint)
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            val dx = event.x - centerX
+            val dy = event.y - centerY
+            val distance = sqrt(dx * dx + dy * dy)
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    if (distance < baseRadius) {
+                        knobX = event.x
+                        knobY = event.y
+                    } else {
+                        val angle = atan2(dy, dx)
+                        knobX = centerX + cos(angle) * baseRadius
+                        knobY = centerY + sin(angle) * baseRadius
+                    }
+                    val ratio = (distance / baseRadius).coerceIn(0f, 1f)
+                    invalidate()
+                    onJoystickMove(event, knobX, knobY, ratio)
+                    return true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    knobX = centerX
+                    knobY = centerY
+                    invalidate()
+                    onJoystickMove(event, knobX, knobY, 0f)
+                    return true
+                }
             }
+            return super.onTouchEvent(event)
         }
     }
 }

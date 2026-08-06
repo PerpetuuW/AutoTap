@@ -10,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
+import com.example.autotap.ui.LogViewerActivity
 
 class MainActivity : AppCompatActivity() {
 
@@ -25,6 +26,7 @@ class MainActivity : AppCompatActivity() {
         val statusText = TextView(this).apply {
             text = "AutoTap v35 System Status"
             textSize = 18f
+            setPadding(0, 0, 0, 16)
         }
         layout.addView(statusText)
 
@@ -39,6 +41,32 @@ class MainActivity : AppCompatActivity() {
             }
         }
         layout.addView(btnAccessibility)
+
+        val btnOverlay = Button(this).apply {
+            text = "Запустить Overlay Панель"
+            setOnClickListener {
+                val service = MyAutoClickService.instance
+                if (service != null) {
+                    service.showControlPanel()
+                    logDiagnostic("UI", "Запрос показа Control Panel из MainActivity")
+                } else {
+                    logError("UI", "MyAutoClickService не запущен или не активен!", null)
+                }
+            }
+        }
+        layout.addView(btnOverlay)
+
+        val btnLogs = Button(this).apply {
+            text = "Просмотр Диагностических Логов"
+            setOnClickListener {
+                try {
+                    startActivity(Intent(this@MainActivity, LogViewerActivity::class.java))
+                } catch (e: Exception) {
+                    logError("UI", "Ошибка открытия LogViewerActivity", e)
+                }
+            }
+        }
+        layout.addView(btnLogs)
 
         setContentView(layout)
         logDiagnostic("UI", "MainActivity успешно инициализирована.")

@@ -11,6 +11,11 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.accessibility.AccessibilityEvent
+import com.example.autotap.data.ScriptRepository
+import com.example.autotap.data.TemplateRepository
+import com.example.autotap.engine.AiScannerEngine
+import com.example.autotap.engine.GestureExecutor
+import com.example.autotap.engine.ScriptExecutor
 import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
@@ -27,6 +32,12 @@ class MyAutoClickService : AccessibilityService() {
     @Volatile var isPlaying = false
     var globalClickDurationMs: Long = 50L
 
+    lateinit var gestureExecutor: GestureExecutor
+    lateinit var scriptExecutor: ScriptExecutor
+    lateinit var scriptRepository: ScriptRepository
+    lateinit var templateRepository: TemplateRepository
+    lateinit var aiScannerEngine: AiScannerEngine
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private val gestureQueue = ConcurrentLinkedQueue<GestureTask>()
     @Volatile private var isExecutingGesture = false
@@ -41,7 +52,14 @@ class MyAutoClickService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         StructuredLogger.init(this)
-        logDiagnostic("OVERLAY", "MyAutoClickService инициализирован и подключен.")
+
+        gestureExecutor = GestureExecutor(this)
+        scriptExecutor = ScriptExecutor(this)
+        scriptRepository = ScriptRepository(this)
+        templateRepository = TemplateRepository(this)
+        aiScannerEngine = AiScannerEngine(this)
+
+        logDiagnostic("OVERLAY", "MyAutoClickService и AiScannerEngine полностью инициализированы (Модуль 3).")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -117,5 +135,48 @@ class MyAutoClickService : AccessibilityService() {
         } catch (e: Exception) {
             logError("ERROR", "Ошибка обратной связи вибрации", e)
         }
+    }
+
+    fun addNewActionAtPosition(xNorm: Float, yNorm: Float) {
+        actionsList.add(ActionConfig(xNorm = xNorm, yNorm = yNorm))
+        logDiagnostic("SCRIPT", "Добавлено новое действие на позиции ($xNorm, $yNorm)")
+    }
+
+    fun saveScriptByName(name: String, actions: List<ActionConfig>) {
+        scriptRepository.saveScript(name, actions)
+    }
+
+    fun loadScriptByName(name: String): Boolean {
+        val loaded = scriptRepository.loadScript(name)
+        if (loaded.isNotEmpty()) {
+            actionsList.clear()
+            actionsList.addAll(loaded)
+            return true
+        }
+        return false
+    }
+
+    fun captureScreenBitmap(): Bitmap? {
+        return null
+    }
+
+    fun showControlPanel() {
+        logDiagnostic("OVERLAY", "Запрос показа ControlPanel")
+    }
+
+    fun hideControlPanel() {
+        logDiagnostic("OVERLAY", "Запрос скрытия ControlPanel")
+    }
+
+    fun showFloatingStopButton() {
+        logDiagnostic("OVERLAY", "Запрос показа кнопки СТОП")
+    }
+
+    fun hideFloatingStopButton() {
+        logDiagnostic("OVERLAY", "Запрос скрытия кнопки СТОП")
+    }
+
+    fun showClickVisualizer(x: Float, y: Float) {
+        logDiagnostic("OVERLAY", "Визуализация клика в ($x, $y)")
     }
 }

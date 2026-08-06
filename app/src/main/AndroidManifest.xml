@@ -23,6 +23,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="com.example.autotap.ui.LogViewerActivity"
+            android:exported="false"
+            android:label="Диагностика и Логи" />
+
         <service
             android:name="com.example.autotap.MyAutoClickService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
