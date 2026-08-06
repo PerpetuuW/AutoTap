@@ -2,6 +2,7 @@ package com.example.autotap.ui.base
 
 import android.content.Context
 import android.graphics.Rect
+import android.os.Build
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -57,12 +58,15 @@ abstract class OverlayBase(
                 if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
                     this.dimAmount = this@OverlayBase.dimAmount
                 }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    this.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
             }
             this.layoutParams = params
             val added = windowManager.safeAddView(view, params)
             if (added) {
                 isShowing = true
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен.")
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен с поддержкой Cutout.")
             }
         } catch (e: Exception) {
             logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
