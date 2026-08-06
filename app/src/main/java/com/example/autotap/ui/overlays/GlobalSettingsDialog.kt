@@ -12,31 +12,31 @@ import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
 
-class InfoHelpDialog(context: Context, overlayManager: OverlayManager) :
+class GlobalSettingsDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
     init {
-        width = WindowManager.LayoutParams.MATCH_PARENT
-        height = WindowManager.LayoutParams.WRAP_CONTENT
         gravity = Gravity.CENTER
         flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        dimAmount = 0.7f
+        dimAmount = 0.6f
         layer = OverlayLayer.DIALOG_LAYER
         priority = OverlayPriority.CRITICAL
     }
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = try {
-            inflater.inflate(R.layout.dialog_info, null)
-        } catch (e: Exception) {
-            View(context)
+        val view = inflater.inflate(R.layout.dialog_global_settings, null)
+
+        view.bindClickByNames("btn_save_settings", "btnSaveSettings", "btn_save", "btnSave") {
+            logDiagnostic("UI", "Глобальные настройки сохранены.")
+            context.vibrateFeedback()
+            hide()
         }
 
-        view.bindClickByNames("btn_close_info", "btnCloseInfo", "btn_close", "btnClose", "btn_ok") {
-            logDiagnostic("UI", "Закрыта справка (dialog_info.xml).")
+        view.bindClickByNames("btn_close_settings", "btnCloseSettings", "btn_close", "btnCancel") {
             hide()
         }
 

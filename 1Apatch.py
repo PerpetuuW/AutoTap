@@ -23,153 +23,7 @@ def validate_kotlin(content, filename):
 
 files = {}
 
-# 1. OverlayBase.kt — Добавление поддержки выреза чёлки LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-files["app/src/main/java/com/example/autotap/ui/base/OverlayBase.kt"] = """package com.example.autotap.ui.base
-
-import android.content.Context
-import android.graphics.Rect
-import android.os.Build
-import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.WindowManager
-import com.example.autotap.createOverlayParams
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
-import com.example.autotap.safeAddView
-import com.example.autotap.safeRemoveView
-
-abstract class OverlayBase(
-    protected val context: Context,
-    val overlayManager: OverlayManager
-) {
-    protected val windowManager: WindowManager =
-        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-
-    var width: Int = WindowManager.LayoutParams.WRAP_CONTENT
-    var height: Int = WindowManager.LayoutParams.WRAP_CONTENT
-    var gravity: Int = Gravity.TOP or Gravity.START
-    var flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-    var dimAmount: Float = 0.5f
-
-    var initialX: Int = 100
-    var initialY: Int = 200
-
-    var layer: OverlayLayer = OverlayLayer.PANEL_LAYER
-    var priority: OverlayPriority = OverlayPriority.MEDIUM
-
-    protected var overlayView: View? = null
-    protected var layoutParams: WindowManager.LayoutParams? = null
-    var isShowing: Boolean = false
-        protected set
-
-    abstract fun createView(): View
-
-    open fun show() {
-        if (isShowing) return
-        try {
-            val view = createView()
-            view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            overlayView = view
-            val params = createOverlayParams(
-                width = width,
-                height = height,
-                gravity = gravity,
-                flags = flags,
-                x = initialX,
-                y = initialY
-            ).apply {
-                if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
-                    this.dimAmount = this@OverlayBase.dimAmount
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    this.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                }
-            }
-            this.layoutParams = params
-            val added = windowManager.safeAddView(view, params)
-            if (added) {
-                isShowing = true
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен с поддержкой Cutout.")
-            }
-        } catch (e: Exception) {
-            logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
-        }
-    }
-
-    open fun hide() {
-        val view = overlayView ?: return
-        if (isShowing) {
-            try {
-                windowManager.safeRemoveView(view)
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} скрыт.")
-            } catch (e: Exception) {
-                logError("OVERLAY", "Ошибка при скрытии ${javaClass.simpleName}", e)
-            }
-            overlayView = null
-            isShowing = false
-        }
-    }
-
-    fun setTouchable(touchable: Boolean) {
-        val lp = layoutParams ?: return
-        val view = overlayView ?: return
-        if (touchable) {
-            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-        } else {
-            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        }
-        try {
-            windowManager.updateViewLayout(view, lp)
-            logDiagnostic("OVERLAY", "Флаг touchable для ${javaClass.simpleName} установлен в $touchable")
-        } catch (e: Exception) {
-            logError("OVERLAY", "Ошибка обновления флага touchable", e)
-        }
-    }
-
-    fun getBounds(): Rect {
-        val lp = layoutParams ?: return Rect(0, 0, 0, 0)
-        val w = if (width > 0) width else 200
-        val h = if (height > 0) height else 200
-        return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
-    }
-
-    protected fun setupDragAndDrop(view: View) {
-        var startX = 0
-        var startY = 0
-        var touchX = 0f
-        var touchY = 0f
-
-        view.setOnTouchListener { _, event ->
-            val lp = layoutParams ?: return@setOnTouchListener false
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startX = lp.x
-                    startY = lp.y
-                    touchX = event.rawX
-                    touchY = event.rawY
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    lp.x = startX + (event.rawX - touchX).toInt()
-                    lp.y = startY + (event.rawY - touchY).toInt()
-                    try {
-                        windowManager.updateViewLayout(view, lp)
-                    } catch (e: Exception) {
-                        logError("OVERLAY", "Ошибка перемещения оверлея", e)
-                    }
-                    true
-                }
-                else -> false
-            }
-        }
-    }
-}
-"""
-
-# 2. MainActivity.kt — Оркестратор системы AutoTap v35/v37
+# 1. MainActivity.kt — 100% привязка к activity_main.xml
 files["app/src/main/java/com/example/autotap/MainActivity.kt"] = """package com.example.autotap
 
 import android.content.Intent
@@ -178,14 +32,10 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.example.autotap.data.ScriptRepository
 import com.example.autotap.data.TemplateRepository
 import com.example.autotap.engine.ActionEditorEngine
-import com.example.autotap.engine.ScenarioRunner
 import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
@@ -204,107 +54,90 @@ class MainActivity : AppCompatActivity() {
         initRepositories()
         initEngines()
 
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
+        // Устанавливаем физический XML макет Главного Меню activity_main.xml
+        try {
+            setContentView(R.layout.activity_main)
+            logDiagnostic("UI", "Главное меню успешно установлено из setContentView(R.layout.activity_main).")
+        } catch (e: Exception) {
+            logError("UI", "Ошибка установки setContentView(R.layout.activity_main)", e)
         }
 
-        val titleText = TextView(this).apply {
-            text = "AutoTap v35/v37 Systems Orchestrator"
-            textSize = 18f
-            setPadding(0, 0, 0, 16)
-        }
-        layout.addView(titleText)
+        val root = window.decorView.findViewById<View>(android.R.id.content)
 
-        val btnAccessibility = Button(this).apply {
-            text = "1. Включить Accessibility Service"
-            setOnClickListener {
+        // Безопасная привязка интерактивных элементов Главного Меню из XML
+        root.bindClickByNames("btn_enable_accessibility", "btnAccessibility", "btn_accessibility", "accessibility") {
+            try {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                logDiagnostic("UI", "Переход в настройки Accessibility из Главного Меню.")
+            } catch (e: Exception) {
+                logError("UI", "Ошибка перехода в настройки Accessibility", e)
+            }
+        }
+
+        root.bindClickByNames("btn_overlay_permission", "btnOverlayPerm", "btn_overlay", "overlay") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
                 try {
-                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    logDiagnostic("UI", "Переход в настройки Accessibility.")
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                    logDiagnostic("UI", "Запрос разрешения на оверлеи из Главного Меню.")
                 } catch (e: Exception) {
-                    logError("UI", "Ошибка перехода в настройки Accessibility", e)
+                    logError("UI", "Ошибка запроса разрешения оверлеев", e)
                 }
+            } else {
+                logDiagnostic("UI", "Разрешение на оверлеи уже активно.")
             }
         }
-        layout.addView(btnAccessibility)
 
-        val btnOverlayPerm = Button(this).apply {
-            text = "2. Разрешение на Overlay (Оверлеи)"
-            setOnClickListener {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
-                    try {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:$packageName")
-                        )
-                        startActivity(intent)
-                        logDiagnostic("UI", "Запрос разрешения на оверлеи.")
-                    } catch (e: Exception) {
-                        logError("UI", "Ошибка запроса разрешения оверлея", e)
-                    }
-                } else {
-                    logDiagnostic("UI", "Разрешение на оверлеи уже предоставлено.")
-                }
+        root.bindClickByNames("btn_start_service", "btnStartPanel", "btn_start_overlay", "btn_panel", "btn_start") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.showControlPanel()
+                logDiagnostic("UI", "Запуск Панели Управления из Главного Меню.")
+            } else {
+                logError("UI", "Служба не заложена, запустите Accessibility Service", null)
             }
         }
-        layout.addView(btnOverlayPerm)
 
-        val btnStartOverlay = Button(this).apply {
-            text = "3. Запустить Панель Оверлеев"
-            setOnClickListener {
-                val service = MyAutoClickService.instance
-                if (service != null) {
-                    service.showControlPanel()
-                    logDiagnostic("UI", "Панель управления успешно запущена из MainActivity.")
-                } else {
-                    logError("UI", "MyAutoClickService не запущен! Сначала включите Accessibility Service.", null)
-                }
+        root.bindClickByNames("btn_open_settings", "btnSettings", "btn_global_settings") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.overlayManager.globalSettingsDialog.show()
             }
         }
-        layout.addView(btnStartOverlay)
 
-        val btnTutorial = Button(this).apply {
-            text = "4. Запустить Обучение (Tutorial)"
-            setOnClickListener {
-                val service = MyAutoClickService.instance
-                if (service != null) {
-                    service.tutorialEngine.startDefaultTutorial()
-                    logDiagnostic("UI", "Запущен интерактивный туториал из MainActivity.")
-                } else {
-                    logError("UI", "Служба Accessibility не активна для запуска туториала.", null)
-                }
+        root.bindClickByNames("btn_open_templates", "btnTemplates", "btn_templates_manager") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.overlayManager.templatesManagerDialog.show()
             }
         }
-        layout.addView(btnTutorial)
 
-        val btnLogs = Button(this).apply {
-            text = "5. Диагностические Логи"
-            setOnClickListener {
-                try {
-                    startActivity(Intent(this@MainActivity, LogViewerActivity::class.java))
-                } catch (e: Exception) {
-                    logError("UI", "Ошибка открытия экрана логов LogViewerActivity", e)
-                }
+        root.bindClickByNames("btn_open_logs", "btnLogs", "btn_log_viewer") {
+            try {
+                startActivity(Intent(this@MainActivity, LogViewerActivity::class.java))
+            } catch (e: Exception) {
+                logError("UI", "Ошибка открытия экрана логов", e)
             }
         }
-        layout.addView(btnLogs)
 
-        val btnHelp = Button(this).apply {
-            text = "6. Справка по приложению"
-            setOnClickListener {
-                val service = MyAutoClickService.instance
-                if (service != null) {
-                    service.overlayManager.infoHelpDialog.show()
-                } else {
-                    logError("UI", "Запустите службу для показа оверлея справки.", null)
-                }
+        root.bindClickByNames("btn_open_help", "btnHelp", "btn_info") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.overlayManager.infoHelpDialog.show()
             }
         }
-        layout.addView(btnHelp)
 
-        setContentView(layout)
-        logDiagnostic("UI", "MainActivity (Оркестратор системы) успешно инициализирована.")
+        root.bindClickByNames("btn_start_tutorial", "btnTutorial", "btn_education") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.tutorialEngine.startDefaultTutorial()
+            }
+        }
+
+        logDiagnostic("UI", "MainActivity (Оригинальное Главное Меню) успешно инициализирована.")
     }
 
     override fun onResume() {
@@ -315,23 +148,161 @@ class MainActivity : AppCompatActivity() {
     private fun initRepositories() {
         templateRepository = TemplateRepository(this)
         scriptRepository = ScriptRepository(this)
-        logDiagnostic("CORE", "Репозитории инициализированы в MainActivity.")
     }
 
     private fun initEngines() {
         actionEditorEngine = ActionEditorEngine()
-        logDiagnostic("CORE", "Движки приложения инициализированы в MainActivity.")
     }
 
     private fun checkSystemStatus() {
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
         val serviceActive = MyAutoClickService.instance != null
-        logDiagnostic("CORE", "Статус системы: Accessibility=$serviceActive, OverlayPermission=$hasOverlay")
+        logDiagnostic("CORE", "Статус Главного Меню: Accessibility=$serviceActive, OverlayPermission=$hasOverlay")
     }
 }
 """
 
-print("=== ВНЕДРЕНИЕ ОРКЕСТРАТОРА MainActivity И CUTOUT ПОДДЕРЖКИ ===")
+# 2. LogViewerActivity.kt — 100% привязка к dialog_logs.xml
+files["app/src/main/java/com/example/autotap/ui/LogViewerActivity.kt"] = """package com.example.autotap.ui
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.view.View
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.StructuredLogger
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+
+class LogViewerActivity : AppCompatActivity() {
+
+    private var logTextView: TextView? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        try {
+            setContentView(R.layout.dialog_logs)
+            logDiagnostic("UI", "Экран логов надул оригинальный dialog_logs.xml")
+        } catch (e: Exception) {
+            logError("UI", "Ошибка установки setContentView(R.layout.dialog_logs)", e)
+        }
+
+        val root = window.decorView.findViewById<View>(android.R.id.content)
+
+        logTextView = root.findViewByNames("tv_logs", "tv_log_content", "log_text", "txt_logs") as? TextView
+
+        root.bindClickByNames("btn_share_logs", "btnShare", "btn_share") {
+            shareLogFile()
+        }
+
+        root.bindClickByNames("btn_clear_logs", "btnClear", "btn_clear") {
+            clearLogFile()
+        }
+
+        root.bindClickByNames("btn_close_logs", "btnClose", "btn_close") {
+            finish()
+        }
+
+        refreshLogs()
+    }
+
+    private fun refreshLogs() {
+        val file = StructuredLogger.getLogFile()
+        if (file != null && file.exists()) {
+            val content = file.readText()
+            logTextView?.text = if (content.isBlank()) "Лог-файл пуст." else content
+        } else {
+            logTextView?.text = "Лог-файл еще не создан."
+        }
+    }
+
+    private fun clearLogFile() {
+        val file = StructuredLogger.getLogFile()
+        if (file != null && file.exists()) {
+            file.writeText("")
+            logDiagnostic("LOGS", "Лог-файл очищен из dialog_logs.")
+        }
+        refreshLogs()
+    }
+
+    private fun shareLogFile() {
+        val file = StructuredLogger.getLogFile() ?: return
+        if (!file.exists()) return
+
+        try {
+            val uri: Uri = FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Поделиться error_log.txt"))
+        } catch (e: Exception) {
+            logError("LOGS", "Ошибка отправки файла логов", e)
+        }
+    }
+}
+"""
+
+# 3. InfoHelpDialog.kt — 100% привязка к dialog_info.xml
+files["app/src/main/java/com/example/autotap/ui/overlays/InfoHelpDialog.kt"] = """package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+
+class InfoHelpDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.7f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = try {
+            inflater.inflate(R.layout.dialog_info, null)
+        } catch (e: Exception) {
+            View(context)
+        }
+
+        view.bindClickByNames("btn_close_info", "btnCloseInfo", "btn_close", "btnClose", "btn_ok") {
+            logDiagnostic("UI", "Закрыта справка (dialog_info.xml).")
+            hide()
+        }
+
+        return view
+    }
+}
+"""
+
+print("=== ВОЗВРАТ ОРИГИНАЛЬНОГО ГЛАВНОГО МЕНЮ И ДИАЛОГОВ ===")
 
 for rel_path, content in files.items():
     abs_path = os.path.abspath(rel_path)
@@ -345,4 +316,4 @@ for rel_path, content in files.items():
 
     print(f"SUCCESS: {rel_path}")
 
-print("=== ОРКЕСТРАТОР УСПЕШНО ОБНОВЛЕН ===")
+print("=== ГЛАВНОЕ МЕНЮ И ВСЕ ДИАЛОГИ УСПЕШНО ВОССТАНОВЛЕНЫ ===")

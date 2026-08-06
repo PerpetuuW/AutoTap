@@ -1,14 +1,13 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -28,36 +27,22 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
     }
 
     override fun createView(): View {
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.DKGRAY)
-            setPadding(24, 24, 24, 24)
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_scripts, null)
 
-            addView(TextView(context).apply {
-                text = "Менеджер сценариев"
-                setTextColor(Color.WHITE)
-                textSize = 18f
-                setPadding(0, 0, 0, 16)
-            })
-
-            addView(Button(context).apply {
-                text = "Сохранить текущий сценарий"
-                setOnClickListener {
-                    val svc = MyAutoClickService.instance
-                    if (svc != null) {
-                        svc.saveScriptByName("default_script", svc.actionsList)
-                        logDiagnostic("SCRIPT", "Сценарий 'default_script' сохранен")
-                    }
-                    hide()
-                }
-            })
-
-            addView(Button(context).apply {
-                text = "Закрыть"
-                setOnClickListener {
-                    hide()
-                }
-            })
+        view.bindClickByNames("btn_save_script", "btnSaveScript", "btn_save", "btnSave") {
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.saveScriptByName("default_script", svc.actionsList)
+                logDiagnostic("SCRIPT", "Сценарий 'default_script' сохранен")
+            }
+            hide()
         }
+
+        view.bindClickByNames("btn_close_dialog", "btnCloseDialog", "btn_close", "btnClose") {
+            hide()
+        }
+
+        return view
     }
 }

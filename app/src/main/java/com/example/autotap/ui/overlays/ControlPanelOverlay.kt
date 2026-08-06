@@ -1,12 +1,11 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.Color
+import android.view.LayoutInflater
 import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -22,67 +21,41 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     }
 
     override fun createView(): View {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#DD1E1E2C"))
-            setPadding(24, 24, 24, 24)
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.floating_control_panel, null)
+
+        view.bindClickByNames("btn_play", "btnPlay", "btn_start", "btnStart", "play", "ic_play", "start") {
+            logDiagnostic("OVERLAY", "Кнопка СТАРТ нажата в оригинальной XML-панели.")
+            MyAutoClickService.instance?.scriptExecutor?.start()
         }
 
-        val titleText = TextView(context).apply {
-            text = "AutoTap v35 Control"
-            setTextColor(Color.WHITE)
-            textSize = 16f
-            setPadding(0, 0, 0, 16)
+        view.bindClickByNames("btn_add", "btnAdd", "add", "ic_add", "btn_add_action") {
+            logDiagnostic("OVERLAY", "Кнопка +ДЕЙСТВИЕ нажата в оригинальной XML-панели.")
+            overlayManager.captureFrameOverlay.show()
         }
-        container.addView(titleText)
 
-        val btnStart = Button(context).apply {
-            text = "СТАРТ"
-            setOnClickListener {
-                logDiagnostic("OVERLAY", "Кнопка СТАРТ нажата.")
-                MyAutoClickService.instance?.scriptExecutor?.start()
-            }
+        view.bindClickByNames("btn_scripts", "btnScripts", "scripts", "ic_folder", "dialog_scripts") {
+            logDiagnostic("OVERLAY", "Кнопка СЦЕНАРИИ нажата в оригинальной XML-панели.")
+            overlayManager.scriptsDialog.show()
         }
-        container.addView(btnStart)
 
-        val btnAddAction = Button(context).apply {
-            text = "+ ДЕЙСТВИЕ"
-            setOnClickListener {
-                logDiagnostic("OVERLAY", "Кнопка +ДЕЙСТВИЕ нажата.")
-                overlayManager.captureFrameOverlay.show()
-            }
+        view.bindClickByNames("btn_settings", "btnSettings", "settings", "ic_settings") {
+            logDiagnostic("OVERLAY", "Кнопка НАСТРОЙКИ нажата в оригинальной XML-панели.")
+            overlayManager.globalSettingsDialog.show()
         }
-        container.addView(btnAddAction)
 
-        val btnScripts = Button(context).apply {
-            text = "СЦЕНАРИИ"
-            setOnClickListener {
-                logDiagnostic("OVERLAY", "Кнопка СЦЕНАРИИ нажата.")
-                overlayManager.scriptsDialog.show()
-            }
+        view.bindClickByNames("btn_help", "btnHelp", "help", "ic_help") {
+            logDiagnostic("OVERLAY", "Кнопка СПРАВКА нажата в оригинальной XML-панели.")
+            overlayManager.infoHelpDialog.show()
         }
-        container.addView(btnScripts)
 
-        val btnHelp = Button(context).apply {
-            text = "СПРАВКА"
-            setOnClickListener {
-                logDiagnostic("OVERLAY", "Открытие справки InfoHelpDialog.")
-                overlayManager.infoHelpDialog.show()
-            }
+        view.bindClickByNames("btn_close", "btnClose", "btn_stop", "btnStop", "ic_close", "close", "stop") {
+            logDiagnostic("OVERLAY", "Кнопка СТОП/ЗАКРЫТЬ нажата в оригинальной XML-панели.")
+            MyAutoClickService.instance?.scriptExecutor?.stop()
+            hide()
         }
-        container.addView(btnHelp)
 
-        val btnStop = Button(context).apply {
-            text = "СТОП"
-            setOnClickListener {
-                logDiagnostic("OVERLAY", "Кнопка СТОП нажата.")
-                MyAutoClickService.instance?.scriptExecutor?.stop()
-                hide()
-            }
-        }
-        container.addView(btnStop)
-
-        setupDragAndDrop(container)
-        return container
+        setupDragAndDrop(view)
+        return view
     }
 }

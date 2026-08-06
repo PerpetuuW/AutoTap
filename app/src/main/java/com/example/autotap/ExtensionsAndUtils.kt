@@ -8,6 +8,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import com.example.autotap.logger.StructuredLogger
 
@@ -37,6 +38,39 @@ fun WindowManager.getRealScreenSizeCompat(): Point {
         @Suppress("DEPRECATION")
         defaultDisplay?.getRealSize(point)
         point
+    }
+}
+
+fun View.findViewByNames(vararg idNames: String): View? {
+    for (name in idNames) {
+        val id = context.resources.getIdentifier(name, "id", context.packageName)
+        if (id != 0) {
+            val found = findViewById<View>(id)
+            if (found != null) return found
+        }
+    }
+    return null
+}
+
+fun View.bindClickByNames(vararg idNames: String, onClick: (View) -> Unit): Boolean {
+    val target = findViewByNames(*idNames)
+    if (target != null) {
+        target.setOnClickListener(onClick)
+        return true
+    }
+    return false
+}
+
+fun View.bindClickToFirstClickableChild(onClick: (View) -> Unit) {
+    if (this is ViewGroup) {
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            if (child.isClickable || child.id != View.NO_ID) {
+                child.setOnClickListener(onClick)
+            } else if (child is ViewGroup) {
+                child.bindClickToFirstClickableChild(onClick)
+            }
+        }
     }
 }
 

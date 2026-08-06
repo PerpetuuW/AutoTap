@@ -3,12 +3,13 @@ package com.example.autotap.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ScrollView
+import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
 import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
@@ -20,51 +21,29 @@ class LogViewerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
+        try {
+            setContentView(R.layout.dialog_logs)
+            logDiagnostic("UI", "Экран логов надул оригинальный dialog_logs.xml")
+        } catch (e: Exception) {
+            logError("UI", "Ошибка установки setContentView(R.layout.dialog_logs)", e)
         }
 
-        val title = TextView(this).apply {
-            text = "Просмотр диагностических логов AutoTap"
-            textSize = 18f
-            setPadding(0, 0, 0, 16)
-        }
-        root.addView(title)
+        val root = window.decorView.findViewById<View>(android.R.id.content)
 
-        val btnContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 16)
+        logTextView = root.findViewByNames("tv_logs", "tv_log_content", "log_text", "txt_logs") as? TextView
+
+        root.bindClickByNames("btn_share_logs", "btnShare", "btn_share") {
+            shareLogFile()
         }
 
-        val btnShare = Button(this).apply {
-            text = "Поделиться"
-            setOnClickListener {
-                shareLogFile()
-            }
+        root.bindClickByNames("btn_clear_logs", "btnClear", "btn_clear") {
+            clearLogFile()
         }
-        btnContainer.addView(btnShare)
 
-        val btnClear = Button(this).apply {
-            text = "Очистить"
-            setOnClickListener {
-                clearLogFile()
-            }
+        root.bindClickByNames("btn_close_logs", "btnClose", "btn_close") {
+            finish()
         }
-        btnContainer.addView(btnClear)
 
-        root.addView(btnContainer)
-
-        val scrollView = ScrollView(this)
-        val tv = TextView(this).apply {
-            textSize = 12f
-            setPadding(8, 8, 8, 8)
-        }
-        logTextView = tv
-        scrollView.addView(tv)
-        root.addView(scrollView)
-
-        setContentView(root)
         refreshLogs()
     }
 
@@ -82,7 +61,7 @@ class LogViewerActivity : AppCompatActivity() {
         val file = StructuredLogger.getLogFile()
         if (file != null && file.exists()) {
             file.writeText("")
-            logDiagnostic("LOGS", "Лог-файл успешно очищен пользователем.")
+            logDiagnostic("LOGS", "Лог-файл очищен из dialog_logs.")
         }
         refreshLogs()
     }
@@ -103,7 +82,6 @@ class LogViewerActivity : AppCompatActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(intent, "Поделиться error_log.txt"))
-            logDiagnostic("LOGS", "Отправлен Intent обмена файлом логов.")
         } catch (e: Exception) {
             logError("LOGS", "Ошибка отправки файла логов", e)
         }
