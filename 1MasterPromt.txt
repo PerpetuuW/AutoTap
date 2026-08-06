@@ -1,0 +1,92 @@
+Ты — Senior Android Architect & Lead Kotlin Compiler Specialist. Твоя задача — сгенерировать с нуля полностью рабочий, 100% компилируемый проект приложения автоматизации и компьютерного зрения "AutoTap PRO" (v40.0.0-PRO).
+
+================================================================================
+1. ПАСПОРТ ПРОЕКТА И СБОРКА
+================================================================================
+• Название проекта: AutoTap
+• Пакет приложения: com.example.autotap
+• Target SDK / Compile SDK: 35 (Android 15)
+• Min SDK: 24 (Android 7.0)
+• Язык: 100% Kotlin + Gradle Kotlin DSL (.kts) + AndroidX / Material3.
+• Версия: 40.0.0-PRO
+
+================================================================================
+2. КРИТИЧЕСКИЕ ДИРЕКТИВЫ КОМПИЛЯЦИИ И БЕЗОПАСНОСТИ (ZERO-COMPILATION-ERROR GUARD)
+================================================================================
+1. Графические типы: Каждый класс, использующий Color, Rect, PointF, Path, Bitmap, Canvas, Paint, Matrix, ОБЯЗАН содержать явный импорт `import android.graphics.*`.
+2. Null-Safety: Строго ЗАПРЕЩЕН оператор `!!`. Все операции с nullable-объектами (`View?`, `Bitmap?`, `Context?`) проводятся через `?.` или паттерн раннего выхода `val target = view ?: return`.
+3. Деструктуризация: Запрещена неявная деструктуризация `val (x, y) = ...` для типов без объявленных операторов `component1()`/`component2()`. Координаты считываются явно через свойства объектов (`point.x`, `point.y`).
+4. Запрет заглушек: В проекте ЗАПРЕЩЕНЫ `TODO()`, пустые блоки `{}`, и комментарии `// остальной код без изменений`. Каждая кнопка обязана делать реальное действие и логирование.
+
+================================================================================
+3. UI, OVERLAY, TOUCH & ANTI-SELF-CLICK ARCHITECTURE
+================================================================================
+1. 100% Надувание XML: Все оверлеи и диалоги надувают оригинальные XML-макеты из res/layout/ через `LayoutInflater.from(context).inflate(R.layout.name, null)`. Поиск и привязка элементов производятся через безопасные расширения `findViewByNames("id_snake", "idCamel")` и `bindClickByNames(...)`.
+2. Оверлеи WindowManager:
+   - Тип окна: `WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY` (с фолбэком на `TYPE_PHONE` для Android < 8.0 API 26).
+   - Флаги: `FLAG_NOT_FOCUSABLE | FLAG_LAYOUT_IN_SCREEN | FLAG_LAYOUT_NO_LIMITS`.
+   - Поддержка чёлок: `LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES`.
+3. Smart Touch Slop Dragging: Перетаскивание `setupDragAndDrop(handleView)` НЕ перехватывает клики на `ACTION_DOWN` (возвращает `false`), а проверяет `ViewConfiguration.scaledTouchSlop` (> 8-12px) перед включением `isDragging = true`. Дочерние кнопки обязаны получать `ACTION_UP` и кликаться мгновенно.
+4. 3-Этапная Панель Управления (`ControlPanelOverlay`):
+   - Этап 0 (Full): 2 открытых строки кнопок (WRAP_CONTENT x WRAP_CONTENT).
+   - Этап 1 (Single Bubble): Окно сжимается в компактный плавающий шарик (56dp x 56dp, `singleBubble.visibility = View.VISIBLE`).
+   - Этап 2 (Compact): 1 открытая главная строка кнопок.
+5. 4-Уровневая Защита от Само-Кликов (Anti-Self-Click):
+   - Динамический `FLAG_NOT_TOUCHABLE` во время воспроизведения жестов.
+   - Исключение из Accessibility Tree (`IMPORTANT_FOR_ACCESSIBILITY_NO`).
+   - Фильтрация координат `isOverlayArea(x, y)` перед отправкой клика.
+   - Изоляция окон по независимым слоям (`PANEL_LAYER`, `JOYSTICK_LAYER`, `CAPTURE_LAYER`, `DEBUG_LAYER`, `TUTORIAL_LAYER`, `DIALOG_LAYER`).
+
+================================================================================
+4. AI COMPUTER VISION ENGINE & SMART MASKS (v40)
+================================================================================
+1. Семейства масок (`TemplateProfile`):
+   - `SMALL` (< 48px): иконки, крестики -> приоритет поиска 1.25x / 1.4x (40% веса контура).
+   - `MEDIUM`: кнопки, карточки -> базовый поиск 1.0x.
+   - `LARGE` (> 200k px^2): панели, окна -> шаг каскада 6px.
+   - `THIN_LINE` (аспект > 4.5:1): рамки, полоски HP -> градиенты Собеля (Sobel Edge-Aware Matching, 85% веса контура).
+2. Безопасный Кроп и Слоты: Вырезание `Bitmap.createBitmap` вычисляет границы `safeX`, `safeY`, `safeW`, `safeH` через `coerceIn` (0% `IllegalArgumentException`). Новые маски занимают следующий свободный слот `TemplateRepository.getNextFreeTemplateIndex()`.
+3. Непрерывный Мультипоиск: `AiScannerEngine` и `ScriptExecutor` на каждом шаге мультипоиска запрашивают СВЕЖИЙ снимок экрана `captureScreenBitmap()` (через неблокирующий `Handler.postDelayed`) и повторяют поиск до нажатия СТОП.
+4. Единый Конвертер Координат: Все превращения между пикселями и нормализованными пропорциями (0.0..1.0) идут через утилиту `CoordConverter` (`toNormalizedPoint`, `toPxPoint`, `toNormalizedRect`, `toPxRect`).
+
+================================================================================
+5. ACTIVE JOYSTICK & RECORDING ENGINE
+================================================================================
+1. Активный режим записи: Движение Knob джойстика в режиме записи одновременно:
+   - Логирует векторный путь в `joystickPath`.
+   - Отправляет микро-импульсы движения 25 мс (`performJoystickRealtime`) в игру для живого управления.
+   - При отпускании Knob плавно возвращается в центр через `animate().translationX(0f).translationY(0f)`.
+2. Изоляция буферов: В `RecordingEngine` буфер обычной записи кликов (`recordedActions`) и буфер траектории джойстика (`joystickRecordedPath`) разделены.
+3. Уникальные имена: Имена сценариев по умолчанию содержат временную метку (`"script_MMdd_HHmm"`).
+
+================================================================================
+6. LOGGING, TUTORIAL & RESTRICTED SETTINGS
+================================================================================
+1. Логирование: `StructuredLogger` фиксирует события с миллисекундами `[yyyy-MM-dd HH:mm:ss.SSS] [CATEGORY]`. Файл `error_log.txt` усекается наполовину при достижении 512 КБ.
+2. `LogViewerActivity`: Содержит кнопки "Поделиться" (через `FileProvider` c `content://` URI) и "Очистить".
+3. `TutorialEngine`: 8-шаговый интерактивный курс с вырезом подсвечиваемой цели `PorterDuff.Mode.CLEAR` и скролл-карточкой.
+4. Restricted Settings (Android 13+): Кнопка «Снятие ограничений» запускает `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` с подсказкой пользователю ("3 точки -> Разрешить ограниченные настройки").
+
+================================================================================
+7. ТРЕБУЕМЫЙ ВЫХОД
+================================================================================
+Сгенерируй единый автономный Python-скрипт `build_autotap_project.py`, который при запуске в пустой папке создаст 100% файлов Android-проекта AutoTap:
+1. `build.gradle.kts`, `settings.gradle.kts`, `app/build.gradle.kts`, `gradle.properties`.
+2. `AndroidManifest.xml`, `res/xml/accessibility_service_config.xml`, `res/xml/file_paths.xml`.
+3. Все XML-макеты в `res/layout/` (activity_main, floating_control_panel, floating_joystick_control, floating_capture_frame, dialog_scripts, dialog_global_settings, dialog_mask_editor, floating_edit_dialog, floating_tutorial_card, dialog_info, dialog_logs, item_script, item_template и др.).
+4. Все XML-ресурсы в `res/drawable/` (`panel_background`, `btn_premium_primary`, `btn_premium_secondary`, `circle_target`, `drag_handle_bg`, векторные иконки).
+5. Все Kotlin-файлы в `app/src/main/java/com/example/autotap/`:
+   - `MainActivity.kt`
+   - `MyAutoClickService.kt`
+   - `ExtensionsAndUtils.kt`
+   - `logger/StructuredLogger.kt`
+   - `model/ActionConfig.kt`, `TutorialStepConfig.kt`
+   - `data/ScriptMetadata.kt`, `ScriptRepository.kt`, `TemplateRepository.kt`
+   - `engine/GestureExecutor.kt`, `ScriptExecutor.kt`, `AiScannerEngine.kt`, `RecordingEngine.kt`, `TutorialEngine.kt`, `ActionEditorEngine.kt`, `CandidateSelector.kt`, `MultiFrameMatcher.kt`, `ScenarioRunner.kt`
+   - `engine/ai/TemplateProfile.kt`, `TemplateMetadata.kt`, `CalibratedMask.kt`, `MatchCandidate.kt`, `SearchModes.kt`, `AiScanResult.kt`, `MaskCalibrator.kt`, `ContourExtractor.kt`, `HeatmapGenerator.kt`, `AutoTuningEngine.kt`, `HybridCascadeMatcher.kt`, `TemplateMatcher.kt`
+   - `ui/LogViewerActivity.kt`
+   - `ui/base/OverlayBase.kt`, `OverlayLayer.kt`, `OverlayPriority.kt`, `OverlayManager.kt`
+   - `ui/debug/ScenarioDebuggerOverlay.kt`
+   - `ui/overlays/ControlPanelOverlay.kt`, `CaptureFrameOverlay.kt`, `JoystickOverlay.kt`, `EditActionDialog.kt`, `ScriptsDialog.kt`, `GlobalSettingsDialog.kt`, `MaskEditorDialog.kt`, `AddActionDialog.kt`, `ExportImportDialog.kt`, `CandidateSelectionOverlay.kt`, `InfoHelpDialog.kt`, `PermissionsDialog.kt`, `SaveRecordingDialog.kt`, `SearchAreaOverlay.kt`, `TargetMarkerOverlay.kt`, `TemplatesManagerDialog.kt`, `TutorialOverlay.kt`, `ClickVisualizerOverlay.kt`, `FloatingStopButtonOverlay.kt`
+
+Скрипт должен содержать валидатор синтаксиса скобок (с очисткой комментариев и строковых литералов перед проверкой) и гарантировать 0% ошибок компиляции Gradle при выполнении `.\gradlew assembleDebug`.
