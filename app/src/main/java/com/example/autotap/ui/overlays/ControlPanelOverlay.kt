@@ -44,14 +44,12 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
             cyclePanelState(view)
         }
 
-        // Отдельный запуск прицела по кнопке btnCapturePool
         view.bindClickByNames("btnCapturePool") {
             logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона по btnCapturePool.")
             context.vibrateFeedback()
             overlayManager.captureFrameOverlay.show()
         }
 
-        // Отдельный запуск меню добавления по кнопке btnAdd
         view.bindClickByNames("btnAdd") {
             logDiagnostic("OVERLAY", "Открытие меню добавления действия по btnAdd.")
             context.vibrateFeedback()
@@ -141,14 +139,14 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 singleBubble?.visibility = View.GONE
                 logDiagnostic("OVERLAY", "Панель: Режим 2 строки (Full)")
             }
-            1 -> { // 1 кнопка (Bubble) - ФИКС: singleBubble = VISIBLE
+            1 -> { // 1 кнопка (Single Bubble) - ФИКС: singleBubble виден!
                 val bubbleSizePx = 56.dpToPx(context)
                 lp.width = bubbleSizePx
                 lp.height = bubbleSizePx
                 mainCard?.visibility = View.GONE
                 mainRow?.visibility = View.GONE
                 subMenu?.visibility = View.GONE
-                singleBubble?.visibility = View.VISIBLE // ФИКС: Шарик полностью виден!
+                singleBubble?.visibility = View.VISIBLE
                 logDiagnostic("OVERLAY", "Панель: Режим Одиночный Шарик (Bubble ${bubbleSizePx}px)")
             }
             2 -> { // 1 строка (Compact)

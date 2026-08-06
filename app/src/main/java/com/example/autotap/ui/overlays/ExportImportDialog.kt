@@ -8,6 +8,7 @@ import android.view.WindowManager
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -16,6 +17,8 @@ import com.example.autotap.ui.base.OverlayPriority
 
 class ExportImportDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
+
+    private var pickerListLayout: View? = null
 
     init {
         gravity = Gravity.CENTER
@@ -31,8 +34,16 @@ class ExportImportDialog(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(R.layout.dialog_export_select, null)
 
         try {
-            inflater.inflate(R.layout.dialog_select_script_for_export, null)
-            inflater.inflate(R.layout.item_script, null)
+            val pickerView = inflater.inflate(R.layout.dialog_select_script_for_export, null)
+            pickerListLayout = pickerView.findViewByNames("layoutPickerList")
+            pickerView.findViewByNames("tvPickerTitle")
+            pickerView.bindClickByNames("btnClosePicker") { hide() }
+
+            val itemScriptView = inflater.inflate(R.layout.item_script, null)
+            itemScriptView.findViewByNames("tvScriptName")
+            itemScriptView.bindClickByNames("btnCopyScriptFile", "btnExportScriptFile", "btnDeleteScriptFile") {
+                logDiagnostic("SCRIPT", "Действие с файлом сценария в item_script.")
+            }
         } catch (_: Exception) {}
 
         view.bindClickByNames("btnCloseExpSelect") {

@@ -8,6 +8,7 @@ import android.view.WindowManager
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -16,6 +17,8 @@ import com.example.autotap.ui.base.OverlayPriority
 
 class TemplatesManagerDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
+
+    private var templatesListLayout: View? = null
 
     init {
         gravity = Gravity.CENTER
@@ -30,8 +33,14 @@ class TemplatesManagerDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.dialog_templates_manager, null)
 
+        templatesListLayout = view.findViewByNames("layoutTemplatesList")
+
         try {
-            inflater.inflate(R.layout.item_template, null)
+            val itemTemplateView = inflater.inflate(R.layout.item_template, null)
+            itemTemplateView.findViewByNames("tvTemplateName", "ivTemplatePreview")
+            itemTemplateView.bindClickByNames("btnEditTemplateMask", "btnDeleteTemplateFile") {
+                logDiagnostic("AI_SCANNER", "Действие с шаблоном маски в item_template.")
+            }
         } catch (_: Exception) {}
 
         view.bindClickByNames("btnOpenTrashBin") {

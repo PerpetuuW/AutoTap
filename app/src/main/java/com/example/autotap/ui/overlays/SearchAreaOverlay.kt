@@ -30,6 +30,10 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     private var currentWidthPx = 200.dpToPx(context)
     private var currentHeightPx = 200.dpToPx(context)
 
+    private var layoutSearchAreaContainerView: View? = null
+    private var viewSearchAreaFrameView: View? = null
+    private var layoutSearchBottomBarView: View? = null
+
     init {
         gravity = Gravity.CENTER
         layer = OverlayLayer.CAPTURE_LAYER
@@ -41,6 +45,10 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.floating_search_area_frame, null)
+
+        layoutSearchAreaContainerView = view.findViewByNames("layoutSearchAreaContainer")
+        viewSearchAreaFrameView = view.findViewByNames("viewSearchAreaFrame")
+        layoutSearchBottomBarView = view.findViewByNames("layoutSearchBottomBar")
 
         view.bindClickByNames("btnSaveSearchArea") {
             val svc = MyAutoClickService.instance

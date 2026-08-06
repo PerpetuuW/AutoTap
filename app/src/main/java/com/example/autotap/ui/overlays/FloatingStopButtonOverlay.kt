@@ -7,6 +7,7 @@ import android.view.View
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -15,6 +16,9 @@ import com.example.autotap.ui.base.OverlayPriority
 
 class FloatingStopButtonOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
+
+    private var layoutStopContainerView: View? = null
+    private var handleDragStopView: View? = null
 
     init {
         gravity = Gravity.TOP or Gravity.END
@@ -28,13 +32,17 @@ class FloatingStopButtonOverlay(context: Context, overlayManager: OverlayManager
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.floating_stop_button, null)
 
+        layoutStopContainerView = view.findViewByNames("layoutStopContainer")
+        handleDragStopView = view.findViewByNames("handleDragStop")
+
         view.bindClickByNames("btnFloatingStop") {
             logDiagnostic("OVERLAY", "Нажата кнопка btnFloatingStop")
             MyAutoClickService.instance?.scriptExecutor?.stop()
             hide()
         }
 
-        setupDragAndDrop(view)
+        val handle = handleDragStopView ?: view
+        setupDragAndDrop(handle)
         return view
     }
 }

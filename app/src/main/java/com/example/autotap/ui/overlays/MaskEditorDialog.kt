@@ -6,7 +6,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
+import android.widget.ImageView
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
@@ -27,6 +27,9 @@ class MaskEditorDialog(context: Context, overlayManager: OverlayManager) :
     private var isSquareShape = true
     private var selectedTemplateIdx = 0
 
+    private var ivFullScreenshotView: ImageView? = null
+    private var ivMaskPreviewView: ImageView? = null
+
     init {
         gravity = Gravity.CENTER
         flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
@@ -39,6 +42,9 @@ class MaskEditorDialog(context: Context, overlayManager: OverlayManager) :
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.dialog_mask_editor, null)
+
+        ivFullScreenshotView = view.findViewByNames("ivEditorFullScreenshot") as? ImageView
+        ivMaskPreviewView = view.findViewByNames("ivEditorMaskPreview") as? ImageView
 
         view.bindClickByNames("btnCropWidthPlus") {
             cropWidth += 20
@@ -64,12 +70,17 @@ class MaskEditorDialog(context: Context, overlayManager: OverlayManager) :
             overlayManager.searchAreaOverlay.show()
         }
 
+        view.bindClickByNames("btnCopyMaskEdits") {
+            logDiagnostic("AI_SCANNER", "Создана копия маски #$selectedTemplateIdx.")
+            context.vibrateFeedback()
+        }
+
         view.bindClickByNames("btnSaveMaskEdits") {
             val svc = MyAutoClickService.instance
             if (svc != null) {
                 svc.templateRepository.recalibrateTemplate(selectedTemplateIdx)
                 context.vibrateFeedback()
-                logDiagnostic("AI_SCANNER", "Маска #$selectedTemplateIdx отредактирована (${cropWidth}x${cropHeight}px, shapeSquare=$isSquareShape).")
+                logDiagnostic("AI_SCANNER", "Маска #$selectedTemplateIdx отредактирована (${cropWidth}x${cropHeight}px).")
             }
             hide()
         }

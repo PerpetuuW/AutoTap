@@ -43,28 +43,20 @@ class InfoHelpDialog(context: Context, overlayManager: OverlayManager) :
             context.getString(R.string.app_version)
         }
 
-        tvContent?.text = "AutoTap PRO (" + versionName + ")
-
-Справка по автоматизации и ИИ-поиску масок."
+        tvContent?.text = "AutoTap PRO ($versionName) - Справка по автоматизации и ИИ-поиску масок."
 
         view.bindClickByNames("tabClick") {
-            tvContent?.text = "Справка по Кликам:
-• Длительность настраивается от 10мс до 1000мс.
-• Доступна случайная координатная погрешность (джиттер)."
+            tvContent?.text = "Справка по Кликам: Длительность настраивается от 10мс до 1000мс. Доступен случайный джиттер."
             logDiagnostic("UI", "Переключение таба CLICK в InfoHelpDialog.")
         }
 
         view.bindClickByNames("tabSwipe") {
-            tvContent?.text = "Справка по Свайпам:
-• Плавные свайпы и траектории джойстика с частотой 25 FPS.
-• Отображение стартового и конечного маркеров."
+            tvContent?.text = "Справка по Свайпам: Плавные свайпы и траектории джойстика с частотой 25 FPS."
             logDiagnostic("UI", "Переключение таба SWIPE в InfoHelpDialog.")
         }
 
         view.bindClickByNames("tabAi") {
-            tvContent?.text = "Справка по ИИ-Поиску (" + versionName + "):
-• Семейства масок: Small, Medium, Large, Thin-Line.
-• Реактивный мультипоиск со свежими кадрами экрана."
+            tvContent?.text = "Справка по ИИ-Поиску ($versionName): Семейства масок Small, Medium, Large, Thin-Line. Реактивный мультипоиск."
             logDiagnostic("UI", "Переключение таба AI в InfoHelpDialog.")
         }
 

@@ -31,6 +31,9 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
     private var currentFrameWidthPx = 240.dpToPx(context)
     private var currentFrameHeightPx = 240.dpToPx(context)
 
+    private var captureSquareView: View? = null
+    private var layoutBottomBarView: View? = null
+
     init {
         gravity = Gravity.CENTER
         layer = OverlayLayer.CAPTURE_LAYER
@@ -43,6 +46,9 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.floating_capture_frame, null)
 
+        captureSquareView = view.findViewByNames("captureSquare")
+        layoutBottomBarView = view.findViewByNames("layoutBottomBar")
+
         view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
             logDiagnostic("OVERLAY", "Вырезание маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
             context.vibrateFeedback()
@@ -54,7 +60,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 val centerXNorm = (lp.x + currentFrameWidthPx / 2f) / metrics.widthPixels.toFloat()
                 val centerYNorm = (lp.y + currentFrameHeightPx / 2f) / metrics.heightPixels.toFloat()
 
-                // Динамический выбор свободного слота маски вместо перезаписи слота 0
                 val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
 
                 val action = ActionConfig(
@@ -67,7 +72,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
                 val fullBitmap = svc.captureScreenBitmap()
                 if (fullBitmap != null && fullBitmap.width > 20 && fullBitmap.height > 20) {
-                    // Защита вычислений кропа через coerceIn
                     val safeX = lp.x.coerceIn(0, (fullBitmap.width - 20).coerceAtLeast(0))
                     val safeY = lp.y.coerceIn(0, (fullBitmap.height - 20).coerceAtLeast(0))
                     val safeW = currentFrameWidthPx.coerceIn(10, fullBitmap.width - safeX)
@@ -81,6 +85,10 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 }
             }
             hide()
+        }
+
+        view.bindClickByNames("btnToggleCaptureShape") {
+            logDiagnostic("OVERLAY", "Переключение формы рамки захвата.")
         }
 
         view.bindClickByNames("btnCancelCapture", "btn_cancel_capture", "btn_close") {

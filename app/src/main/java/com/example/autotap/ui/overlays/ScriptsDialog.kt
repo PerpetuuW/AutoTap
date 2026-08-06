@@ -8,6 +8,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
@@ -26,6 +27,8 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
 
     private var etNameView: EditText? = null
     private var etLoopCountView: EditText? = null
+    private var tvTitleView: TextView? = null
+    private var layoutListContainer: View? = null
     private var isInfiniteLoop = true
 
     init {
@@ -41,8 +44,10 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.dialog_scripts, null)
 
+        tvTitleView = view.findViewByNames("tvScriptTitle") as? TextView
         etNameView = view.findViewByNames("etScriptName") as? EditText
         etLoopCountView = view.findViewByNames("etScriptLoopCount") as? EditText
+        layoutListContainer = view.findViewByNames("layoutScriptsList")
 
         view.bindClickByNames("btnSaveScriptAction") {
             val scriptName = etNameView?.text?.toString()?.ifBlank {
@@ -53,7 +58,7 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
             val svc = MyAutoClickService.instance
             if (svc != null) {
                 svc.saveScriptByName(scriptName, svc.actionsList)
-                logDiagnostic("SCRIPT", "Сценарий '$scriptName' сохранен (loopCount=$loopCount, infinite=$isInfiniteLoop)")
+                logDiagnostic("SCRIPT", "Сценарий '$scriptName' сохранен по btnSaveScriptAction")
             }
             hide()
         }
