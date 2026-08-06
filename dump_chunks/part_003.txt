@@ -1,0 +1,680 @@
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ScenarioRunner.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ScriptExecutor.kt ---
+package com.example.autotap.engine
+
+import android.graphics.PointF
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
+
+class ScriptExecutor(private val service: MyAutoClickService) {
+
+    val gestureExecutor: GestureExecutor
+        get() = service.gestureExecutor
+
+    val aiScannerEngine: AiScannerEngine
+        get() = service.aiScannerEngine
+
+    @Volatile private var isRunning = false
+    @Volatile var currentStepIndex = 0
+        private set
+
+    fun start() {
+        if (isRunning) return
+        if (service.actionsList.isEmpty()) {
+            logDiagnostic("SCRIPT", "Невозможно запустить: список шагов пуст.")
+            return
+        }
+
+        isRunning = true
+        service.isPlaying = true
+        currentStepIndex = 0
+        service.hideControlPanel()
+        service.showFloatingStopButton()
+
+        logDiagnostic("SCRIPT", "Запуск сценария (${service.actionsList.size} шагов).")
+        executeNextStep()
+    }
+
+    fun stop() {
+        isRunning = false
+        service.isPlaying = false
+        currentStepIndex = 0
+        service.hideFloatingStopButton()
+        service.showControlPanel()
+        logDiagnostic("SCRIPT", "Сценарий остановлен пользователем.")
+    }
+
+    fun jumpToStep(stepIndex: Int) {
+        if (stepIndex in 0 until service.actionsList.size) {
+            currentStepIndex = stepIndex
+            logDiagnostic("SCRIPT", "Переход на шаг $stepIndex")
+            executeNextStep()
+        } else {
+            logError("SCRIPT", "Недопустимый шаг для перехода: $stepIndex", null)
+            stop()
+        }
+    }
+
+    private fun executeNextStep() {
+        if (!isRunning) return
+        val actions = service.actionsList
+        if (currentStepIndex >= actions.size) {
+            logDiagnostic("SCRIPT", "Все шаги сценария выполнены.")
+            stop()
+            return
+        }
+
+        val action = actions[currentStepIndex]
+        logDiagnostic("SCRIPT", "Выполнение шага $currentStepIndex: тип=${action.type.name}")
+
+        val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+
+        when (action.type) {
+            ActionType.CLICK -> {
+                service.showClickVisualizer(pt.x, pt.y)
+                gestureExecutor.performClickWithJitter(pt.x, pt.y, action.randomRadius, action.holdDuration) { success ->
+                    onStepCompleted(success, action)
+                }
+            }
+            ActionType.LONG_PRESS -> {
+                service.showClickVisualizer(pt.x, pt.y)
+                gestureExecutor.performLongPress(pt.x, pt.y, action.holdDuration) { success ->
+                    onStepCompleted(success, action)
+                }
+            }
+            ActionType.SWIPE -> {
+                val endPt = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
+                gestureExecutor.performSwipe(pt.x, pt.y, endPt.x, endPt.y, action.holdDuration) { success ->
+                    onStepCompleted(success, action)
+                }
+            }
+            ActionType.JOYSTICK_PATH -> {
+                if (action.joystickPath.isNotEmpty()) {
+                    gestureExecutor.performJoystickPath(action.joystickPath, action.holdDuration) { success ->
+                        onStepCompleted(success, action)
+                    }
+                } else {
+                    onStepCompleted(false, action)
+                }
+            }
+            ActionType.AI_SEARCH -> {
+                executeMultiSearchLoop(action)
+            }
+            ActionType.WAIT -> {
+                Thread.sleep(action.delay.coerceAtLeast(10L))
+                onStepCompleted(true, action)
+            }
+            ActionType.LOAD_SCRIPT -> {
+                val targetName = action.targetScriptToLoad
+                if (targetName != null && targetName.isNotEmpty()) {
+                    val loaded = service.loadScriptByName(targetName)
+                    if (loaded) {
+                        currentStepIndex = 0
+                        executeNextStep()
+                        return
+                    }
+                }
+                onStepCompleted(false, action)
+            }
+        }
+    }
+
+    private fun executeMultiSearchLoop(action: ActionConfig) {
+        if (!isRunning) return
+
+        aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
+            if (!isRunning) return@scanAsync
+
+            if (foundPoint != null) {
+                logDiagnostic("SCRIPT", "Совпадение найдено в $foundPoint. Выполнение клика...")
+                service.showClickVisualizer(foundPoint.x, foundPoint.y)
+                gestureExecutor.performClick(foundPoint.x, foundPoint.y, service.globalClickDurationMs) { success ->
+                    if (!isRunning) return@performClick
+
+                    if (action.loopUntilStopped) {
+                        val delayMs = action.delay.coerceAtLeast(50L)
+                        logDiagnostic("SCRIPT", "Мультипоиск: задержка ${delayMs}мс перед зашифровкой НОВОГО кадра экрана...")
+                        Thread.sleep(delayMs)
+                        executeMultiSearchLoop(action)
+                    } else {
+                        onStepCompleted(success, action)
+                    }
+                }
+            } else {
+                if (action.loopUntilStopped) {
+                    val scanIntervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(100L)
+                    Thread.sleep(scanIntervalMs)
+                    executeMultiSearchLoop(action)
+                } else {
+                    onStepCompleted(false, action)
+                }
+            }
+        }
+    }
+
+    private fun onStepCompleted(success: Boolean, action: ActionConfig) {
+        if (!isRunning) return
+
+        if (success) {
+            val jump = action.jumpToStepOnMatch
+            if (jump != null) {
+                jumpToStep(jump)
+                return
+            }
+        } else {
+            val jumpFail = action.jumpToStepOnFail
+            if (jumpFail != null) {
+                jumpToStep(jumpFail)
+                return
+            }
+        }
+
+        currentStepIndex++
+        if (action.delay > 0) {
+            Thread.sleep(action.delay)
+        }
+        executeNextStep()
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ScriptExecutor.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/TutorialEngine.kt ---
+package com.example.autotap.engine
+
+import android.graphics.Rect
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.TutorialStepConfig
+
+class TutorialEngine(private val service: MyAutoClickService) {
+
+    @Volatile var isTutorialActive = false
+        private set
+
+    private var currentStepIndex = 0
+    private val steps = mutableListOf<TutorialStepConfig>()
+
+    fun startDefaultTutorial() {
+        steps.clear()
+        steps.add(
+            TutorialStepConfig(
+                id = "step_1",
+                title = "Шаг 1 из 8: Обзор Панели",
+                message = "Добро пожаловать в AutoTap v37! Это главная панель управления. Нажмите 'Далее'.",
+                autoAdvance = false
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_2",
+                title = "Шаг 2 из 8: Сворачивание Панели",
+                message = "Нажмите на стрелку разворота, чтобы скрыть панель в 1 строку или в плавающий шарик.",
+                highlightArea = Rect(100, 200, 500, 600)
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_3",
+                title = "Шаг 3 из 8: Вырезание ИИ-Масок",
+                message = "Кнопка '+ ДЕЙСТВИЕ' открывает прицел. Рамка вырезает реальные пиксели с экрана.",
+                autoAdvance = false
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_4",
+                title = "Шаг 4 из 8: Мультипоиск",
+                message = "ИИ ищет несколько масок одновременно и запрашивает свежий снимок экрана на каждом шаге.",
+                autoAdvance = false
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_5",
+                title = "Шаг 5 из 8: Запись Джойстика",
+                message = "В режиме записи движение Knob управляет игрой 25 FPS и логирует путь в сценарий.",
+                autoAdvance = false
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_6",
+                title = "Шаг 6 из 8: Защита от Само-кликов",
+                message = "Во время жестов оверлеи невидимы для кликов благодаря флагам NOT_TOUCHABLE.",
+                autoAdvance = false
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_7",
+                title = "Шаг 7 из 8: Просмотр Логов",
+                message = "Все события пишутся в error_log.txt с миллисекундами и ротацией 512 КБ.",
+                autoAdvance = false
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_8",
+                title = "Шаг 8 из 8: Готово!",
+                message = "Поздравляем! Обучение завершено. Нажмите 'Завершить'.",
+                autoAdvance = false
+            )
+        )
+
+        currentStepIndex = 0
+        isTutorialActive = true
+        logDiagnostic("TUTORIAL", "Запущен полный курс обучения (${steps.size} шагов).")
+        showCurrentStep()
+    }
+
+    fun nextStep() {
+        if (!isTutorialActive) return
+        currentStepIndex++
+        if (currentStepIndex >= steps.size) {
+            logDiagnostic("TUTORIAL", "Обучение полностью завершено.")
+            stopTutorial()
+            return
+        }
+        showCurrentStep()
+    }
+
+    fun previousStep() {
+        if (!isTutorialActive) return
+        if (currentStepIndex > 0) {
+            currentStepIndex--
+            logDiagnostic("TUTORIAL", "Возврат на шаг $currentStepIndex")
+            showCurrentStep()
+        }
+    }
+
+    fun stopTutorial() {
+        isTutorialActive = false
+        currentStepIndex = 0
+        service.overlayManager.tutorialOverlay.hide()
+        logDiagnostic("TUTORIAL", "Обучение остановлено.")
+    }
+
+    private fun showCurrentStep() {
+        if (currentStepIndex in 0 until steps.size) {
+            val step = steps[currentStepIndex]
+            service.overlayManager.tutorialOverlay.show()
+            service.overlayManager.tutorialOverlay.renderStep(step)
+        }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/TutorialEngine.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/AiScanResult.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.PointF
+
+data class AiScanResult(
+    val point: PointF?,
+    val candidates: List<MatchCandidate> = emptyList(),
+    val jumpToStep: Int? = null,
+    val targetScriptToLoad: String? = null
+)
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/AiScanResult.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/AutoTuningEngine.kt ---
+package com.example.autotap.engine.ai
+
+import com.example.autotap.model.ActionConfig
+
+class AutoTuningEngine {
+
+    fun autoTune(action: ActionConfig, candidates: List<MatchCandidate>): ActionConfig {
+        val tuned = action.copy()
+        if (candidates.size > 5) {
+            tuned.similarityPercent = (action.similarityPercent + 5).coerceAtMost(98)
+        } else if (candidates.isEmpty()) {
+            tuned.similarityPercent = (action.similarityPercent - 5).coerceAtLeast(50)
+        }
+        return tuned
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/AutoTuningEngine.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/CalibratedMask.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.Bitmap
+import android.graphics.PointF
+import android.graphics.Rect
+
+data class CalibratedMask(
+    val original: Bitmap,
+    val contour: List<PointF> = emptyList(),
+    val boundingBox: Rect = Rect(),
+    val calibratedRect: Rect = Rect(),
+    val metadata: TemplateMetadata = TemplateMetadata()
+)
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/CalibratedMask.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/ContourExtractor.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.Bitmap
+import android.graphics.PointF
+
+class ContourExtractor {
+
+    fun extract(mask: Bitmap): List<PointF> {
+        val points = mutableListOf<PointF>()
+        val width = mask.width
+        val height = mask.height
+        if (width <= 2 || height <= 2) return points
+
+        val step = (width / 20).coerceAtLeast(1)
+        for (x in 0 until width step step) {
+            for (y in 0 until height step step) {
+                val pixel = mask.getPixel(x, y)
+                val alpha = (pixel shr 24) and 0xFF
+                if (alpha > 128) {
+                    points.add(PointF(x.toFloat(), y.toFloat()))
+                }
+            }
+        }
+        return simplifyContour(points)
+    }
+
+    private fun simplifyContour(points: List<PointF>): List<PointF> {
+        if (points.size <= 50) return points
+        val step = points.size / 50
+        return points.filterIndexed { index, _ -> index % step == 0 }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/ContourExtractor.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/HeatmapGenerator.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.Bitmap
+import android.graphics.Color
+
+class HeatmapGenerator {
+
+    fun generate(frame: Bitmap, mask: Bitmap): Bitmap {
+        val width = frame.width
+        val height = frame.height
+        val heatmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+
+        for (x in 0 until width step 8) {
+            for (y in 0 until height step 8) {
+                val score = 0.5f
+                val color = colorize(score)
+                for (dx in 0 until 8) {
+                    for (dy in 0 until 8) {
+                        if (x + dx < width && y + dy < height) {
+                            heatmap.setPixel(x + dx, y + dy, color)
+                        }
+                    }
+                }
+            }
+        }
+        return heatmap
+    }
+
+    private fun colorize(score: Float): Int {
+        return when {
+            score > 0.85f -> Color.argb(150, 255, 0, 0)
+            score > 0.65f -> Color.argb(120, 255, 165, 0)
+            score > 0.45f -> Color.argb(90, 255, 255, 0)
+            else -> Color.argb(40, 0, 0, 255)
+        }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/HeatmapGenerator.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/HybridCascadeMatcher.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.Bitmap
+import android.graphics.PointF
+import android.graphics.Rect
+import kotlin.math.abs
+
+class HybridCascadeMatcher {
+
+    fun match(
+        frame: Bitmap,
+        mask: Bitmap,
+        searchArea: Rect,
+        modes: SearchModes,
+        threshold: Float
+    ): List<MatchCandidate> {
+        val candidates = mutableListOf<MatchCandidate>()
+        val step = if (modes.hybridCascadeMode) {
+            when (modes.profile) {
+                TemplateProfile.SMALL -> 2
+                TemplateProfile.LARGE -> 6
+                TemplateProfile.THIN_LINE -> 1
+                else -> 4
+            }
+        } else 1
+
+        val startX = searchArea.left
+        val startY = searchArea.top
+        val endX = (searchArea.right - mask.width).coerceAtLeast(startX)
+        val endY = (searchArea.bottom - mask.height).coerceAtLeast(startY)
+
+        if (endX <= startX || endY <= startY) return candidates
+
+        var x = startX
+        while (x <= endX) {
+            var y = startY
+            while (y <= endY) {
+                val pixelScore = comparePixels(frame, mask, x, y)
+                val contourScore = if (modes.shapeOnlyMode || modes.profile == TemplateProfile.THIN_LINE) {
+                    compareEdges(frame, mask, x, y)
+                } else {
+                    pixelScore
+                }
+
+                val finalScore = (contourScore * modes.contourWeight) + (pixelScore * modes.pixelWeight)
+
+                if (finalScore >= threshold) {
+                    val pt = PointF(x + mask.width / 2f, y + mask.height / 2f)
+                    val bbox = Rect(x, y, x + mask.width, y + mask.height)
+                    candidates.add(MatchCandidate(pt, finalScore, bbox, 1.0f, 0))
+                }
+                y += step
+            }
+            x += step
+        }
+        return candidates
+    }
+
+    private fun comparePixels(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+        var totalDiff = 0L
+        var pixelCount = 0
+
+        val stepX = (mask.width / 16).coerceAtLeast(1)
+        val stepY = (mask.height / 16).coerceAtLeast(1)
+
+        var mx = 0
+        while (mx < mask.width) {
+            var my = 0
+            while (my < mask.height) {
+                val framePixel = frame.getPixel(x + mx, y + my)
+                val maskPixel = mask.getPixel(mx, my)
+
+                val fr = (framePixel shr 16) and 0xFF
+                val fg = (framePixel shr 8) and 0xFF
+                val fb = framePixel and 0xFF
+
+                val mr = (maskPixel shr 16) and 0xFF
+                val mg = (maskPixel shr 8) and 0xFF
+                val mb = maskPixel and 0xFF
+
+                totalDiff += abs(fr - mr) + abs(fg - mg) + abs(fb - mb)
+                pixelCount++
+
+                my += stepY
+            }
+            mx += stepX
+        }
+
+        if (pixelCount == 0) return 0f
+        val maxDiff = pixelCount * 255f * 3f
+        val similarity = 1.0f - (totalDiff.toFloat() / maxDiff)
+        return similarity.coerceIn(0f, 1f)
+    }
+
+    private fun compareEdges(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+        var edgeDiff = 0L
+        var count = 0
+        val stepX = (mask.width / 12).coerceAtLeast(1)
+        val stepY = (mask.height / 12).coerceAtLeast(1)
+
+        var mx = 1
+        while (mx < mask.width - 1) {
+            var my = 1
+            while (my < mask.height - 1) {
+                val maskGrad = getGradient(mask, mx, my)
+                val frameGrad = getGradient(frame, x + mx, y + my)
+
+                edgeDiff += abs(maskGrad - frameGrad)
+                count++
+                my += stepY
+            }
+            mx += stepX
+        }
+
+        if (count == 0) return 0f
+        val maxGradDiff = count * 255f
+        return (1.0f - (edgeDiff.toFloat() / maxGradDiff)).coerceIn(0f, 1f)
+    }
+
+    private fun getGradient(bmp: Bitmap, x: Int, y: Int): Int {
+        val p1 = bmp.getPixel(x - 1, y) and 0xFF
+        val p2 = bmp.getPixel(x + 1, y) and 0xFF
+        val p3 = bmp.getPixel(x, y - 1) and 0xFF
+        val p4 = bmp.getPixel(x, y + 1) and 0xFF
+        return abs(p2 - p1) + abs(p4 - p3)
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/HybridCascadeMatcher.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/MaskCalibrator.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.Bitmap
+import android.graphics.Rect
+
+class MaskCalibrator {
+
+    private val contourExtractor = ContourExtractor()
+
+    fun calibrate(mask: Bitmap): CalibratedMask {
+        val width = mask.width
+        val height = mask.height
+        val bbox = Rect(0, 0, width, height)
+        val contour = contourExtractor.extract(mask)
+
+        val profile = detectProfile(width, height)
+
+        val metadata = TemplateMetadata(
+            boundingBox = bbox,
+            contour = contour,
+            calibratedRect = bbox,
+            profile = profile,
+            layoutHints = getLayoutHintForProfile(profile)
+        )
+
+        return CalibratedMask(
+            original = mask,
+            contour = contour,
+            boundingBox = bbox,
+            calibratedRect = bbox,
+            metadata = metadata
+        )
+    }
+
+    private fun detectProfile(width: Int, height: Int): TemplateProfile {
+        val area = width * height
+        val maxDim = maxOf(width, height)
+        val minDim = minOf(width, height)
+
+        if (minDim > 0 && (maxDim.toFloat() / minDim.toFloat() > 4.5f)) {
+            return TemplateProfile.THIN_LINE
+        }
+
+        if (maxDim <= 48 || area < 2300) {
+            return TemplateProfile.SMALL
+        }
+
+        if (area > 200000 || (width > 600 && height > 400)) {
+            return TemplateProfile.LARGE
+        }
+
+        return TemplateProfile.MEDIUM
+    }
+
+    private fun getLayoutHintForProfile(profile: TemplateProfile): String {
+        return when (profile) {
+            TemplateProfile.SMALL -> "TOOLBAR_OR_CORNERS"
+            TemplateProfile.MEDIUM -> "CENTER_CARDS"
+            TemplateProfile.LARGE -> "FULL_SCREEN"
+            TemplateProfile.THIN_LINE -> "DIVIDERS_BORDERS"
+            TemplateProfile.MIXED -> "ANY"
+        }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/MaskCalibrator.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/MatchCandidate.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.PointF
+import android.graphics.Rect
+
+data class MatchCandidate(
+    val point: PointF,
+    val score: Float,
+    val boundingBox: Rect,
+    val scale: Float,
+    val templateIndex: Int
+)
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/MatchCandidate.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/SearchModes.kt ---
+package com.example.autotap.engine.ai
+
+data class SearchModes(
+    val exactMatchOnly: Boolean = false,
+    val hybridCascadeMode: Boolean = true,
+    val multiScaleSearch: Boolean = true,
+    val autoTuningMode: Boolean = false,
+    val shapeOnlyMode: Boolean = false,
+    val allowWeakCandidates: Boolean = false,
+    val contourWeight: Float = 0.3f,
+    val pixelWeight: Float = 0.7f,
+    val scaleBoost: Float = 0.0f,
+    val profile: TemplateProfile = TemplateProfile.MEDIUM
+)
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/SearchModes.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/TemplateMatcher.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.Bitmap
+import android.graphics.Rect

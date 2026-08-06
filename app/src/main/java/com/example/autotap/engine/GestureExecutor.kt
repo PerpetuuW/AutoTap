@@ -6,6 +6,8 @@ import android.graphics.PointF
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
 class GestureExecutor(private val service: MyAutoClickService) {
@@ -29,8 +31,20 @@ class GestureExecutor(private val service: MyAutoClickService) {
     }
 
     fun performClickSync(x: Float, y: Float, durationMs: Long): Boolean {
-        performClick(x, y, durationMs, null)
-        return true
+        if (service.isOverlayArea(x, y)) {
+            logDiagnostic("GESTURE", "Пропуск клика Sync в ($x, $y): точка попадает в оверлей.")
+            return false
+        }
+        var successResult = false
+        val latch = CountDownLatch(1)
+        performClick(x, y, durationMs) { result ->
+            successResult = result
+            latch.countDown()
+        }
+        try {
+            latch.await(durationMs + 500L, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {}
+        return successResult
     }
 
     fun performClickWithJitter(x: Float, y: Float, jitterRadius: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {

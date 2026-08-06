@@ -5,46 +5,63 @@ import com.example.autotap.MyAutoClickService
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.model.ActionConfig
 import com.example.autotap.model.ActionType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class RecordingEngine(private val service: MyAutoClickService) {
 
     @Volatile var isRecording = false
         private set
 
+    @Volatile var isJoystickRecording = false
+        private set
+
     val recordedActions = mutableListOf<ActionConfig>()
+    val joystickRecordedPath = mutableListOf<PointF>()
 
     fun startRecording() {
         if (isRecording) return
         isRecording = true
         recordedActions.clear()
-        logDiagnostic("RECORDING", "Начата запись нового сценария.")
+        logDiagnostic("RECORDING", "Начата системная запись сценария.")
     }
 
-    fun stopRecording(scriptName: String = "recorded_script"): Boolean {
+    fun stopRecording(scriptName: String? = null): Boolean {
         if (!isRecording) return false
         isRecording = false
-        logDiagnostic("RECORDING", "Запись остановлена. Всего записано действий: ${recordedActions.size}")
+
+        val finalName = if (!scriptName.isNullOrEmpty()) {
+            scriptName
+        } else {
+            "script_${SimpleDateFormat("MMdd_HHmm", Locale.US).format(Date())}"
+        }
+
+        logDiagnostic("RECORDING", "Запись остановлена. Сохранение '$finalName' (${recordedActions.size} шагов).")
 
         if (recordedActions.isNotEmpty()) {
             service.actionsList.clear()
             service.actionsList.addAll(recordedActions)
-            service.saveScriptByName(scriptName, recordedActions)
+            service.saveScriptByName(finalName, recordedActions)
             return true
         }
         return false
     }
 
     fun startJoystickRecording() {
-        isRecording = true
-        logDiagnostic("RECORDING", "Начата активная запись джойстика.")
+        isJoystickRecording = true
+        joystickRecordedPath.clear()
+        logDiagnostic("RECORDING", "Начата обособленная запись траектории джойстика.")
     }
 
-    fun finishJoystickRecording(action: ActionConfig) {
+    fun finishJoystickRecording(action: ActionConfig, customName: String? = null) {
         if (action.joystickPath.isNotEmpty()) {
+            isJoystickRecording = false
             recordedActions.add(action)
             service.actionsList.add(action)
-            service.saveScriptByName("recorded_joystick_script", service.actionsList)
-            logDiagnostic("RECORDING", "Завершена запись джойстика (точек: ${action.joystickPath.size}).")
+            val name = customName ?: "joystick_${SimpleDateFormat("MMdd_HHmm", Locale.US).format(Date())}"
+            service.saveScriptByName(name, service.actionsList)
+            logDiagnostic("RECORDING", "Завершена отдельная запись джойстика '$name' (${action.joystickPath.size} точек).")
         }
     }
 
@@ -72,16 +89,5 @@ class RecordingEngine(private val service: MyAutoClickService) {
         )
         recordedActions.add(action)
         logDiagnostic("RECORDING", "Записан свайп ($startXNorm, $startYNorm) -> ($endXNorm, $endYNorm)")
-    }
-
-    fun recordAiSearch(templateIndex: Int) {
-        if (!isRecording) return
-        val action = ActionConfig(
-            type = ActionType.AI_SEARCH,
-            selectedTemplateIndex = templateIndex,
-            loopUntilStopped = false
-        )
-        recordedActions.add(action)
-        logDiagnostic("RECORDING", "Записано действие AI-поиска маски #$templateIndex")
     }
 }

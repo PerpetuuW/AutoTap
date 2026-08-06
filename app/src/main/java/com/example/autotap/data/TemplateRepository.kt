@@ -15,6 +15,14 @@ class TemplateRepository(private val context: Context) {
     private val calibratedMaskCache = mutableMapOf<Int, CalibratedMask>()
     private val calibrator = MaskCalibrator()
 
+    fun getNextFreeTemplateIndex(): Int {
+        var index = 0
+        while (File(context.filesDir, "template_$index.png").exists()) {
+            index++
+        }
+        return index
+    }
+
     fun saveTemplate(index: Int, bitmap: Bitmap): Boolean {
         return try {
             val file = File(context.filesDir, "template_$index.png")
@@ -23,11 +31,10 @@ class TemplateRepository(private val context: Context) {
             }
             bitmapCache[index] = bitmap
 
-            // Автоматическая калибровка умной маски сразу при создании!
             val calibrated = calibrator.calibrate(bitmap)
             calibratedMaskCache[index] = calibrated
 
-            logDiagnostic("AI_SCANNER", "Маска #$index успешно сохранена и автоматически откалибрована (контур: ${calibrated.contour.size} точек, BBox: ${calibrated.boundingBox}).")
+            logDiagnostic("AI_SCANNER", "Маска #$index успешно сохранена и калибрована (контур: ${calibrated.contour.size} точек, BBox: ${calibrated.boundingBox}).")
             true
         } catch (e: Exception) {
             logError("AI_SCANNER", "Ошибка сохранения и калибровки маски $index", e)
@@ -50,7 +57,7 @@ class TemplateRepository(private val context: Context) {
                 bitmapCache[index] = bitmap
                 val calibrated = calibrator.calibrate(bitmap)
                 calibratedMaskCache[index] = calibrated
-                logDiagnostic("AI_SCANNER", "Маска $index успешно загружена с диска и откалибрована.")
+                logDiagnostic("AI_SCANNER", "Маска $index загружена с диска и откалибрована.")
             }
             bitmap
         } catch (e: Exception) {
@@ -73,7 +80,42 @@ class TemplateRepository(private val context: Context) {
         val bitmap = loadTemplate(index) ?: return null
         val calibrated = calibrator.calibrate(bitmap)
         calibratedMaskCache[index] = calibrated
-        logDiagnostic("AI_SCANNER", "Принудительная ручная калибровка маски #$index успешно выполнена.")
+        logDiagnostic("AI_SCANNER", "Принудительная калибровка маски #$index успешно выполнена.")
         return calibrated
+    }
+
+    fun moveTemplateToTrash(index: Int): Boolean {
+        return try {
+            val file = File(context.filesDir, "template_$index.png")
+            if (file.exists()) {
+                val trashDir = File(context.filesDir, "trash")
+                trashDir.mkdirs()
+                val trashFile = File(trashDir, "template_$index.png")
+                file.renameTo(trashFile)
+                bitmapCache.remove(index)
+                calibratedMaskCache.remove(index)
+                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину.")
+                true
+            } else false
+        } catch (e: Exception) {
+            logError("AI_SCANNER", "Ошибка перемещения маски $index в корзину", e)
+            false
+        }
+    }
+
+    fun restoreTemplateFromTrash(index: Int): Boolean {
+        return try {
+            val trashFile = File(File(context.filesDir, "trash"), "template_$index.png")
+            if (trashFile.exists()) {
+                val targetFile = File(context.filesDir, "template_$index.png")
+                trashFile.renameTo(targetFile)
+                loadTemplate(index)
+                logDiagnostic("AI_SCANNER", "Маска #$index восстановлена из корзины.")
+                true
+            } else false
+        } catch (e: Exception) {
+            logError("AI_SCANNER", "Ошибка восстановления маски $index из корзины", e)
+            false
+        }
     }
 }

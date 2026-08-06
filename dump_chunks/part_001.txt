@@ -1,0 +1,680 @@
+=== AUTOTAP FULL PROJECT SOURCE DUMP ===
+
+--- START OF FILE: build.gradle.kts ---
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    id("com.android.application") version "9.3.1" apply false
+    id("org.jetbrains.kotlin.android") version "2.2.10" apply false
+}
+
+--- END OF FILE: build.gradle.kts ---
+
+--- START OF FILE: gradle.properties ---
+# Modern Android Gradle Plugin 9.x Compatible Properties
+android.useAndroidX=true
+android.enableJetifier=false
+android.builtInKotlin=false
+android.newDsl=false
+android.sync.suppressAgpWarnings=UNSUPPORTED_PROJECT_OPTION_USE,DEPRECATED_DSL,LIBRARY_CONSTRAINTS_SHOULD_BE_DISABLED
+android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false
+
+--- END OF FILE: gradle.properties ---
+
+--- START OF FILE: settings.gradle.kts ---
+pluginManagement {
+    repositories {
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "AutoTap"
+include(":app")
+
+--- END OF FILE: settings.gradle.kts ---
+
+--- START OF FILE: app/build.gradle.kts ---
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.example.autotap"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.example.autotap"
+        minSdk = 24
+        targetSdk = 35
+        versionCode = 2800
+        versionName = "40.0.0-PRO"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+}
+
+dependencies {
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("com.google.android.material:material:1.11.0")
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+}
+
+--- END OF FILE: app/build.gradle.kts ---
+
+--- START OF FILE: app/src/main/AndroidManifest.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AutoTap">
+
+        <activity
+            android:name="com.example.autotap.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="com.example.autotap.ui.LogViewerActivity"
+            android:exported="false"
+            android:label="Диагностика и Логи" />
+
+        <service
+            android:name="com.example.autotap.MyAutoClickService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>
+
+--- END OF FILE: app/src/main/AndroidManifest.xml ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/EngineSupport.kt ---
+package com.example.autotap
+
+import com.example.autotap.*
+
+import android.graphics.Bitmap
+import android.graphics.Rect
+import android.graphics.RectF
+import android.view.View
+import java.io.File
+
+open class OverlaySupport {
+    var rootView: View? = null
+    open fun show() {}
+    open fun hide() {}
+    open fun update(vararg args: Any?) {}
+}
+
+class DebuggerOverlaySupport : OverlaySupport()
+class CaptureFrameOverlaySupport : OverlaySupport()
+class JoystickOverlaySupport : OverlaySupport()
+
+class AiScannerEngineSupport {
+    fun scanForMatch(vararg args: Any?, callback: ((Boolean) -> Unit)? = null) { callback?.invoke(true) }
+    fun executeAiTriggerSequence(vararg args: Any?) {}
+    fun startTemplateCalibration(vararg args: Any?) {}
+}
+
+class TemplateRepositorySupport {
+    fun getTemplateMetadataFile(name: String): File = File(name)
+    fun write(name: String, data: ByteArray) {}
+    fun loadAllTemplatesFromDisk() {}
+    fun moveTemplateToTrash(target: Any) {}
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/EngineSupport.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ExtensionsAndUtils.kt ---
+package com.example.autotap
+
+import android.content.Context
+import android.graphics.PixelFormat
+import android.graphics.Point
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import com.example.autotap.logger.StructuredLogger
+
+fun Int.dpToPx(context: Context): Int {
+    return (this * context.resources.displayMetrics.density).toInt()
+}
+
+fun Float.dpToPx(context: Context): Int {
+    return (this * context.resources.displayMetrics.density).toInt()
+}
+
+fun Context.dpToPx(dp: Int): Int {
+    return (dp * resources.displayMetrics.density).toInt()
+}
+
+fun Context.getRealScreenSize(): Point {
+    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    return wm.getRealScreenSizeCompat()
+}
+
+fun WindowManager.getRealScreenSizeCompat(): Point {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val bounds = currentWindowMetrics.bounds
+        Point(bounds.width(), bounds.height())
+    } else {
+        val point = Point()
+        @Suppress("DEPRECATION")
+        defaultDisplay?.getRealSize(point)
+        point
+    }
+}
+
+fun View.findViewByNames(vararg idNames: String): View? {
+    for (name in idNames) {
+        val id = context.resources.getIdentifier(name, "id", context.packageName)
+        if (id != 0) {
+            val found = findViewById<View>(id)
+            if (found != null) return found
+        }
+    }
+    return null
+}
+
+fun View.bindClickByNames(vararg idNames: String, onClick: (View) -> Unit): Boolean {
+    val target = findViewByNames(*idNames)
+    if (target != null) {
+        target.setOnClickListener(onClick)
+        return true
+    }
+    return false
+}
+
+fun View.bindClickToFirstClickableChild(onClick: (View) -> Unit) {
+    if (this is ViewGroup) {
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            if (child.isClickable || child.id != View.NO_ID) {
+                child.setOnClickListener(onClick)
+            } else if (child is ViewGroup) {
+                child.bindClickToFirstClickableChild(onClick)
+            }
+        }
+    }
+}
+
+fun createOverlayParams(
+    width: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+    height: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+    gravity: Int = Gravity.TOP or Gravity.START,
+    flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+    x: Int = 100,
+    y: Int = 200
+): WindowManager.LayoutParams {
+    return WindowManager.LayoutParams(
+        width, height,
+        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        flags,
+        PixelFormat.TRANSLUCENT
+    ).apply {
+        this.gravity = gravity
+        this.x = x
+        this.y = y
+    }
+}
+
+fun WindowManager.safeAddView(view: View, params: WindowManager.LayoutParams): Boolean {
+    return try {
+        addView(view, params)
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
+
+fun WindowManager.safeRemoveView(view: View): Boolean {
+    return try {
+        removeView(view)
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
+
+fun Context.vibrateFeedback() {
+    try {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getSystemService(Vibrator::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        } ?: return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(30L)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
+fun logAppEvent(category: String, message: String) {
+    StructuredLogger.logDiagnostic(category, message)
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ExtensionsAndUtils.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/GlobalVars.kt ---
+package com.example.autotap
+
+import com.example.autotap.*
+
+import java.util.concurrent.CopyOnWriteArrayList
+
+var isRecording: Boolean = false
+var isPlaying: Boolean = false
+var globalClickDurationMs: Long = 100L
+var globalScriptLoopCount: Int = 1
+var isGlobalScriptInfinite: Boolean = false
+var globalRelayNextScript: String = ""
+
+val globalTemplatesNames: MutableList<String> = CopyOnWriteArrayList()
+val globalTemplates: MutableList<Any> = CopyOnWriteArrayList()
+
+--- END OF FILE: app/src/main/java/com/example/autotap/GlobalVars.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/MainActivity.kt ---
+package com.example.autotap
+
+import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.text.TextUtils
+import android.view.View
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.example.autotap.data.ScriptRepository
+import com.example.autotap.data.TemplateRepository
+import com.example.autotap.engine.ActionEditorEngine
+import com.example.autotap.logger.StructuredLogger
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.ui.LogViewerActivity
+
+class MainActivity : AppCompatActivity() {
+
+    lateinit var templateRepository: TemplateRepository
+    lateinit var scriptRepository: ScriptRepository
+    lateinit var actionEditorEngine: ActionEditorEngine
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        StructuredLogger.init(this)
+
+        initRepositories()
+        initEngines()
+
+        try {
+            setContentView(R.layout.activity_main)
+            logDiagnostic("UI", "Главное меню успешно надуло activity_main.xml")
+        } catch (e: Exception) {
+            logError("UI", "Ошибка установки setContentView(R.layout.activity_main)", e)
+        }
+
+        val root = window.decorView.findViewById<View>(android.R.id.content)
+
+        (root.findViewByNames("tvVersion") as? TextView)?.text = "v37 Precision Architecture"
+        (root.findViewByNames("tvSubTitle") as? TextView)?.text = "Комплекс Автоматизации и ИИ Поиска"
+
+        root.bindClickByNames("btnStartPanel") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.showControlPanel()
+                logDiagnostic("UI", "Запуск панели оверлеев.")
+            } else {
+                Toast.makeText(this, "Сначала включите Accessibility Service!", Toast.LENGTH_LONG).show()
+                logError("UI", "MyAutoClickService не запущен!", null)
+            }
+        }
+
+        root.bindClickByNames("btnAccessibility") {
+            try {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                logDiagnostic("UI", "Переход в настройки Accessibility.")
+            } catch (e: Exception) {
+                logError("UI", "Ошибка перехода в настройки Accessibility", e)
+            }
+        }
+
+        root.bindClickByNames("btnOverlay") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
+                try {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                    logDiagnostic("UI", "Запрос разрешения оверлея.")
+                } catch (e: Exception) {
+                    logError("UI", "Ошибка запроса разрешения оверлея", e)
+                }
+            } else {
+                Toast.makeText(this, "Разрешение оверлея уже предоставлено!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        root.bindClickByNames("btnAppDetails", "btnPermissionsHelp") {
+            openRestrictedSettingsMenu()
+        }
+
+        root.bindClickByNames("btnShowLogs") {
+            try {
+                startActivity(Intent(this@MainActivity, LogViewerActivity::class.java))
+            } catch (e: Exception) {
+                logError("UI", "Ошибка открытия LogViewerActivity", e)
+            }
+        }
+
+        root.bindClickByNames("btnInfoHelp") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.overlayManager.infoHelpDialog.show()
+            }
+        }
+
+        root.bindClickByNames("btnManageTemplates") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.overlayManager.templatesManagerDialog.show()
+            }
+        }
+
+        root.bindClickByNames("btnExport", "btnImport") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.overlayManager.exportImportDialog.show()
+            }
+        }
+
+        updateUIStatusIndicators()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateUIStatusIndicators()
+    }
+
+    private fun openRestrictedSettingsMenu() {
+        try {
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName")
+            )
+            startActivity(intent)
+            Toast.makeText(
+                this,
+                "Нажмите 3 точки в правом верхнем углу и выберите 'Разрешить ограниченные настройки'",
+                Toast.LENGTH_LONG
+            ).show()
+            logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
+        } catch (e: Exception) {
+            logError("UI", "Ошибка открытия настроек приложения", e)
+        }
+    }
+
+    private fun updateUIStatusIndicators() {
+        val root = window.decorView.findViewById<View>(android.R.id.content)
+        val isServiceActive = MyAutoClickService.instance != null
+        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
+
+        (root.findViewByNames("btnAccessibility") as? Button)?.apply {
+            text = if (isServiceActive) "1. Accessibility: [ ВКЛ ]" else "1. Accessibility: [ ВЫКЛ ]"
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+        }
+
+        (root.findViewByNames("btnOverlay") as? Button)?.apply {
+            text = if (hasOverlay) "2. Оверлеи: [ ВКЛ ]" else "2. Оверлеи: [ ВЫКЛ ]"
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+        }
+
+        (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
+            text = "3. Снятие ограничений"
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+    }
+
+    private fun initRepositories() {
+        templateRepository = TemplateRepository(this)
+        scriptRepository = ScriptRepository(this)
+    }
+
+    private fun initEngines() {
+        actionEditorEngine = ActionEditorEngine()
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/MainActivity.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/MyAutoClickService.kt ---
+package com.example.autotap
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.PointF
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.view.Display
+import android.view.accessibility.AccessibilityEvent
+import com.example.autotap.data.ScriptRepository
+import com.example.autotap.data.TemplateRepository
+import com.example.autotap.engine.AiScannerEngine
+import com.example.autotap.engine.GestureExecutor
+import com.example.autotap.engine.RecordingEngine
+import com.example.autotap.engine.ScriptExecutor
+import com.example.autotap.engine.TutorialEngine
+import com.example.autotap.logger.StructuredLogger
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.ui.base.OverlayManager
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+class MyAutoClickService : AccessibilityService() {
+
+    companion object {
+        @Volatile var instance: MyAutoClickService? = null
+    }
+
+    val actionsList = mutableListOf<ActionConfig>()
+    @Volatile var isPlaying = false
+    var globalClickDurationMs: Long = 50L
+
+    lateinit var gestureExecutor: GestureExecutor
+    lateinit var scriptExecutor: ScriptExecutor
+    lateinit var recordingEngine: RecordingEngine
+    lateinit var tutorialEngine: TutorialEngine
+    lateinit var scriptRepository: ScriptRepository
+    lateinit var templateRepository: TemplateRepository
+    lateinit var aiScannerEngine: AiScannerEngine
+    lateinit var overlayManager: OverlayManager
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val gestureQueue = ConcurrentLinkedQueue<GestureTask>()
+    @Volatile private var isExecutingGesture = false
+
+    data class GestureTask(
+        val stroke: GestureDescription.StrokeDescription,
+        val description: String,
+        val callback: ((Boolean) -> Unit)?
+    )
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+        StructuredLogger.init(this)
+
+        gestureExecutor = GestureExecutor(this)
+        scriptExecutor = ScriptExecutor(this)
+        recordingEngine = RecordingEngine(this)
+        tutorialEngine = TutorialEngine(this)
+        scriptRepository = ScriptRepository(this)
+        templateRepository = TemplateRepository(this)
+        aiScannerEngine = AiScannerEngine(this)
+        overlayManager = OverlayManager(this)
+
+        logDiagnostic("OVERLAY", "MyAutoClickService полностью подключен с рабочим захватом экрана.")
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val type = event?.eventType ?: return
+        logDiagnostic("GESTURE", "Событие Accessibility: $type")
+    }
+
+    override fun onInterrupt() {
+        logError("ERROR", "Служба Accessibility прервана системой.", null)
+        gestureQueue.clear()
+        isExecutingGesture = false
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (instance == this) {
+            instance = null
+        }
+    }
+
+    fun isOverlayArea(x: Float, y: Float): Boolean {
+        if (!::overlayManager.isInitialized) return false
+        val ptX = x.toInt()
+        val ptY = y.toInt()
+
+        if (overlayManager.controlPanel.isShowing && overlayManager.controlPanel.getBounds().contains(ptX, ptY)) return true
+        if (overlayManager.joystickOverlay.isShowing && overlayManager.joystickOverlay.getBounds().contains(ptX, ptY)) return true
+        if (overlayManager.debuggerOverlay.isShowing && overlayManager.debuggerOverlay.getBounds().contains(ptX, ptY)) return true
+
+        return false
+    }
+
+    fun dispatchGestureTask(stroke: GestureDescription.StrokeDescription, description: String, callback: ((Boolean) -> Unit)?) {
+        gestureQueue.add(GestureTask(stroke, description, callback))
+        processNextGesture()
+    }
+
+    private fun processNextGesture() {
+        if (isExecutingGesture) return
+        val task = gestureQueue.poll() ?: return
+        isExecutingGesture = true
+
+        val builder = GestureDescription.Builder()
+        builder.addStroke(task.stroke)
+        val gesture = builder.build()
+
+        val resultCallback = object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                isExecutingGesture = false
+                task.callback?.invoke(true)
+                mainHandler.post { processNextGesture() }
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                isExecutingGesture = false
+                task.callback?.invoke(false)
+                mainHandler.post { processNextGesture() }
+            }
+        }
+

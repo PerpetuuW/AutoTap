@@ -17,6 +17,9 @@ import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
@@ -42,11 +45,15 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
         etLoopCountView = view.findViewByNames("etScriptLoopCount") as? EditText
 
         view.bindClickByNames("btnSaveScriptAction") {
-            val scriptName = etNameView?.text?.toString()?.ifBlank { "default_script" } ?: "default_script"
+            val scriptName = etNameView?.text?.toString()?.ifBlank {
+                "script_${SimpleDateFormat("MMdd_HHmm", Locale.US).format(Date())}"
+            } ?: "script_${System.currentTimeMillis() % 10000}"
+
+            val loopCount = etLoopCountView?.text?.toString()?.toIntOrNull() ?: 1
             val svc = MyAutoClickService.instance
             if (svc != null) {
                 svc.saveScriptByName(scriptName, svc.actionsList)
-                logDiagnostic("SCRIPT", "Сценарий '$scriptName' сохранен по btnSaveScriptAction")
+                logDiagnostic("SCRIPT", "Сценарий '$scriptName' сохранен (loopCount=$loopCount, infinite=$isInfiniteLoop)")
             }
             hide()
         }

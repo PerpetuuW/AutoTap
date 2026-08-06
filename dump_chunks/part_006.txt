@@ -1,0 +1,680 @@
+        }
+
+        view.bindClickByNames("btnExpSingleScript", "btnExpChainScripts", "btnExpTemplatesOnly") {
+            logDiagnostic("SCRIPT", "Экспорт выбранного типа сценария.")
+            hide()
+        }
+
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/ExportImportDialog.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/FloatingStopButtonOverlay.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+
+class FloatingStopButtonOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    init {
+        gravity = Gravity.TOP or Gravity.END
+        initialX = 20
+        initialY = 200
+        layer = OverlayLayer.PANEL_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.floating_stop_button, null)
+
+        view.bindClickByNames("btnFloatingStop") {
+            logDiagnostic("OVERLAY", "Нажата кнопка btnFloatingStop")
+            MyAutoClickService.instance?.scriptExecutor?.stop()
+            hide()
+        }
+
+        setupDragAndDrop(view)
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/FloatingStopButtonOverlay.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/GlobalSettingsDialog.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.widget.EditText
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+
+class GlobalSettingsDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private var etClickDuration: EditText? = null
+    private var etSwipeDuration: EditText? = null
+    private var etPreScreenshot: EditText? = null
+
+    init {
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.6f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_global_settings, null)
+
+        etClickDuration = view.findViewByNames("etGlobalClickDuration") as? EditText
+        etSwipeDuration = view.findViewByNames("etGlobalSwipeDuration") as? EditText
+        etPreScreenshot = view.findViewByNames("etGlobalPreScreenshot") as? EditText
+
+        view.bindClickByNames("btnSaveGlobalSettings") {
+            val clickMs = etClickDuration?.text?.toString()?.toLongOrNull() ?: 50L
+            MyAutoClickService.instance?.globalClickDurationMs = clickMs
+            logDiagnostic("UI", "Глобальные настройки сохранены: clickDuration=$clickMs")
+            context.vibrateFeedback()
+            hide()
+        }
+
+        view.bindClickByNames("btnCancelGlobalSettings") {
+            hide()
+        }
+
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/GlobalSettingsDialog.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/InfoHelpDialog.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.widget.TextView
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+
+class InfoHelpDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private var tvContent: TextView? = null
+
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.7f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_info, null)
+
+        tvContent = view.findViewByNames("tvTabContent") as? TextView
+
+        view.bindClickByNames("tabClick") {
+            tvContent?.text = "Справка по Кликам и Длительности кликов."
+            logDiagnostic("UI", "Переключение таба CLICK в InfoHelpDialog.")
+        }
+
+        view.bindClickByNames("tabSwipe") {
+            tvContent?.text = "Справка по Свайпам и Траекториям Движения."
+            logDiagnostic("UI", "Переключение таба SWIPE в InfoHelpDialog.")
+        }
+
+        view.bindClickByNames("tabAi") {
+            tvContent?.text = "Справка по ИИ-Поиску и Семействам Масок."
+            logDiagnostic("UI", "Переключение таба AI в InfoHelpDialog.")
+        }
+
+        view.bindClickByNames("btnCloseInfoDialog") {
+            logDiagnostic("UI", "Закрыта справка btnCloseInfoDialog.")
+            hide()
+        }
+
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/InfoHelpDialog.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/JoystickOverlay.kt ---
+package com.example.autotap.ui.overlays
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PointF
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.widget.FrameLayout
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.dpToPx
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.vibrateFeedback
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
+
+class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private val joystickPath = mutableListOf<PointF>()
+    private var isKnobActive = false
+
+    init {
+        width = 240.dpToPx(context)
+        height = 240.dpToPx(context)
+        gravity = Gravity.BOTTOM or Gravity.START
+        initialX = 50
+        initialY = 100
+        layer = OverlayLayer.JOYSTICK_LAYER
+    }
+
+    override fun createView(): View {
+        val root = FrameLayout(context).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+
+        val joystickView = ActiveJoystickView(context) { event, cx, cy, distanceRatio ->
+            handleActiveKnobTouch(event, cx, cy, distanceRatio)
+        }
+
+        root.addView(joystickView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
+        setupDragAndDrop(root)
+        return root
+    }
+
+    private fun handleActiveKnobTouch(event: MotionEvent, cx: Float, cy: Float, distanceRatio: Float) {
+        val lp = layoutParams ?: return
+        val service = MyAutoClickService.instance ?: return
+        val globalPoint = PointF(lp.x + width / 2f + cx, lp.y + height / 2f + cy)
+
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                isKnobActive = true
+                joystickPath.clear()
+                service.recordingEngine.startJoystickRecording()
+                logDiagnostic("JOYSTICK", "Активный режим Knob: запуск управления и записи.")
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!isKnobActive) return
+
+                // 1. Логирование траектории
+                joystickPath.add(globalPoint)
+
+                // 2. Вызов реального жеста в игре (Активный режим)
+                if (distanceRatio > 0.05f) {
+                    val centerX = lp.x + width / 2f
+                    val centerY = lp.y + height / 2f
+                    service.gestureExecutor.performJoystickRealtime(cx, cy, centerX, centerY)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (isKnobActive) {
+                    isKnobActive = false
+                    logDiagnostic("JOYSTICK", "Knob отпущен. Сохранение записанной траектории (${joystickPath.size} точек).")
+
+                    val action = ActionConfig(
+                        type = ActionType.JOYSTICK_PATH,
+                        joystickPath = joystickPath.toList(),
+                        holdDuration = (joystickPath.size * 25L).coerceAtLeast(200L)
+                    )
+                    service.recordingEngine.finishJoystickRecording(action)
+                    context.vibrateFeedback()
+                }
+            }
+        }
+    }
+
+    private class ActiveJoystickView(
+        context: Context,
+        private val onKnobMove: (event: MotionEvent, cx: Float, cy: Float, ratio: Float) -> Unit
+    ) : View(context) {
+
+        private val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#66333333")
+            style = Paint.Style.FILL
+        }
+
+        private val baseStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#AABBBBBB")
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+        }
+
+        private val knobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#DD00E676")
+            style = Paint.Style.FILL
+        }
+
+        private var centerX = 0f
+        private var centerY = 0f
+        private var baseRadius = 0f
+        private var knobRadius = 0f
+
+        private var knobX = 0f
+        private var knobY = 0f
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            centerX = w / 2f
+            centerY = h / 2f
+            baseRadius = (w.coerceAtMost(h) / 2f) * 0.8f
+            knobRadius = baseRadius * 0.35f
+            knobX = centerX
+            knobY = centerY
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
+            canvas.drawCircle(centerX, centerY, baseRadius, baseStrokePaint)
+            canvas.drawCircle(knobX, knobY, knobRadius, knobPaint)
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            val dx = event.x - centerX
+            val dy = event.y - centerY
+            val distance = sqrt(dx * dx + dy * dy)
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    val clampedDx: Float
+                    val clampedDy: Float
+
+                    if (distance < baseRadius) {
+                        knobX = event.x
+                        knobY = event.y
+                        clampedDx = dx
+                        clampedDy = dy
+                    } else {
+                        val angle = atan2(dy, dx)
+                        clampedDx = cos(angle) * baseRadius
+                        clampedDy = sin(angle) * baseRadius
+                        knobX = centerX + clampedDx
+                        knobY = centerY + clampedDy
+                    }
+                    val ratio = (distance / baseRadius).coerceIn(0f, 1f)
+                    invalidate()
+                    onKnobMove(event, clampedDx, clampedDy, ratio)
+                    return true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    // Анимация возврата Knob в центр
+                    knobX = centerX
+                    knobY = centerY
+                    invalidate()
+                    onKnobMove(event, 0f, 0f, 0f)
+                    return true
+                }
+            }
+            return super.onTouchEvent(event)
+        }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/JoystickOverlay.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/MaskEditorDialog.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+
+class MaskEditorDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    init {
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.6f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_mask_editor, null)
+
+        view.bindClickByNames("btnSaveMaskEdits") {
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.templateRepository.recalibrateTemplate(0)
+                context.vibrateFeedback()
+                logDiagnostic("AI_SCANNER", "Маска отредактирована по btnSaveMaskEdits.")
+            }
+            hide()
+        }
+
+        view.bindClickByNames("btnCancelMaskEdits", "btnCloseMaskEditor") {
+            hide()
+        }
+
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/MaskEditorDialog.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/PermissionsDialog.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+
+class PermissionsDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.7f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_permissions, null)
+
+        view.bindClickByNames("btnClosePermissionsDialog") {
+            logDiagnostic("UI", "Закрыт диалог btnClosePermissionsDialog.")
+            hide()
+        }
+
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/PermissionsDialog.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/SaveRecordingDialog.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.widget.EditText
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+
+class SaveRecordingDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private var etScriptNameView: EditText? = null
+
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.6f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_save_recording, null)
+
+        etScriptNameView = view.findViewByNames("etRecordScriptName") as? EditText
+
+        view.bindClickByNames("btnSaveRecordScript") {
+            val name = etScriptNameView?.text?.toString()?.ifBlank { "recorded_script" } ?: "recorded_script"
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.recordingEngine.stopRecording(name)
+                context.vibrateFeedback()
+                logDiagnostic("SCRIPT", "Запись сохранена под именем '$name'")
+            }
+            hide()
+        }
+
+        view.bindClickByNames("btnSkipRecordScript") {
+            hide()
+        }
+
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/SaveRecordingDialog.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/ScriptsDialog.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.graphics.Color
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.EditText
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+
+class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private var etNameView: EditText? = null
+    private var etLoopCountView: EditText? = null
+    private var isInfiniteLoop = true
+
+    init {
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.5f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_scripts, null)
+
+        etNameView = view.findViewByNames("etScriptName") as? EditText
+        etLoopCountView = view.findViewByNames("etScriptLoopCount") as? EditText
+
+        view.bindClickByNames("btnSaveScriptAction") {
+            val scriptName = etNameView?.text?.toString()?.ifBlank { "default_script" } ?: "default_script"
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.saveScriptByName(scriptName, svc.actionsList)
+                logDiagnostic("SCRIPT", "Сценарий '$scriptName' сохранен по btnSaveScriptAction")
+            }
+            hide()
+        }
+
+        view.bindClickByNames("btnToggleScriptInfinite") { btn ->
+            isInfiniteLoop = !isInfiniteLoop
+            btn.isSelected = isInfiniteLoop
+            (btn as? Button)?.apply {
+                text = if (isInfiniteLoop) "Бесконечный повтор: [ ВКЛ ]" else "Бесконечный повтор: [ ВЫКЛ ]"
+                setTextColor(if (isInfiniteLoop) Color.parseColor("#00E676") else Color.WHITE)
+            }
+            logDiagnostic("SCRIPT", "Переключение бесконечного повтора: $isInfiniteLoop")
+        }
+
+        view.bindClickByNames("btnSelectScriptRelay") {
+            logDiagnostic("SCRIPT", "Выбор эстафетного сценария.")
+        }
+
+        view.bindClickByNames("btnCloseScripts", "btnCloseScriptsHeader") {
+            hide()
+        }
+
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/ScriptsDialog.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/SearchAreaOverlay.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.graphics.Color
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.dpToPx
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+import kotlin.math.max
+
+class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private val minSizePx = 32.dpToPx(context)
+    private var currentWidthPx = 200.dpToPx(context)
+    private var currentHeightPx = 200.dpToPx(context)
+
+    init {
+        gravity = Gravity.CENTER
+        layer = OverlayLayer.CAPTURE_LAYER
+        priority = OverlayPriority.HIGH
+        width = currentWidthPx
+        height = currentHeightPx
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.floating_search_area_frame, null)
+
+        view.bindClickByNames("btnSaveSearchArea") {
+            logDiagnostic("AI_SCANNER", "Область поиска сохранена: ${currentWidthPx}x${currentHeightPx}px")
+            context.vibrateFeedback()
+            hide()
+        }
+
+        view.bindClickByNames("btnResetSearchArea") {
+            currentWidthPx = 200.dpToPx(context)
+            currentHeightPx = 200.dpToPx(context)
+            width = currentWidthPx
+            height = currentHeightPx
+            val lp = layoutParams
+            if (lp != null) {
+                lp.width = currentWidthPx
+                lp.height = currentHeightPx
+                try {
+                    windowManager.updateViewLayout(overlayView, lp)
+                } catch (_: Exception) {}
+            }
+            context.vibrateFeedback()
+            logDiagnostic("AI_SCANNER", "Размер области поиска сброшен к стандартному.")
+        }

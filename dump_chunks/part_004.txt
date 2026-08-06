@@ -1,0 +1,680 @@
+import com.example.autotap.data.TemplateRepository
+import com.example.autotap.model.ActionConfig
+
+class TemplateMatcher(private val repository: TemplateRepository) {
+
+    private val cascadeMatcher = HybridCascadeMatcher()
+
+    fun matchSingleTemplate(frame: Bitmap, action: ActionConfig): List<MatchCandidate> {
+        val calibrated = repository.loadCalibratedMask(action.selectedTemplateIndex)
+        val mask = calibrated?.original ?: repository.loadTemplate(action.selectedTemplateIndex) ?: return emptyList()
+        val profile = calibrated?.metadata?.profile ?: TemplateProfile.MEDIUM
+
+        val searchArea = buildProfileAwareSearchArea(action, frame, profile)
+        val searchModes = buildProfileAwareModes(action, profile)
+
+        return cascadeMatcher.match(frame, mask, searchArea, searchModes, action.similarityPercent / 100f)
+    }
+
+    fun matchMultiTemplate(frame: Bitmap, action: ActionConfig): List<MatchCandidate> {
+        val indices = if (action.multiTemplateIndices.isNotEmpty()) {
+            action.multiTemplateIndices
+        } else {
+            listOf(action.selectedTemplateIndex)
+        }
+
+        val allCandidates = mutableListOf<MatchCandidate>()
+
+        for (index in indices) {
+            val calibrated = repository.loadCalibratedMask(index)
+            val mask = calibrated?.original ?: repository.loadTemplate(index) ?: continue
+            val profile = calibrated?.metadata?.profile ?: TemplateProfile.MEDIUM
+
+            val searchArea = buildProfileAwareSearchArea(action, frame, profile)
+            val searchModes = buildProfileAwareModes(action, profile)
+
+            val candidates = cascadeMatcher.match(frame, mask, searchArea, searchModes, action.similarityPercent / 100f)
+            for (c in candidates) {
+                allCandidates.add(c.copy(templateIndex = index))
+            }
+        }
+
+        return rankCandidates(allCandidates)
+    }
+
+    fun rankCandidates(candidates: List<MatchCandidate>): List<MatchCandidate> {
+        return candidates.sortedByDescending { it.score }
+    }
+
+    private fun buildProfileAwareModes(action: ActionConfig, profile: TemplateProfile): SearchModes {
+        return when (profile) {
+            TemplateProfile.SMALL -> SearchModes(
+                shapeOnlyMode = action.shapeOnlyMode,
+                autoTuningMode = action.autoTuningMode,
+                hybridCascadeMode = action.hybridCascadeMode,
+                multiScaleSearch = action.multiScaleSearch,
+                contourWeight = 0.4f,
+                pixelWeight = 0.6f,
+                scaleBoost = 0.25f,
+                profile = profile
+            )
+            TemplateProfile.LARGE -> SearchModes(
+                shapeOnlyMode = action.shapeOnlyMode,
+                autoTuningMode = action.autoTuningMode,
+                hybridCascadeMode = action.hybridCascadeMode,
+                multiScaleSearch = action.multiScaleSearch,
+                contourWeight = 0.2f,
+                pixelWeight = 0.8f,
+                scaleBoost = -0.25f,
+                profile = profile
+            )
+            TemplateProfile.THIN_LINE -> SearchModes(
+                shapeOnlyMode = true,
+                autoTuningMode = action.autoTuningMode,
+                hybridCascadeMode = action.hybridCascadeMode,
+                multiScaleSearch = false,
+                contourWeight = 0.85f,
+                pixelWeight = 0.15f,
+                scaleBoost = 0.0f,
+                profile = profile
+            )
+            else -> SearchModes(
+                shapeOnlyMode = action.shapeOnlyMode,
+                autoTuningMode = action.autoTuningMode,
+                hybridCascadeMode = action.hybridCascadeMode,
+                multiScaleSearch = action.multiScaleSearch,
+                contourWeight = 0.3f,
+                pixelWeight = 0.7f,
+                scaleBoost = 0.0f,
+                profile = profile
+            )
+        }
+    }
+
+    private fun buildProfileAwareSearchArea(action: ActionConfig, frame: Bitmap, profile: TemplateProfile): Rect {
+        if (action.customSearchArea) {
+            return Rect(
+                action.searchAreaX.coerceIn(0, frame.width),
+                action.searchAreaY.coerceIn(0, frame.height),
+                (action.searchAreaX + action.searchAreaW).coerceIn(0, frame.width),
+                (action.searchAreaY + action.searchAreaH).coerceIn(0, frame.height)
+            )
+        }
+
+        return Rect(0, 0, frame.width, frame.height)
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/TemplateMatcher.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/TemplateMetadata.kt ---
+package com.example.autotap.engine.ai
+
+import android.graphics.PointF
+import android.graphics.Rect
+
+data class TemplateMetadata(
+    val dpi: Int = 420,
+    val scale: Float = 1.0f,
+    val boundingBox: Rect = Rect(),
+    val contour: List<PointF> = emptyList(),
+    val calibratedRect: Rect = Rect(),
+    val profile: TemplateProfile = TemplateProfile.MEDIUM,
+    val layoutHints: String = "ANY"
+)
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/TemplateMetadata.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/TemplateProfile.kt ---
+package com.example.autotap.engine.ai
+
+enum class TemplateProfile {
+    SMALL,
+    MEDIUM,
+    LARGE,
+    THIN_LINE,
+    MIXED
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/engine/ai/TemplateProfile.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/logger/StructuredLogger.kt ---
+package com.example.autotap.logger
+
+import android.content.Context
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+object StructuredLogger {
+    private const val MAX_LOG_SIZE = 524288L // 512 KB
+    private var logFile: File? = null
+
+    fun init(context: Context) {
+        val dir = context.getExternalFilesDir(null) ?: context.filesDir
+        logFile = File(dir, "error_log.txt")
+        rotateLogIfNeeded()
+    }
+
+    @Synchronized
+    fun logDiagnostic(category: String, message: String) {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+        val formatted = "[$timestamp] [$category] $message\n"
+        println(formatted)
+        appendToLogFile(formatted)
+    }
+
+    @Synchronized
+    fun logError(category: String, message: String, throwable: Throwable? = null) {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+        val errText = throwable?.stackTraceToString() ?: ""
+        val formatted = "[$timestamp] [ERROR] [$category] $message $errText\n"
+        System.err.println(formatted)
+        appendToLogFile(formatted)
+    }
+
+    private fun appendToLogFile(text: String) {
+        val file = logFile ?: return
+        try {
+            rotateLogIfNeeded()
+            file.appendText(text)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun rotateLogIfNeeded() {
+        val file = logFile ?: return
+        if (file.exists() && file.length() > MAX_LOG_SIZE) {
+            val content = file.readText()
+            val halfIndex = content.length / 2
+            val trimmedContent = "...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + content.substring(halfIndex)
+            file.writeText(trimmedContent)
+        }
+    }
+
+    fun getLogFile(): File? = logFile
+}
+
+fun logError(category: String, message: String, throwable: Throwable? = null) {
+    StructuredLogger.logError(category, message, throwable)
+}
+
+fun logDiagnostic(category: String, message: String) {
+    StructuredLogger.logDiagnostic(category, message)
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/logger/StructuredLogger.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/model/ActionConfig.kt ---
+package com.example.autotap.model
+
+import android.graphics.PointF
+
+enum class ActionType {
+    CLICK, SWIPE, LONG_PRESS, AI_SEARCH, WAIT, LOAD_SCRIPT, JOYSTICK_PATH
+}
+
+data class ActionConfig(
+    var type: ActionType = ActionType.CLICK,
+    var xNorm: Float = 0.5f,
+    var yNorm: Float = 0.5f,
+    var endXNorm: Float = 0.5f,
+    var endYNorm: Float = 0.5f,
+    var randomRadius: Float = 0f,
+    var delay: Long = 500L,
+    var holdDuration: Long = 100L,
+    var selectedTemplateIndex: Int = 0,
+    var multiTemplateIndices: List<Int> = emptyList(),
+    var similarityPercent: Int = 85,
+    var scanIntervalSeconds: Float = 0.1f,
+    var clickAiTarget: Boolean = false,
+    var loopUntilStopped: Boolean = true,
+    var jumpToStepOnMatch: Int? = null,
+    var jumpToStepOnFail: Int? = null,
+    var targetScriptToLoad: String? = null,
+    var customSearchArea: Boolean = false,
+    var searchAreaX: Int = 0,
+    var searchAreaY: Int = 0,
+    var searchAreaW: Int = 0,
+    var searchAreaH: Int = 0,
+    var shapeOnlyMode: Boolean = false,
+    var autoTuningMode: Boolean = false,
+    var hybridCascadeMode: Boolean = true,
+    var multiScaleSearch: Boolean = true,
+    var joystickPath: List<PointF> = emptyList(),
+    var swipePath: List<PointF> = emptyList(),
+    var longPressDuration: Long = 500L,
+    var clickOffsetX: Int = 0,
+    var clickOffsetY: Int = 0
+)
+
+--- END OF FILE: app/src/main/java/com/example/autotap/model/ActionConfig.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/model/TutorialStepConfig.kt ---
+package com.example.autotap.model
+
+import android.graphics.Rect
+
+data class TutorialStepConfig(
+    val id: String,
+    val title: String,
+    val message: String,
+    val highlightArea: Rect? = null,
+    val waitForClickOnArea: Rect? = null,
+    val autoAdvance: Boolean = false,
+    val delayMs: Long = 0L
+)
+
+--- END OF FILE: app/src/main/java/com/example/autotap/model/TutorialStepConfig.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/LogViewerActivity.kt ---
+package com.example.autotap.ui
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.view.View
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.StructuredLogger
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+
+class LogViewerActivity : AppCompatActivity() {
+
+    private var logTextView: TextView? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        try {
+            setContentView(R.layout.dialog_logs)
+            logDiagnostic("UI", "Экран логов надул оригинальный dialog_logs.xml")
+        } catch (e: Exception) {
+            logError("UI", "Ошибка установки setContentView(R.layout.dialog_logs)", e)
+        }
+
+        val root = window.decorView.findViewById<View>(android.R.id.content)
+
+        logTextView = root.findViewByNames("tvLogsContent") as? TextView
+
+        root.bindClickByNames("btnShareLogs") {
+            shareLogFile()
+        }
+
+        root.bindClickByNames("btnClearLogs") {
+            clearLogFile()
+        }
+
+        root.bindClickByNames("btnCloseLogs") {
+            finish()
+        }
+
+        refreshLogs()
+    }
+
+    private fun refreshLogs() {
+        val file = StructuredLogger.getLogFile()
+        if (file != null && file.exists()) {
+            val content = file.readText()
+            logTextView?.text = if (content.isBlank()) "Лог-файл пуст." else content
+        } else {
+            logTextView?.text = "Лог-файл еще не создан."
+        }
+    }
+
+    private fun clearLogFile() {
+        val file = StructuredLogger.getLogFile()
+        if (file != null && file.exists()) {
+            file.writeText("")
+            logDiagnostic("LOGS", "Лог-файл очищен по btnClearLogs.")
+        }
+        refreshLogs()
+    }
+
+    private fun shareLogFile() {
+        val file = StructuredLogger.getLogFile() ?: return
+        if (!file.exists()) return
+
+        try {
+            val uri: Uri = FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Поделиться error_log.txt"))
+        } catch (e: Exception) {
+            logError("LOGS", "Ошибка отправки файла логов", e)
+        }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/LogViewerActivity.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayBase.kt ---
+package com.example.autotap.ui.base
+
+import android.content.Context
+import android.graphics.Rect
+import android.os.Build
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import android.view.WindowManager
+import com.example.autotap.createOverlayParams
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.safeAddView
+import com.example.autotap.safeRemoveView
+import kotlin.math.abs
+
+abstract class OverlayBase(
+    protected val context: Context,
+    val overlayManager: OverlayManager
+) {
+    protected val windowManager: WindowManager =
+        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    var width: Int = WindowManager.LayoutParams.WRAP_CONTENT
+    var height: Int = WindowManager.LayoutParams.WRAP_CONTENT
+    var gravity: Int = Gravity.TOP or Gravity.START
+    var flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+    var dimAmount: Float = 0.5f
+
+    var initialX: Int = 100
+    var initialY: Int = 200
+
+    var layer: OverlayLayer = OverlayLayer.PANEL_LAYER
+    var priority: OverlayPriority = OverlayPriority.MEDIUM
+
+    protected var overlayView: View? = null
+    protected var layoutParams: WindowManager.LayoutParams? = null
+    var isShowing: Boolean = false
+        protected set
+
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
+    abstract fun createView(): View
+
+    open fun show() {
+        if (isShowing && overlayView != null) {
+            try {
+                windowManager.safeRemoveView(overlayView!!)
+            } catch (_: Exception) {}
+            isShowing = false
+        }
+
+        try {
+            val view = createView()
+            view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            overlayView = view
+            val params = createOverlayParams(
+                width = width,
+                height = height,
+                gravity = gravity,
+                flags = flags,
+                x = initialX,
+                y = initialY
+            ).apply {
+                if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
+                    this.dimAmount = this@OverlayBase.dimAmount
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    this.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            this.layoutParams = params
+            val added = windowManager.safeAddView(view, params)
+            if (added) {
+                isShowing = true
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) принудительно отображен.")
+            }
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
+        }
+    }
+
+    open fun hide() {
+        val view = overlayView ?: return
+        if (isShowing) {
+            try {
+                windowManager.safeRemoveView(view)
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} скрыт.")
+            } catch (e: Exception) {
+                logError("OVERLAY", "Ошибка при скрытии ${javaClass.simpleName}", e)
+            }
+            overlayView = null
+            isShowing = false
+        }
+    }
+
+    fun setTouchable(touchable: Boolean) {
+        val lp = layoutParams ?: return
+        val view = overlayView ?: return
+        if (touchable) {
+            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        try {
+            windowManager.updateViewLayout(view, lp)
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка обновления флага touchable", e)
+        }
+    }
+
+    fun getBounds(): Rect {
+        val lp = layoutParams ?: return Rect(0, 0, 0, 0)
+        val w = if (width > 0) width else 200
+        val h = if (height > 0) height else 200
+        return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
+    }
+
+    protected fun setupDragAndDrop(handleView: View) {
+        var startX = 0
+        var startY = 0
+        var touchX = 0f
+        var touchY = 0f
+        var isDragging = false
+
+        handleView.setOnTouchListener { v, event ->
+            val lp = layoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = lp.x
+                    startY = lp.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    isDragging = false
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+
+                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        isDragging = true
+                    }
+
+                    if (isDragging) {
+                        lp.x = startX + dx
+                        lp.y = startY + dy
+                        try {
+                            windowManager.updateViewLayout(overlayView ?: v, lp)
+                        } catch (e: Exception) {
+                            logError("OVERLAY", "Ошибка перемещения оверлея", e)
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (isDragging) {
+                        isDragging = false
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> false
+            }
+        }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayBase.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayLayer.kt ---
+package com.example.autotap.ui.base
+
+enum class OverlayLayer {
+    PANEL_LAYER,
+    CAPTURE_LAYER,
+    JOYSTICK_LAYER,
+    DEBUG_LAYER,
+    VISUALIZER_LAYER,
+    CANDIDATE_LAYER,
+    DIALOG_LAYER,
+    TUTORIAL_LAYER
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayLayer.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayManager.kt ---
+package com.example.autotap.ui.base
+
+import android.content.Context
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.ui.debug.ScenarioDebuggerOverlay
+import com.example.autotap.ui.overlays.AddActionDialog
+import com.example.autotap.ui.overlays.CandidateSelectionOverlay
+import com.example.autotap.ui.overlays.CaptureFrameOverlay
+import com.example.autotap.ui.overlays.ClickVisualizerOverlay
+import com.example.autotap.ui.overlays.ControlPanelOverlay
+import com.example.autotap.ui.overlays.EditActionDialog
+import com.example.autotap.ui.overlays.ExportImportDialog
+import com.example.autotap.ui.overlays.FloatingStopButtonOverlay
+import com.example.autotap.ui.overlays.GlobalSettingsDialog
+import com.example.autotap.ui.overlays.InfoHelpDialog
+import com.example.autotap.ui.overlays.JoystickOverlay
+import com.example.autotap.ui.overlays.MaskEditorDialog
+import com.example.autotap.ui.overlays.PermissionsDialog
+import com.example.autotap.ui.overlays.SaveRecordingDialog
+import com.example.autotap.ui.overlays.ScriptsDialog
+import com.example.autotap.ui.overlays.SearchAreaOverlay
+import com.example.autotap.ui.overlays.TargetMarkerOverlay
+import com.example.autotap.ui.overlays.TemplatesManagerDialog
+import com.example.autotap.ui.overlays.TutorialOverlay
+
+class OverlayManager(val context: Context) {
+
+    val controlPanel by lazy { ControlPanelOverlay(context, this) }
+    val debuggerOverlay by lazy { ScenarioDebuggerOverlay(context, this) }
+    val candidateOverlay by lazy { CandidateSelectionOverlay(context, this) }
+    val joystickOverlay by lazy { JoystickOverlay(context, this) }
+    val editActionDialog by lazy { EditActionDialog(context, this) }
+    val captureFrameOverlay by lazy { CaptureFrameOverlay(context, this) }
+    val scriptsDialog by lazy { ScriptsDialog(context, this) }
+    val clickVisualizer by lazy { ClickVisualizerOverlay(context, this) }
+    val tutorialOverlay by lazy { TutorialOverlay(context, this) }
+    val infoHelpDialog by lazy { InfoHelpDialog(context, this) }
+    val templatesManagerDialog by lazy { TemplatesManagerDialog(context, this) }
+    val globalSettingsDialog by lazy { GlobalSettingsDialog(context, this) }
+    val maskEditorDialog by lazy { MaskEditorDialog(context, this) }
+    val floatingStopButton by lazy { FloatingStopButtonOverlay(context, this) }
+    val addActionDialog by lazy { AddActionDialog(context, this) }
+    val exportImportDialog by lazy { ExportImportDialog(context, this) }
+    val permissionsDialog by lazy { PermissionsDialog(context, this) }
+    val saveRecordingDialog by lazy { SaveRecordingDialog(context, this) }
+    val searchAreaOverlay by lazy { SearchAreaOverlay(context, this) }
+    val targetMarkerOverlay by lazy { TargetMarkerOverlay(context, this) }
+
+    fun showControlPanel() {
+        controlPanel.show()
+    }
+
+    fun hideControlPanel() {
+        controlPanel.hide()
+    }
+
+    fun showFloatingStopButton() {
+        floatingStopButton.show()
+    }
+
+    fun hideFloatingStopButton() {
+        floatingStopButton.hide()
+    }
+
+    fun showClickVisualizer(x: Float, y: Float) {
+        clickVisualizer.showClickAt(x, y)
+    }
+
+    fun hideAll() {
+        controlPanel.hide()
+        debuggerOverlay.hide()
+        candidateOverlay.hide()
+        joystickOverlay.hide()
+        editActionDialog.hide()
+        captureFrameOverlay.hide()
+        scriptsDialog.hide()
+        clickVisualizer.hide()
+        tutorialOverlay.hide()
+        infoHelpDialog.hide()
+        templatesManagerDialog.hide()
+        globalSettingsDialog.hide()
+        maskEditorDialog.hide()
+        floatingStopButton.hide()
+        addActionDialog.hide()
+        exportImportDialog.hide()
+        permissionsDialog.hide()
+        saveRecordingDialog.hide()
+        searchAreaOverlay.hide()
+        targetMarkerOverlay.hide()
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayManager.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayPriority.kt ---
+package com.example.autotap.ui.base
+
+enum class OverlayPriority(val level: Int) {
+    LOW(0),
+    MEDIUM(1),
+    HIGH(2),
+    CRITICAL(3)
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayPriority.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/debug/ScenarioDebuggerOverlay.kt ---
+package com.example.autotap.ui.debug
+
+import android.content.Context
+import android.graphics.Color
+import android.view.Gravity
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.example.autotap.engine.ai.MatchCandidate
+import com.example.autotap.logAppEvent
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayManager
+

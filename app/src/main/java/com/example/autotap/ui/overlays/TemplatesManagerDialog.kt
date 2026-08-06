@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.logger.logDiagnostic
@@ -34,7 +35,11 @@ class TemplatesManagerDialog(context: Context, overlayManager: OverlayManager) :
         } catch (_: Exception) {}
 
         view.bindClickByNames("btnOpenTrashBin") {
-            logDiagnostic("UI", "Открытие корзины удаленных масок.")
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.templateRepository.restoreTemplateFromTrash(0)
+                logDiagnostic("UI", "Просмотр и восстановление масок из корзины.")
+            }
         }
 
         view.bindClickByNames("btnCloseTemplatesManager") {

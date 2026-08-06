@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AutoTap</string>
-    <string name="accessibility_service_description">AutoTap Accessibility Service for automated gestures and AI screen scanning.</string>
+    <string name="app_version">v40.0.0-PRO</string>
+    <string name="accessibility_service_description">Служба автоматизации AutoTap для выполнения записанных жестов и ИИ-поиска масок на экране.</string>
 </resources>

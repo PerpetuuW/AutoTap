@@ -15,6 +15,8 @@ import com.example.autotap.dpToPx
 import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
@@ -42,7 +44,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(R.layout.floating_capture_frame, null)
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
-            logDiagnostic("OVERLAY", "Вырезание реальной маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
+            logDiagnostic("OVERLAY", "Вырезание маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
             context.vibrateFeedback()
 
             val svc = MyAutoClickService.instance
@@ -52,19 +54,29 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 val centerXNorm = (lp.x + currentFrameWidthPx / 2f) / metrics.widthPixels.toFloat()
                 val centerYNorm = (lp.y + currentFrameHeightPx / 2f) / metrics.heightPixels.toFloat()
 
-                svc.addNewActionAtPosition(centerXNorm.coerceIn(0f, 1f), centerYNorm.coerceIn(0f, 1f))
+                // Динамический выбор свободного слота маски вместо перезаписи слота 0
+                val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
+
+                val action = ActionConfig(
+                    type = ActionType.AI_SEARCH,
+                    xNorm = centerXNorm.coerceIn(0f, 1f),
+                    yNorm = centerYNorm.coerceIn(0f, 1f),
+                    selectedTemplateIndex = nextTemplateIndex
+                )
+                svc.actionsList.add(action)
 
                 val fullBitmap = svc.captureScreenBitmap()
-                if (fullBitmap != null) {
-                    val cropX = ((lp.x).coerceAtLeast(0)).coerceAtMost(fullBitmap.width - 20)
-                    val cropY = ((lp.y).coerceAtLeast(0)).coerceAtMost(fullBitmap.height - 20)
-                    val cropW = currentFrameWidthPx.coerceAtMost(fullBitmap.width - cropX)
-                    val cropH = currentFrameHeightPx.coerceAtMost(fullBitmap.height - cropY)
+                if (fullBitmap != null && fullBitmap.width > 20 && fullBitmap.height > 20) {
+                    // Защита вычислений кропа через coerceIn
+                    val safeX = lp.x.coerceIn(0, (fullBitmap.width - 20).coerceAtLeast(0))
+                    val safeY = lp.y.coerceIn(0, (fullBitmap.height - 20).coerceAtLeast(0))
+                    val safeW = currentFrameWidthPx.coerceIn(10, fullBitmap.width - safeX)
+                    val safeH = currentFrameHeightPx.coerceIn(10, fullBitmap.height - safeY)
 
-                    if (cropW > 10 && cropH > 10) {
-                        val croppedMask = Bitmap.createBitmap(fullBitmap, cropX, cropY, cropW, cropH)
-                        svc.templateRepository.saveTemplate(0, croppedMask)
-                        logDiagnostic("AI_SCANNER", "Реальный шаблон #0 сохранен и откалиброван (${cropW}x${cropH}px).")
+                    if (safeW > 10 && safeH > 10) {
+                        val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
+                        svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+                        logDiagnostic("AI_SCANNER", "Безопасный кроп: шаблон #$nextTemplateIndex сохранен (${safeW}x${safeH}px).")
                     }
                 }
             }

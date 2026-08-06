@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="300dp"
     android:layout_height="wrap_content"
@@ -28,11 +28,12 @@
             android:textColor="@color/text_gray"
             android:textSize="12sp"/>
         <TextView
+            android:id="@+id/tvSecClickDuration"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Рекомендуется: 80 - 250 мс (0.08 - 0.25 сек)"
+            android:text="= 0.12 сек"
             android:textColor="#00B4D8"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:layout_marginBottom="2dp"/>
         <EditText
             android:selectAllOnFocus="true"
@@ -43,14 +44,7 @@
             android:textColor="#FFFFFF"
             android:inputType="number"
             android:padding="8dp"
-            android:text="120"/>
-        <TextView
-            android:id="@+id/tvSecClickDuration"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="= 0.12 сек"
-            android:textColor="#8D99AE"
-            android:textSize="11sp"
+            android:text="120"
             android:layout_marginBottom="10dp"/>
 
         <!-- 2. Длительность свайпа -->
@@ -61,11 +55,12 @@
             android:textColor="@color/text_gray"
             android:textSize="12sp"/>
         <TextView
+            android:id="@+id/tvSecSwipeDuration"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Рекомендуется: 200 - 800 мс (0.20 - 0.80 сек)"
+            android:text="= 0.30 сек"
             android:textColor="#00B4D8"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:layout_marginBottom="2dp"/>
         <EditText
             android:selectAllOnFocus="true"
@@ -76,14 +71,7 @@
             android:textColor="#FFFFFF"
             android:inputType="number"
             android:padding="8dp"
-            android:text="300"/>
-        <TextView
-            android:id="@+id/tvSecSwipeDuration"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="= 0.30 сек"
-            android:textColor="#8D99AE"
-            android:textSize="11sp"
+            android:text="300"
             android:layout_marginBottom="10dp"/>
 
         <!-- 3. Пауза перед скриншотом -->
@@ -94,11 +82,12 @@
             android:textColor="@color/text_gray"
             android:textSize="12sp"/>
         <TextView
+            android:id="@+id/tvSecPreScreenshot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Рекомендуется: 150 - 400 мс (0.15 - 0.40 сек)"
+            android:text="= 0.25 сек"
             android:textColor="#00B4D8"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:layout_marginBottom="2dp"/>
         <EditText
             android:selectAllOnFocus="true"
@@ -109,14 +98,7 @@
             android:textColor="#FFFFFF"
             android:inputType="number"
             android:padding="8dp"
-            android:text="250"/>
-        <TextView
-            android:id="@+id/tvSecPreScreenshot"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="= 0.25 сек"
-            android:textColor="#8D99AE"
-            android:textSize="11sp"
+            android:text="250"
             android:layout_marginBottom="14dp"/>
 
         <LinearLayout

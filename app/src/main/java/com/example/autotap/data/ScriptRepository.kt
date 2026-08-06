@@ -4,21 +4,48 @@ import android.content.Context
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
 import com.example.autotap.model.ActionConfig
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 class ScriptRepository(private val context: Context) {
 
     private val cache = mutableMapOf<String, List<ActionConfig>>()
+    var currentMetadata: ScriptMetadata? = null
 
-    fun saveScript(name: String, actions: List<ActionConfig>): Boolean {
+    fun saveScript(name: String, actions: List<ActionConfig>, metadata: ScriptMetadata = ScriptMetadata(name = name, stepCount = actions.size)): Boolean {
         return try {
             val file = File(context.filesDir, "$name.json")
-            val serialized = actions.joinToString(separator = "\n") { action ->
-                "${action.type.name};${action.xNorm};${action.yNorm};${action.endXNorm};${action.endYNorm};${action.delay};${action.holdDuration}"
+            val rootObj = JSONObject()
+
+            rootObj.put("metadata", metadata.toJson())
+
+            val actionsArray = JSONArray()
+            for (action in actions) {
+                val actionObj = JSONObject().apply {
+                    put("type", action.type.name)
+                    put("xNorm", action.xNorm)
+                    put("yNorm", action.yNorm)
+                    put("endXNorm", action.endXNorm)
+                    put("endYNorm", action.endYNorm)
+                    put("delay", action.delay)
+                    put("holdDuration", action.holdDuration)
+                    put("similarityPercent", action.similarityPercent)
+                    put("selectedTemplateIndex", action.selectedTemplateIndex)
+                    put("customSearchArea", action.customSearchArea)
+                    put("searchAreaX", action.searchAreaX)
+                    put("searchAreaY", action.searchAreaY)
+                    put("searchAreaW", action.searchAreaW)
+                    put("searchAreaH", action.searchAreaH)
+                }
+                actionsArray.put(actionObj)
             }
-            file.writeText(serialized)
+            rootObj.put("actions", actionsArray)
+
+            file.writeText(rootObj.toString(2))
             cache[name] = actions.toList()
-            logDiagnostic("SCRIPT", "Сценарий '$name' успешно сохранен (${actions.size} шагов).")
+            currentMetadata = metadata
+            logDiagnostic("SCRIPT", "Сценарий '$name' успешно сохранен в JSON (${actions.size} шагов).")
             true
         } catch (e: Exception) {
             logError("SCRIPT", "Ошибка сохранения сценария '$name'", e)
@@ -39,25 +66,37 @@ class ScriptRepository(private val context: Context) {
                 logDiagnostic("SCRIPT", "Файл сценария '$name' не найден.")
                 return emptyList()
             }
-            val lines = file.readLines()
+            val content = file.readText()
             val list = mutableListOf<ActionConfig>()
-            for (line in lines) {
-                if (line.isBlank()) continue
-                val parts = line.split(";")
-                if (parts.isNotEmpty()) {
+
+            if (content.trim().startsWith("{")) {
+                val rootObj = JSONObject(content)
+                if (rootObj.has("metadata")) {
+                    currentMetadata = ScriptMetadata.fromJson(rootObj.getJSONObject("metadata"))
+                }
+                val actionsArray = rootObj.optJSONArray("actions") ?: JSONArray()
+                for (i in 0 until actionsArray.length()) {
+                    val obj = actionsArray.getJSONObject(i)
                     val config = ActionConfig(
-                        xNorm = parts.getOrNull(1)?.toFloatOrNull() ?: 0.5f,
-                        yNorm = parts.getOrNull(2)?.toFloatOrNull() ?: 0.5f,
-                        endXNorm = parts.getOrNull(3)?.toFloatOrNull() ?: 0.5f,
-                        endYNorm = parts.getOrNull(4)?.toFloatOrNull() ?: 0.5f,
-                        delay = parts.getOrNull(5)?.toLongOrNull() ?: 500L,
-                        holdDuration = parts.getOrNull(6)?.toLongOrNull() ?: 100L
+                        xNorm = obj.optDouble("xNorm", 0.5).toFloat(),
+                        yNorm = obj.optDouble("yNorm", 0.5).toFloat(),
+                        endXNorm = obj.optDouble("endXNorm", 0.5).toFloat(),
+                        endYNorm = obj.optDouble("endYNorm", 0.5).toFloat(),
+                        delay = obj.optLong("delay", 500L),
+                        holdDuration = obj.optLong("holdDuration", 100L),
+                        similarityPercent = obj.optInt("similarityPercent", 85),
+                        selectedTemplateIndex = obj.optInt("selectedTemplateIndex", 0),
+                        customSearchArea = obj.optBoolean("customSearchArea", false),
+                        searchAreaX = obj.optInt("searchAreaX", 0),
+                        searchAreaY = obj.optInt("searchAreaY", 0),
+                        searchAreaW = obj.optInt("searchAreaW", 0),
+                        searchAreaH = obj.optInt("searchAreaH", 0)
                     )
                     list.add(config)
                 }
             }
             cache[name] = list
-            logDiagnostic("SCRIPT", "Сценарий '$name' загружен из файла (${list.size} шагов).")
+            logDiagnostic("SCRIPT", "Сценарий '$name' загружен из JSON (${list.size} шагов).")
             list
         } catch (e: Exception) {
             logError("SCRIPT", "Ошибка загрузки сценария '$name'", e)

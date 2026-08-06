@@ -3,6 +3,9 @@ package com.example.autotap
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Point
+import android.graphics.PointF
+import android.graphics.Rect
+import android.graphics.RectF
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -11,6 +14,38 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import com.example.autotap.logger.StructuredLogger
+
+object CoordConverter {
+    fun toNormalizedPoint(pt: PointF, widthPx: Int, heightPx: Int): PointF {
+        val w = widthPx.coerceAtLeast(1).toFloat()
+        val h = heightPx.coerceAtLeast(1).toFloat()
+        return PointF((pt.x / w).coerceIn(0f, 1f), (pt.y / h).coerceIn(0f, 1f))
+    }
+
+    fun toPxPoint(ptNorm: PointF, widthPx: Int, heightPx: Int): PointF {
+        return PointF(ptNorm.x * widthPx, ptNorm.y * heightPx)
+    }
+
+    fun toNormalizedRect(rect: Rect, widthPx: Int, heightPx: Int): RectF {
+        val w = widthPx.coerceAtLeast(1).toFloat()
+        val h = heightPx.coerceAtLeast(1).toFloat()
+        return RectF(
+            (rect.left / w).coerceIn(0f, 1f),
+            (rect.top / h).coerceIn(0f, 1f),
+            (rect.right / w).coerceIn(0f, 1f),
+            (rect.bottom / h).coerceIn(0f, 1f)
+        )
+    }
+
+    fun toPxRect(rectNorm: RectF, widthPx: Int, heightPx: Int): Rect {
+        return Rect(
+            (rectNorm.left * widthPx).toInt(),
+            (rectNorm.top * heightPx).toInt(),
+            (rectNorm.right * widthPx).toInt(),
+            (rectNorm.bottom * heightPx).toInt()
+        )
+    }
+}
 
 fun Int.dpToPx(context: Context): Int {
     return (this * context.resources.displayMetrics.density).toInt()
@@ -75,18 +110,25 @@ fun View.bindClickToFirstClickableChild(onClick: (View) -> Unit) {
 }
 
 fun createOverlayParams(
-    width: Int = WindowManager.LayoutParams.WRAP_CONTENT,
-    height: Int = WindowManager.LayoutParams.WRAP_CONTENT,
-    gravity: Int = Gravity.TOP or Gravity.START,
-    flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-    x: Int = 100,
-    y: Int = 200
+width: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+height: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+gravity: Int = Gravity.TOP or Gravity.START,
+flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+x: Int = 100,
+y: Int = 200
 ): WindowManager.LayoutParams {
-    return WindowManager.LayoutParams(
-        width, height,
-        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+} else {
+@Suppress("DEPRECATION")
+WindowManager.LayoutParams.TYPE_PHONE
+}
+
+return WindowManager.LayoutParams(
+width, height,
+windowType,
         flags,
         PixelFormat.TRANSLUCENT
     ).apply {

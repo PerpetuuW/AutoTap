@@ -1,0 +1,680 @@
+        android:pathData="M19,39L89,39"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,49L89,49"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,59L89,59"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,69L89,69"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,79L89,79"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,19L29,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,19L39,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49,19L49,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59,19L59,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M69,19L69,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M79,19L79,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_launcher_background.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_launcher_foreground.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M31,63.928c0,0 6.4,-11 12.1,-13.1c7.2,-2.6 26,-1.4 26,-1.4l38.1,38.1L107,108.928l-32,-1L31,63.928z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="85.84757"
+                android:endY="92.4963"
+                android:startX="42.9492"
+                android:startY="49.59793"
+                android:type="linear">
+                <item
+                    android:color="#44000000"
+                    android:offset="0.0" />
+                <item
+                    android:color="#00000000"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="nonZero"
+        android:pathData="M65.3,45.828l3.8,-6.6c0.2,-0.4 0.1,-0.9 -0.3,-1.1c-0.4,-0.2 -0.9,-0.1 -1.1,0.3l-3.9,6.7c-6.3,-2.8 -13.4,-2.8 -19.7,0l-3.9,-6.7c-0.2,-0.4 -0.7,-0.5 -1.1,-0.3C38.8,38.328 38.7,38.828 38.9,39.228l3.8,6.6C36.2,49.428 31.7,56.028 31,63.928h46C76.3,56.028 71.8,49.428 65.3,45.828zM43.4,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2c-0.3,-0.7 -0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C45.3,56.528 44.5,57.328 43.4,57.328L43.4,57.328zM64.6,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2s-0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C66.5,56.528 65.6,57.328 64.6,57.328L64.6,57.328z"
+        android:strokeWidth="1"
+        android:strokeColor="#00000000" />
+</vector>
+--- END OF FILE: app/src/main/res/drawable/ic_launcher_foreground.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_menu.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M3,18h18v-2H3v2zm0,-5h18v-2H3v2zm0,-7v2h18V6H3z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_menu.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_pause.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M6,19h4V5H6v14zm8,-14v14h4V5h-4z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_pause.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_play.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,5v14l11,-7z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_play.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_record.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#F04438"
+        android:pathData="M12,12m-8,0a8,8 0 1,1 16,0a8,8 0 1,1 -16,0"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_record.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_settings.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M19.14,12.94c0.04,-0.3 0.06,-0.61 0.06,-0.94c0,-0.32 -0.02,-0.64 -0.07,-0.94l2.03,-1.58c0.18,-0.14 0.23,-0.41 0.12,-0.61l-1.92,-3.32c-0.12,-0.22 -0.37,-0.29 -0.59,-0.22l-2.39,0.96c-0.5,-0.38 -1.03,-0.7 -1.62,-0.94l-0.36,-2.54c-0.04,-0.24 -0.24,-0.41 -0.48,-0.41h-3.84c-0.24,0 -0.43,0.17 -0.47,0.41l-0.36,2.54c-0.59,0.24 -1.13,0.57 -1.62,0.94l-2.39,-0.96c-0.22,-0.08 -0.47,0 -0.59,0.22L2.74,8.87c-0.12,0.21 -0.08,0.47 0.12,0.61l2.03,1.58c-0.05,0.3 -0.09,0.63 -0.09,0.94s0.02,0.64 0.07,0.94l-2.03,1.58c-0.18,0.14 -0.23,0.41 -0.12,0.61l1.92,3.32c0.12,0.22 0.37,0.29 0.59,0.22l2.39,-0.96c0.5,0.38 1.03,0.7 1.62,0.94l0.36,2.54c0.05,0.24 0.24,0.41 0.48,0.41h3.84c0.24,0 0.44,-0.17 0.47,-0.41l0.36,-2.54c0.59,-0.24 1.13,-0.56 1.62,-0.94l2.39,0.96c0.22,0.08 0.47,0 0.59,-0.22l1.92,-3.32c0.12,-0.22 0.07,-0.47 -0.12,-0.61l-2.01,-1.58zM12,15.6c-1.98,0 -3.6,-1.62 -3.6,-3.6s1.62,-3.6 3.6,-3.6s3.6,1.62 3.6,3.6s-1.62,3.6 -3.6,3.6z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_settings.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_trash.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12zM19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_trash.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/panel_background.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FA0D1117" />
+    <corners android:radius="18dp" />
+    <stroke android:width="2dp" android:color="#58A6FF" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/panel_background.xml ---
+
+--- START OF FILE: app/src/main/res/layout/activity_main.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark_blue"
+    android:fitsSystemWindows="true"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="16dp">
+
+        <!-- Защищённый карточка-заголовок -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/panel_background"
+            android:paddingTop="16dp"
+            android:paddingBottom="16dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:id="@+id/tvTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="AutoTap Premium"
+                android:textColor="#00F5D4"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:singleLine="true"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tvSubTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Полноэкранный ИИ-поиск и умная авто-инструкция"
+                android:textColor="@color/text_gray"
+                android:textSize="11sp"
+                android:gravity="center"
+                android:layout_marginTop="4dp" />
+
+            <TextView
+                android:id="@+id/tvVersion"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="v25.9.1 PRO"
+                android:textColor="@color/accent_blue"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <!-- Секция 1: Настройки разрешений -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/panel_background"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚙ Настройка разрешений"
+                android:textColor="#58A6FF"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="10dp"/>
+
+            <Button
+                android:id="@+id/btnAppDetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="46dp"
+                android:text="1. Разрешить запрещенные настройки (MIUI/HyperOS)"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="11sp"
+                android:padding="8dp"
+                android:gravity="center"
+                android:layout_marginBottom="8dp"/>
+
+            <Button
+                android:id="@+id/btnAccessibility"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="46dp"
+                android:text="2. Разрешить работу кликера"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="11sp"
+                android:padding="8dp"
+                android:gravity="center"
+                android:layout_marginBottom="8dp"/>
+
+            <Button
+                android:id="@+id/btnOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="46dp"
+                android:text="3. Поверх других приложений"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="11sp"
+                android:padding="8dp"
+                android:gravity="center"/>
+        </LinearLayout>
+
+        <!-- Секция 2: Управление шаблонами и данными -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/panel_background"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📁 Управление шаблонами и данными"
+                android:textColor="#58A6FF"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="10dp"/>
+
+            <Button
+                android:id="@+id/btnManageTemplates"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="46dp"
+                android:text="Редактирование и менеджер ИИ-шаблонов"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="11sp"
+                android:padding="8dp"
+                android:gravity="center"
+                android:layout_marginBottom="8dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnExport"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:minHeight="46dp"
+                    android:text="📤 Экспорт"
+                    android:textColor="@color/text_white"
+                    android:backgroundTint="#21262D"
+                    android:textSize="11sp"
+                    android:padding="4dp"
+                    android:gravity="center"/>
+
+                <View
+                    android:layout_width="8dp"
+                    android:layout_height="match_parent"/>
+
+                <Button
+                    android:id="@+id/btnImport"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:minHeight="46dp"
+                    android:text="📥 Импорт"
+                    android:textColor="@color/text_white"
+                    android:backgroundTint="#21262D"
+                    android:textSize="11sp"
+                    android:padding="4dp"
+                    android:gravity="center"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Секция 3: Инфо и Логи -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/panel_background"
+            android:padding="14dp"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <Button
+                    android:id="@+id/btnPermissionsHelp"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:minHeight="44dp"
+                    android:text="О разрешениях"
+                    android:textColor="@color/text_white"
+                    android:backgroundTint="#21262D"
+                    android:textSize="11sp"
+                    android:padding="4dp"
+                    android:gravity="center"/>
+
+                <View
+                    android:layout_width="8dp"
+                    android:layout_height="match_parent"/>
+
+                <Button
+                    android:id="@+id/btnInfoHelp"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:minHeight="44dp"
+                    android:text="Справка v25.9.1 PRO"
+                    android:textColor="@color/text_white"
+                    android:backgroundTint="#21262D"
+                    android:textSize="11sp"
+                    android:padding="4dp"
+                    android:gravity="center"/>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnShowLogs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="Просмотр логов работы и ошибок"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="11sp"
+                android:padding="4dp"
+                android:gravity="center"/>
+        </LinearLayout>
+
+        <!-- Главная кнопка старта -->
+        <Button
+            android:id="@+id/btnStartPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="56dp"
+            android:text="🚀 ЗАПУСТИТЬ ПАНЕЛЬ КЛИКЕРА"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:padding="10dp"
+            android:gravity="center"/>
+    </LinearLayout>
+</ScrollView>
+--- END OF FILE: app/src/main/res/layout/activity_main.xml ---
+
+--- START OF FILE: app/src/main/res/layout/candidate_selection_overlay.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/candidateContainer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#40000000" />
+
+--- END OF FILE: app/src/main/res/layout/candidate_selection_overlay.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_add_action.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="260dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/panel_blue"
+    android:padding="16dp"
+    android:elevation="16dp">
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Добавить действие"
+        android:textColor="@color/text_white"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp"/>
+    <Button
+        android:id="@+id/btnAddClick"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="+ Обычный клик"
+        android:textColor="@color/text_white"
+        android:backgroundTint="@color/accent_blue"
+        android:layout_marginBottom="8dp"/>
+    <Button
+        android:id="@+id/btnAddSwipe"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="+ Свайп (Начало/Конец)"
+        android:textColor="@color/text_white"
+        android:backgroundTint="@color/bg_dark_blue"
+        android:layout_marginBottom="8dp"/>
+    <Button
+        android:id="@+id/btnAddTrigger"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="+ Поиск ИИ-картинки"
+        android:textColor="@color/text_white"
+        android:backgroundTint="@color/bg_dark_blue"
+        android:layout_marginBottom="16dp"/>
+    <Button
+        android:id="@+id/btnCancelAdd"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:text="Отмена"
+        android:backgroundTint="@color/red_close"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"/>
+</LinearLayout>
+--- END OF FILE: app/src/main/res/layout/dialog_add_action.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_export_select.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="300dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/panel_blue"
+    android:padding="16dp"
+    android:elevation="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📤 Варианты Экспорта"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="14dp"/>
+
+    <Button
+        android:id="@+id/btnExpSingleScript"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:text="1. Один сценарий + его ИИ"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="@color/accent_blue"
+        android:textSize="11sp"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/btnExpChainScripts"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:text="2. Цепочка (Связанные сценарии)"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#1C2541"
+        android:textSize="11sp"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/btnExpTemplatesOnly"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:text="3. Только ИИ-шаблоны"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#1C2541"
+        android:textSize="11sp"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/btnExpFullBackup"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:text="4. Полный Бэкап (Всё вместе)"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#1C2541"
+        android:textSize="11sp"
+        android:layout_marginBottom="14dp"/>
+
+    <Button
+        android:id="@+id/btnCloseExpSelect"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:text="Отмена"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="@color/red_close"
+        android:textSize="11sp"/>
+</LinearLayout>
+--- END OF FILE: app/src/main/res/layout/dialog_export_select.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_global_settings.xml ---
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="300dp"
+    android:layout_height="wrap_content"
+    android:background="@color/panel_blue"
+    android:padding="16dp"
+    android:elevation="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚙ Глобальные настройки"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- 1. Длительность клика -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Длительность клика (мс):"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Рекомендуется: 80 - 250 мс (0.08 - 0.25 сек)"
+            android:textColor="#00B4D8"
+            android:textSize="10sp"
+            android:layout_marginBottom="2dp"/>
+        <EditText
+            android:selectAllOnFocus="true"
+            android:id="@+id/etGlobalClickDuration"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="@color/bg_dark_blue"
+            android:textColor="#FFFFFF"
+            android:inputType="number"
+            android:padding="8dp"
+            android:text="120"/>
+        <TextView
+            android:id="@+id/tvSecClickDuration"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="= 0.12 сек"
+            android:textColor="#8D99AE"
+            android:textSize="11sp"
+            android:layout_marginBottom="10dp"/>
+
+        <!-- 2. Длительность свайпа -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Длительность свайпа (мс):"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Рекомендуется: 200 - 800 мс (0.20 - 0.80 сек)"
+            android:textColor="#00B4D8"
+            android:textSize="10sp"
+            android:layout_marginBottom="2dp"/>
+        <EditText
+            android:selectAllOnFocus="true"
+            android:id="@+id/etGlobalSwipeDuration"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="@color/bg_dark_blue"
+            android:textColor="#FFFFFF"
+            android:inputType="number"
+            android:padding="8dp"
+            android:text="300"/>
+        <TextView
+            android:id="@+id/tvSecSwipeDuration"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="= 0.30 сек"
+            android:textColor="#8D99AE"
+            android:textSize="11sp"
+            android:layout_marginBottom="10dp"/>
+
+        <!-- 3. Пауза перед скриншотом -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Пауза пред-скриншота (мс):"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Рекомендуется: 150 - 400 мс (0.15 - 0.40 сек)"
+            android:textColor="#00B4D8"
+            android:textSize="10sp"
+            android:layout_marginBottom="2dp"/>

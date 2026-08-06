@@ -19,6 +19,9 @@ class ScriptExecutor(private val service: MyAutoClickService) {
     @Volatile var currentStepIndex = 0
         private set
 
+    @Volatile var currentLoopCount = 0
+        private set
+
     fun start() {
         if (isRunning) return
         if (service.actionsList.isEmpty()) {
@@ -29,6 +32,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         isRunning = true
         service.isPlaying = true
         currentStepIndex = 0
+        currentLoopCount = 0
         service.hideControlPanel()
         service.showFloatingStopButton()
 
@@ -40,6 +44,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         isRunning = false
         service.isPlaying = false
         currentStepIndex = 0
+        currentLoopCount = 0
         service.hideFloatingStopButton()
         service.showControlPanel()
         logDiagnostic("SCRIPT", "Сценарий остановлен пользователем.")
@@ -60,9 +65,22 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         if (!isRunning) return
         val actions = service.actionsList
         if (currentStepIndex >= actions.size) {
-            logDiagnostic("SCRIPT", "Все шаги сценария выполнены.")
-            stop()
-            return
+            currentLoopCount++
+            logDiagnostic("SCRIPT", "Цикл сценария #$currentLoopCount выполнен.")
+
+            val isInfinite = service.scriptRepository.currentMetadata?.isInfinite ?: true
+            val maxLoops = service.scriptRepository.currentMetadata?.loopCount ?: 1
+
+            if (isInfinite || currentLoopCount < maxLoops) {
+                currentStepIndex = 0
+                logDiagnostic("SCRIPT", "Повторный запуск цикла сценария (#$currentLoopCount)...")
+                executeNextStep()
+                return
+            } else {
+                logDiagnostic("SCRIPT", "Все $maxLoops циклов сценария успешно выполнены.")
+                stop()
+                return
+            }
         }
 
         val action = actions[currentStepIndex]
@@ -107,7 +125,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             }
             ActionType.LOAD_SCRIPT -> {
                 val targetName = action.targetScriptToLoad
-                if (targetName != null && targetName.isNotEmpty()) {
+                if (!targetName.isNullOrEmpty()) {
                     val loaded = service.loadScriptByName(targetName)
                     if (loaded) {
                         currentStepIndex = 0
@@ -127,14 +145,14 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             if (!isRunning) return@scanAsync
 
             if (foundPoint != null) {
-                logDiagnostic("SCRIPT", "Совпадение найдено в $foundPoint. Выполнение клика...")
+                logDiagnostic("SCRIPT", "Совпадение ИИ найдено в $foundPoint. Выполнение клика...")
                 service.showClickVisualizer(foundPoint.x, foundPoint.y)
                 gestureExecutor.performClick(foundPoint.x, foundPoint.y, service.globalClickDurationMs) { success ->
                     if (!isRunning) return@performClick
 
                     if (action.loopUntilStopped) {
                         val delayMs = action.delay.coerceAtLeast(50L)
-                        logDiagnostic("SCRIPT", "Мультипоиск: задержка ${delayMs}мс перед зашифровкой НОВОГО кадра экрана...")
+                        logDiagnostic("SCRIPT", "Мультипоиск ИИ: задержка ${delayMs}мс перед запросом свежего кадра...")
                         Thread.sleep(delayMs)
                         executeMultiSearchLoop(action)
                     } else {

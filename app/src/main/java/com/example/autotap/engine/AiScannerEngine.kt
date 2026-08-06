@@ -17,7 +17,7 @@ class AiScannerEngine(private val service: MyAutoClickService) {
 
     fun scanAsync(frameProvider: () -> Bitmap?, action: ActionConfig, callback: (PointF?) -> Unit) {
         if (isScanning) {
-            logDiagnostic("AI_SCANNER", "Пропуск: сканирование уже выполняется.")
+            logDiagnostic("AI_SCANNER", "Пропуск: асинхронное сканирование уже выполняется.")
             callback(null)
             return
         }
@@ -38,7 +38,7 @@ class AiScannerEngine(private val service: MyAutoClickService) {
     fun scan(frameProvider: () -> Bitmap?, action: ActionConfig): AiScanResult {
         val frame = frameProvider()
         if (frame == null) {
-            logDiagnostic("AI_SCANNER", "Кадр экрана недоступен.")
+            logDiagnostic("AI_SCANNER", "Снимок экрана недоступен.")
             return AiScanResult(null, emptyList())
         }
 
@@ -49,12 +49,12 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         }
 
         if (candidates.isEmpty()) {
-            logDiagnostic("AI_SCANNER", "Совпадений по шаблонам не найдено.")
+            logDiagnostic("AI_SCANNER", "Совпадений по маскам не найдено.")
             return AiScanResult(null, emptyList())
         }
 
         val bestCandidate = candidates.first()
-        logDiagnostic("AI_SCANNER", "Мультипоиск: найден шаблон #${bestCandidate.templateIndex} со score=${"%.2f".format(bestCandidate.score)} в ${bestCandidate.point}")
+        logDiagnostic("AI_SCANNER", "ИИ Нашел шаблон #${bestCandidate.templateIndex} (score=${"%.2f".format(bestCandidate.score)}) в точке ${bestCandidate.point}")
         return AiScanResult(bestCandidate.point, candidates)
     }
 }

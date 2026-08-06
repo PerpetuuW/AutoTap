@@ -1,4 +1,30 @@
-package com.example.autotap
+import os
+import sys
+
+def validate_kotlin(content, filename):
+    brackets = {'(': ')', '{': '}', '[': ']'}
+    stack = []
+    for char in content:
+        if char in brackets.keys():
+            stack.append(char)
+        elif char in brackets.values():
+            if not stack:
+                raise ValueError(f"Ошибка синтаксиса в {filename}: Лишняя закрывающая скобка '{char}'")
+            top = stack.pop()
+            if brackets[top] != char:
+                raise ValueError(f"Ошибка синтаксиса в {filename}: Несоответствие скобок '{top}' и '{char}'")
+    if stack:
+        raise ValueError(f"Ошибка синтаксиса в {filename}: Незакрытые скобки {stack}")
+
+    forbidden = ["TODO()", "// остальной код", "// TODO"]
+    for item in forbidden:
+        if item in content:
+            raise ValueError(f"Обнаружена запрещенная заглушка '{item}' в файле {filename}")
+
+files = {}
+
+# 1. MyAutoClickService.kt — Неблокирующая задержка скриншота через Handler.postDelayed
+files["app/src/main/java/com/example/autotap/MyAutoClickService.kt"] = """package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
@@ -271,3 +297,141 @@ class MyAutoClickService : AccessibilityService() {
         overlayManager.showClickVisualizer(x, y)
     }
 }
+"""
+
+# 2. GestureExecutor.kt — Настоящая синхронизация performClickSync c CountDownLatch
+files["app/src/main/java/com/example/autotap/engine/GestureExecutor.kt"] = """package com.example.autotap.engine
+
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.PointF
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.random.Random
+
+class GestureExecutor(private val service: MyAutoClickService) {
+
+    fun performClick(x: Float, y: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        if (service.isOverlayArea(x, y)) {
+            logDiagnostic("GESTURE", "Пропуск клика в ($x, $y): точка попадает в область активного оверлея.")
+            callback?.invoke(false)
+            return
+        }
+
+        try {
+            val path = Path()
+            path.moveTo(x, y)
+            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(10L))
+            service.dispatchGestureTask(stroke, "Click at ($x, $y)", callback)
+        } catch (e: Exception) {
+            logError("GESTURE", "Ошибка выполнения клика ($x, $y)", e)
+            callback?.invoke(false)
+        }
+    }
+
+    fun performClickSync(x: Float, y: Float, durationMs: Long): Boolean {
+        if (service.isOverlayArea(x, y)) {
+            logDiagnostic("GESTURE", "Пропуск клика Sync в ($x, $y): точка попадает в оверлей.")
+            return false
+        }
+        var successResult = false
+        val latch = CountDownLatch(1)
+        performClick(x, y, durationMs) { result ->
+            successResult = result
+            latch.countDown()
+        }
+        try {
+            latch.await(durationMs + 500L, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {}
+        return successResult
+    }
+
+    fun performClickWithJitter(x: Float, y: Float, jitterRadius: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        val offsetX = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
+        val offsetY = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
+        val targetX = (x + offsetX).coerceAtLeast(0f)
+        val targetY = (y + offsetY).coerceAtLeast(0f)
+
+        logDiagnostic("GESTURE", "Клик с джиттером: база=($x, $y), итоговая=($targetX, $targetY)")
+        performClick(targetX, targetY, durationMs, callback)
+    }
+
+    fun performSwipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        try {
+            val path = Path()
+            path.moveTo(startX, startY)
+            path.lineTo(endX, endY)
+            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(100L))
+            service.dispatchGestureTask(stroke, "Swipe ($startX, $startY) -> ($endX, $endY)", callback)
+        } catch (e: Exception) {
+            logError("GESTURE", "Ошибка выполнения свайпа", e)
+            callback?.invoke(false)
+        }
+    }
+
+    fun performJoystickRealtime(dx: Float, dy: Float, centerX: Float, centerY: Float, speedFactor: Float = 1.0f) {
+        try {
+            val targetX = (centerX + dx * speedFactor).coerceAtLeast(0f)
+            val targetY = (centerY + dy * speedFactor).coerceAtLeast(0f)
+
+            val path = Path().apply {
+                moveTo(centerX, centerY)
+                lineTo(targetX, targetY)
+            }
+
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 25L)
+            service.dispatchGestureTask(stroke, "JoystickRealtime dx=$dx dy=$dy", null)
+        } catch (e: Exception) {
+            logError("GESTURE", "Ошибка выполнения микро-жеста джойстика", e)
+        }
+    }
+
+    fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        performSwipe(startX, startY, endX, endY, durationMs, callback)
+    }
+
+    fun performLongPress(x: Float, y: Float, holdDurationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        logDiagnostic("GESTURE", "Долгое нажатие ($x, $y) длительность: ${holdDurationMs}мс")
+        performClick(x, y, holdDurationMs.coerceAtLeast(500L), callback)
+    }
+
+    fun performJoystickPath(pathPoints: List<PointF>, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        if (pathPoints.isEmpty()) {
+            logError("GESTURE", "Список точек для джойстика пуст", null)
+            callback?.invoke(false)
+            return
+        }
+        try {
+            val path = Path()
+            path.moveTo(pathPoints[0].x, pathPoints[0].y)
+            for (i in 1 until pathPoints.size) {
+                path.lineTo(pathPoints[i].x, pathPoints[i].y)
+            }
+            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(200L))
+            service.dispatchGestureTask(stroke, "JoystickPath (точек=${pathPoints.size})", callback)
+        } catch (e: Exception) {
+            logError("GESTURE", "Ошибка выполнения пути джойстика", e)
+            callback?.invoke(false)
+        }
+    }
+}
+"""
+
+print("=== ПРИМЕНЕНИЕ АРХИТЕКТУРНЫХ УЛУЧШЕНИЙ ===")
+
+for rel_path, content in files.items():
+    abs_path = os.path.abspath(rel_path)
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+
+    if rel_path.endswith(".kt"):
+        validate_kotlin(content, rel_path)
+
+    with open(abs_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"SUCCESS: {rel_path}")
+
+print("=== АРХИТЕКТУРНЫЕ УЛУЧШЕНИЯ УСПЕШНО ПРИМЕНЕНЫ ===")

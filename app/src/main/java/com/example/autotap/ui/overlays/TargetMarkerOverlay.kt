@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.R
 import com.example.autotap.findViewByNames
@@ -23,25 +24,32 @@ class TargetMarkerOverlay(context: Context, overlayManager: OverlayManager) :
     }
 
     override fun createView(): View {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
         val inflater = LayoutInflater.from(context)
-        val view = try {
+        val startView = try {
             inflater.inflate(R.layout.floating_target, null)
         } catch (e: Exception) {
             View(context)
         }
-        tvNumber = view.findViewByNames("tvTargetNumber") as? TextView
+        tvNumber = startView.findViewByNames("tvTargetNumber") as? TextView
+        container.addView(startView)
 
         try {
             val endView = inflater.inflate(R.layout.floating_target_end, null)
             tvEndNumber = endView.findViewByNames("tvTargetNumberEnd") as? TextView
+            container.addView(endView)
         } catch (_: Exception) {}
 
-        return view
+        return container
     }
 
     fun setTargetNumber(num: Int) {
         val textStr = num.toString()
         tvNumber?.text = textStr
-        tvEndNumber?.text = textStr
+        tvEndNumber?.text = "${textStr}E"
     }
 }

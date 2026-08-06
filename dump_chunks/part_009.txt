@@ -1,0 +1,680 @@
+        <EditText
+            android:selectAllOnFocus="true"
+            android:id="@+id/etGlobalPreScreenshot"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="@color/bg_dark_blue"
+            android:textColor="#FFFFFF"
+            android:inputType="number"
+            android:padding="8dp"
+            android:text="250"/>
+        <TextView
+            android:id="@+id/tvSecPreScreenshot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="= 0.25 сек"
+            android:textColor="#8D99AE"
+            android:textSize="11sp"
+            android:layout_marginBottom="14dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/btnSaveGlobalSettings"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="42dp"
+                android:text="Сохранить"
+                android:backgroundTint="@color/accent_blue"/>
+            <View
+                android:layout_width="8dp"
+                android:layout_height="match_parent"/>
+            <Button
+                android:id="@+id/btnCancelGlobalSettings"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="42dp"
+                android:text="Отмена"
+                android:backgroundTint="@color/red_close"/>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>
+--- END OF FILE: app/src/main/res/layout/dialog_global_settings.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_info.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="320dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/panel_background"
+    android:padding="18dp"
+    android:elevation="18dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="💡 Справка и Возможности v28.1.1 PRO"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+
+        <Button
+            android:id="@+id/tabClick"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="38dp"
+            android:text="Клики"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            android:backgroundTint="@color/accent_blue"/>
+
+        <Button
+            android:id="@+id/tabSwipe"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="38dp"
+            android:text="Свайпы"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:layout_marginStart="4dp"/>
+
+        <Button
+            android:id="@+id/tabAi"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="38dp"
+            android:text="ИИ-Сканер"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+    <ScrollView
+        android:overScrollMode="never"
+        android:layout_width="match_parent"
+        android:layout_height="180dp"
+        android:background="@color/bg_dark_blue"
+        android:padding="10dp"
+        android:layout_marginBottom="14dp">
+
+        <TextView
+            android:id="@+id/tvTabContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#F0F6FC"
+            android:textSize="12sp"
+            android:lineSpacingExtra="3dp"/>
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnCloseInfoDialog"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:text="Закрыть"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:textSize="13sp"
+        android:backgroundTint="@color/accent_blue"/>
+</LinearLayout>
+
+--- END OF FILE: app/src/main/res/layout/dialog_info.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_logs.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="300dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/panel_blue"
+    android:padding="20dp"
+    android:elevation="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Лог ошибок приложения"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp"/>
+
+    <ScrollView
+        android:overScrollMode="never"
+        android:layout_width="match_parent"
+        android:layout_height="250dp"
+        android:layout_marginBottom="20dp">
+        <TextView
+            android:id="@+id/tvLogsContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:text="Логи пусты."/>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnShareLogs"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="44dp"
+            android:text="📋 Поделиться"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="10sp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"/>
+
+        <View
+            android:layout_width="4dp"
+            android:layout_height="match_parent"/>
+
+        <Button
+            android:id="@+id/btnClearLogs"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="44dp"
+            android:text="Очистить"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/red_close"
+            android:textSize="10sp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"/>
+
+        <View
+            android:layout_width="4dp"
+            android:layout_height="match_parent"/>
+
+        <Button
+            android:id="@+id/btnCloseLogs"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="44dp"
+            android:text="Закрыть"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#1C2541"
+            android:textSize="10sp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"/>
+    </LinearLayout>
+</LinearLayout>
+--- END OF FILE: app/src/main/res/layout/dialog_logs.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_mask_editor.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="340dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/panel_blue"
+    android:padding="12dp"
+    android:elevation="18dp">
+
+    <!-- Заголовок с крестиком закрытия справа -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="4dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:text="Редактирование Шаблонов"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/btnCloseMaskEditor"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="@null"
+            android:contentDescription="Close"
+            android:src="@drawable/ic_close"
+            android:tint="#FFFFFF" />
+    </RelativeLayout>
+
+    <!-- Выбор формы кадра (Круг / Прямоугольник) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <Button
+            android:id="@+id/btnToggleMaskShape"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="34dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="Форма: 🔘 Круг / 🔲 Прямоугольник"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:padding="0dp" />
+    </LinearLayout>
+
+    <!-- Регулировка ширины и высоты кадра W / H -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <Button
+            android:id="@+id/btnCropWidthMinus"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="32dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="➖ W-20"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:textSize="10sp"
+            android:padding="0dp" />
+
+        <TextView
+            android:id="@+id/tvCropSizeDisplay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📏 100x100 px"
+            android:textColor="#00F5D4"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnCropWidthPlus"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="32dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="➕ W+20"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:textSize="10sp"
+            android:padding="0dp" />
+
+        <Button
+            android:id="@+id/btnCropHeightPlus"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="32dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="➕ H+20"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:textSize="10sp"
+            android:padding="0dp"
+            android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/btnTemplateSearchArea"
+        android:layout_width="match_parent"
+        android:layout_height="34dp"
+        android:minHeight="34dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:text="📐 Задать зону поиска шаблона"
+        android:textColor="#FFB703"
+        android:backgroundTint="@color/bg_dark_blue"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="6dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="👉 Кликните на скриншот для вырезки кадра:"
+        android:textColor="#00B4D8"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="4dp"/>
+
+    <!-- Адаптивный фоновый скриншот -->
+    <ImageView
+        android:id="@+id/ivEditorFullScreenshot"
+        android:layout_width="match_parent"
+        android:layout_height="260dp"
+        android:scaleType="fitCenter"
+        android:background="#000000"
+        android:layout_marginBottom="8dp"/>
+
+    <!-- Нижняя панель с маской и кнопками -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginEnd="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Маска:"
+                android:textColor="@color/text_gray"
+                android:textSize="9sp"
+                android:layout_marginBottom="2dp"/>
+
+            <ImageView
+                android:id="@+id/ivEditorMaskPreview"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:scaleType="fitCenter"
+                android:background="#1C2541"
+                android:padding="2dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="4dp">
+
+                <Button
+                    android:id="@+id/btnSaveMaskEdits"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="36dp"
+                    android:text="Сохранить"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="@color/accent_blue"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:padding="0dp"/>
+
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="match_parent"/>
+
+                <Button
+                    android:id="@+id/btnCopyMaskEdits"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="36dp"
+                    android:text="📋 Копия"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="#1C2541"
+                    android:textSize="11sp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:padding="0dp"/>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnCancelMaskEdits"
+                android:layout_width="match_parent"
+                android:layout_height="34dp"
+                android:text="Отмена"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="@color/red_close"
+                android:textSize="11sp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:padding="0dp"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
+
+--- END OF FILE: app/src/main/res/layout/dialog_mask_editor.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_permissions.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="320dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/panel_background"
+    android:padding="18dp"
+    android:elevation="18dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🛡 Безопасность и Разрешения"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="10dp"/>
+
+    <ScrollView
+        android:overScrollMode="never"
+        android:layout_width="match_parent"
+        android:layout_height="240dp"
+        android:layout_marginBottom="14dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🔒 Данное приложение работает 100% ЛОКАЛЬНО.\nМы не собираем и не передаем ваши клики, скриншоты или личные данные. У приложения полностью отсутствует разрешение на доступ к сети Интернет."
+                android:textColor="#F0F6FC"
+                android:textSize="12sp"
+                android:lineSpacingExtra="2dp"
+                android:layout_marginBottom="12dp"/>
+
+            <TextView
+                android:id="@+id/tvDevicePath"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Определение вашей модели устройства..."
+                android:textColor="#58A6FF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:lineSpacingExtra="2dp"/>
+        </LinearLayout>
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnClosePermissionsDialog"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="Понятно, к настройкам ►"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:textSize="13sp"
+        android:backgroundTint="@color/accent_blue"/>
+</LinearLayout>
+
+--- END OF FILE: app/src/main/res/layout/dialog_permissions.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_save_recording.xml ---
+﻿<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="280dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/panel_blue"
+    android:padding="16dp"
+    android:elevation="18dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="💾 Сохранить запись"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Введите имя для нового сценария:"
+        android:textColor="@color/text_gray"
+        android:textSize="12sp"
+        android:layout_marginBottom="4dp"/>
+
+    <EditText
+            android:selectAllOnFocus="true"
+        android:id="@+id/etRecordScriptName"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:background="@color/bg_dark_blue"
+        android:textColor="#FFFFFF"
+        android:padding="8dp"
+        android:hint="Имя сценария"
+        android:textColorHint="@color/text_gray"
+        android:layout_marginBottom="14dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnSaveRecordScript"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="42dp"
+            android:text="Сохранить"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="11sp"
+            android:textStyle="bold"/>
+
+        <View
+            android:layout_width="6dp"
+            android:layout_height="match_parent"/>
+
+        <Button
+            android:id="@+id/btnSkipRecordScript"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="42dp"
+            android:text="Пропустить"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#1C2541"
+            android:textSize="11sp"/>
+    </LinearLayout>
+</LinearLayout>
+--- END OF FILE: app/src/main/res/layout/dialog_save_recording.xml ---
+
+--- START OF FILE: app/src/main/res/layout/dialog_scripts.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="320dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/panel_background"
+    android:padding="16dp"
+    android:elevation="18dp">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp">
+
+        <TextView
+            android:id="@+id/tvScriptTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:text="📂 Управление сценариями"
+            android:textColor="@color/text_white"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/btnCloseScriptsHeader"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="@null"
+            android:contentDescription="Close"
+            android:src="@drawable/ic_close"
+            android:tint="#FFFFFF" />
+    </RelativeLayout>
+
+    <!-- Блок настроек циклов и сцепки сценариев -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/drag_handle_bg"
+        android:padding="8dp"
+        android:layout_marginBottom="10dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚙️ Циклы сценария и Эстафета:"
+            android:textColor="#FFB703"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="6dp">
+
+            <TextView
+                android:layout_width="0dp"

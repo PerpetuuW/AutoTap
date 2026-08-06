@@ -1,0 +1,680 @@
+
+        view.bindClickByNames("btnCancelSearchArea") {
+            hide()
+        }
+
+        val handle = view.findViewByNames("handleMoveSearchArea", "layoutSearchTopBar") ?: view
+        setupDragAndDrop(handle)
+
+        val resizeHandle = view.findViewByNames("handleResizeSearchArea")
+        if (resizeHandle != null) {
+            setupResizeHandler(resizeHandle)
+        }
+
+        return view
+    }
+
+    private fun setupResizeHandler(resizeView: View) {
+        var startW = 0
+        var startH = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        resizeView.setOnTouchListener { _, event ->
+            val lp = layoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startW = lp.width.takeIf { it > 0 } ?: currentWidthPx
+                    startH = lp.height.takeIf { it > 0 } ?: currentHeightPx
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+
+                    currentWidthPx = max(minSizePx, startW + dx)
+                    currentHeightPx = max(minSizePx, startH + dy)
+
+                    lp.width = currentWidthPx
+                    lp.height = currentHeightPx
+                    width = currentWidthPx
+                    height = currentHeightPx
+
+                    try {
+                        windowManager.updateViewLayout(overlayView, lp)
+                    } catch (e: Exception) {
+                        logError("OVERLAY", "Ошибка ресайза области поиска", e)
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/SearchAreaOverlay.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TargetMarkerOverlay.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.TextView
+import com.example.autotap.R
+import com.example.autotap.findViewByNames
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+
+class TargetMarkerOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private var tvNumber: TextView? = null
+    private var tvEndNumber: TextView? = null
+
+    init {
+        gravity = Gravity.TOP or Gravity.START
+        layer = OverlayLayer.VISUALIZER_LAYER
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = try {
+            inflater.inflate(R.layout.floating_target, null)
+        } catch (e: Exception) {
+            View(context)
+        }
+        tvNumber = view.findViewByNames("tvTargetNumber") as? TextView
+
+        try {
+            val endView = inflater.inflate(R.layout.floating_target_end, null)
+            tvEndNumber = endView.findViewByNames("tvTargetNumberEnd") as? TextView
+        } catch (_: Exception) {}
+
+        return view
+    }
+
+    fun setTargetNumber(num: Int) {
+        val textStr = num.toString()
+        tvNumber?.text = textStr
+        tvEndNumber?.text = textStr
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TargetMarkerOverlay.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TemplatesManagerDialog.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+
+class TemplatesManagerDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    init {
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.6f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_templates_manager, null)
+
+        try {
+            inflater.inflate(R.layout.item_template, null)
+        } catch (_: Exception) {}
+
+        view.bindClickByNames("btnOpenTrashBin") {
+            logDiagnostic("UI", "Открытие корзины удаленных масок.")
+        }
+
+        view.bindClickByNames("btnCloseTemplatesManager") {
+            logDiagnostic("UI", "Закрыт Менеджер Шаблонов btnCloseTemplatesManager.")
+            hide()
+        }
+
+        return view
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TemplatesManagerDialog.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TutorialOverlay.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PointF
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
+import android.graphics.RectF
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.TextView
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.TutorialStepConfig
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+
+class TutorialOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private var currentStep: TutorialStepConfig? = null
+    private var tvTitleView: TextView? = null
+    private var tvDescView: TextView? = null
+    private var spotlightView: SpotlightCustomView? = null
+
+    init {
+        width = FrameLayout.LayoutParams.MATCH_PARENT
+        height = FrameLayout.LayoutParams.MATCH_PARENT
+        gravity = Gravity.TOP or Gravity.START
+        initialX = 0
+        initialY = 0
+        layer = OverlayLayer.TUTORIAL_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val root = FrameLayout(context)
+
+        val customSpotlight = SpotlightCustomView(context) { event ->
+            handleTouchInTutorial(event)
+        }
+        spotlightView = customSpotlight
+        root.addView(customSpotlight, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
+        val inflater = LayoutInflater.from(context)
+        val card = try {
+            inflater.inflate(R.layout.floating_tutorial_card, null)
+        } catch (e: Exception) {
+            View(context)
+        }
+
+        tvTitleView = card.findViewByNames("tvTutTitle") as? TextView
+        tvDescView = card.findViewByNames("tvTutDesc") as? TextView
+
+        card.bindClickByNames("btnTutNext") {
+            logDiagnostic("TUTORIAL", "Нажата btnTutNext.")
+            MyAutoClickService.instance?.tutorialEngine?.nextStep()
+        }
+
+        card.bindClickByNames("btnTutPrev") {
+            logDiagnostic("TUTORIAL", "Нажата btnTutPrev (Возврат назад).")
+            MyAutoClickService.instance?.tutorialEngine?.previousStep()
+        }
+
+        card.bindClickByNames("btnTutSkip") {
+            logDiagnostic("TUTORIAL", "Нажата btnTutSkip.")
+            MyAutoClickService.instance?.tutorialEngine?.stopTutorial()
+        }
+
+        val cardParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        }
+
+        root.addView(card, cardParams)
+        return root
+    }
+
+    fun renderStep(step: TutorialStepConfig) {
+        currentStep = step
+        tvTitleView?.text = step.title
+        tvDescView?.text = step.message
+        spotlightView?.setHighlightArea(step.highlightArea)
+        logDiagnostic("TUTORIAL", "Отображение туториала: ${step.title}")
+    }
+
+    private fun handleTouchInTutorial(event: MotionEvent): Boolean {
+        val step = currentStep ?: return false
+        val targetArea = step.waitForClickOnArea ?: step.highlightArea
+
+        if (event.action == MotionEvent.ACTION_DOWN) {
+            val touchX = event.rawX.toInt()
+            val touchY = event.rawY.toInt()
+
+            if (targetArea != null && targetArea.contains(touchX, touchY)) {
+                logDiagnostic("TUTORIAL", "Клик попал в целевую область ($touchX, $touchY).")
+                MyAutoClickService.instance?.tutorialEngine?.nextStep()
+                return false
+            } else {
+                logDiagnostic("TUTORIAL", "Клик вне целевой области ($touchX, $touchY). Игнорируется.")
+                return true
+            }
+        }
+        return false
+    }
+
+    private class SpotlightCustomView(
+        context: Context,
+        private val onTouchEventCallback: (MotionEvent) -> Boolean
+    ) : View(context) {
+
+        private var highlightArea: Rect? = null
+
+        private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#B3000000")
+            style = Paint.Style.FILL
+        }
+
+        private val clearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        }
+
+        private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#FF00E676")
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+        }
+
+        init {
+            setLayerType(LAYER_TYPE_SOFTWARE, null)
+        }
+
+        fun setHighlightArea(rect: Rect?) {
+            highlightArea = rect
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
+
+            val rect = highlightArea
+            if (rect != null) {
+                val rectF = RectF(rect)
+                canvas.drawRoundRect(rectF, 16f, 16f, clearPaint)
+                canvas.drawRoundRect(rectF, 16f, 16f, borderPaint)
+            }
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            val handled = onTouchEventCallback(event)
+            return handled || super.onTouchEvent(event)
+        }
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TutorialOverlay.kt ---
+
+--- START OF FILE: app/src/main/res/drawable/beacon_ring.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#4000F5D4" />
+    <stroke android:width="4dp" android:color="#00F5D4" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/beacon_ring.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/border_capture.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#2558A6FF" />
+    <stroke android:width="2.5dp" android:color="#58A6FF" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/border_capture.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/border_capture_square.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#2558A6FF" />
+    <stroke android:width="2.5dp" android:color="#00F5D4" />
+    <corners android:radius="6dp" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/border_capture_square.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/border_red_highlight.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#25FF0000" />
+    <stroke android:width="4dp" android:color="#FF0000" />
+    <corners android:radius="8dp" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/border_red_highlight.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/border_yellow_search_area.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#20FFB703" />
+    <stroke android:width="2.5dp" android:color="#FFB703" />
+    <corners android:radius="6dp" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/border_yellow_search_area.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/btn_premium_primary.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40FFFFFF">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#1F6FEB"
+                android:endColor="#0D47A1"
+                android:angle="135" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="#00F5D4" />
+        </shape>
+    </item>
+</ripple>
+
+--- END OF FILE: app/src/main/res/drawable/btn_premium_primary.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/btn_premium_record.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40FFFFFF">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#F04438"
+                android:endColor="#B3261E"
+                android:angle="135" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="#FF8A80" />
+        </shape>
+    </item>
+</ripple>
+
+--- END OF FILE: app/src/main/res/drawable/btn_premium_record.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/btn_premium_secondary.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#4058A6FF">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#161B22" />
+            <corners android:radius="12dp" />
+            <stroke android:width="1.8dp" android:color="#58A6FF" />
+        </shape>
+    </item>
+</ripple>
+
+--- END OF FILE: app/src/main/res/drawable/btn_premium_secondary.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/circle_target.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#E60D1117" />
+    <stroke android:width="3.5dp" android:color="#00F5D4" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/circle_target.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/circle_target_end.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#E60D1117" />
+    <stroke android:width="3.5dp" android:color="#FFB703" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/circle_target_end.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/drag_handle_bg.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#161B22" />
+    <corners android:radius="10dp" />
+    <stroke android:width="1.5dp" android:color="#00F5D4" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/drag_handle_bg.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/handle_manipulator_bg.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#0D1117" />
+    <stroke android:width="3dp" android:color="#00F5D4" />
+</shape>
+
+--- END OF FILE: app/src/main/res/drawable/handle_manipulator_bg.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_add.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_add.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_camera.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M9.4,10.5l4.6,0l1,-2l3,0c1.1,0 2,0.9 2,2l0,8c0,1.1 -0.9,2 -2,2l-12,0c-1.1,0 -2,-0.9 -2,-2l0,-8c0,-1.1 0.9,-2 2,-2l3,0l1,2zM12,17c1.65,0 3,-1.35 3,-3s-1.35,-3 -3,-3s-3,1.35 -3,3s1.35,3 3,3z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_camera.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_close.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_close.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_eye.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,4.5C7,4.5 2.73,7.61 1,12c1.73,4.39 6,7.5 11,7.5s9.27,-3.11 11,-7.5c-1.73,-4.39 -6,-7.5 -11,-7.5zm0,12.5c-2.76,0 -5,-2.24 -5,-5s2.24,-5 5,-5 5,2.24 5,5 -2.24,5 -5,5zm0,-8c-1.66,0 -3,1.34 -3,3s1.34,3 3,3 3,-1.34 3,-3 -1.34,-3 -3,-3z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_eye.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_eye_off.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,7c2.76,0 5,2.24 5,5 0,0.65 -0.23,1.24 -0.62,1.72l3.22,3.22c2.08,-1.29 3.73,-3.18 4.4,-5.44 -1.73,-4.39 -6,-7.5 -11,-7.5 -1.4,0 -2.74,0.25 -3.98,0.7l2.16,2.16C11.06,7.1 11.52,7 12,7zM2,4.27l2.28,2.28 0.46,0.46C3.08,8.3 1.78,10.02 1,12c1.73,4.39 6,7.5 11,7.5 1.55,0 3.03,-0.3 4.38,-0.84l0.42,0.42L19.73,22 21,20.73 3.27,3 2,4.27zM7.53,9.8l1.55,1.55c-0.05,0.21 -0.08,0.43 -0.08,0.65 0,1.66 1.34,3 3,3 0.22,0 0.44,-0.03 0.65,-0.08l1.55,1.55c-0.67,0.33 -1.41,0.53 -2.2,0.53 -2.76,0 -5,-2.24 -5,-5 0,-0.79 0.2,-1.53 0.53,-2.2z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_eye_off.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_folder.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2h-8l-2,-2z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_folder.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_help.xml ---
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zm1,16h-2v-2h2v2zm1.07,-7.75l-0.9,0.92C12.45,11.9 12,12.5 12,14h-2v-0.5c0,-1.1 0.45,-2.1 1.17,-2.83l1.24,-1.26c0.37,-0.36 0.59,-0.86 0.59,-1.41 0,-1.1 -0.9,-2 -2,-2s-2,0.9 -2,2H7c0,-2.76 2.24,-5 5,-5s5,2.24 5,5c0,1.04 -0.42,1.99 -1.07,2.75z"/>
+</vector>
+
+--- END OF FILE: app/src/main/res/drawable/ic_help.xml ---
+
+--- START OF FILE: app/src/main/res/drawable/ic_launcher_background.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#3DDC84"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M9,0L9,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,0L19,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,0L29,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,0L39,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49,0L49,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59,0L59,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M69,0L69,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M79,0L79,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M89,0L89,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M99,0L99,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,9L108,9"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,19L108,19"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,29L108,29"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,39L108,39"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,49L108,49"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,59L108,59"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,69L108,69"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,79L108,79"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,89L108,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,99L108,99"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,29L89,29"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"

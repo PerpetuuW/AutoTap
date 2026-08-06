@@ -42,7 +42,13 @@ class MainActivity : AppCompatActivity() {
 
         val root = window.decorView.findViewById<View>(android.R.id.content)
 
-        (root.findViewByNames("tvVersion") as? TextView)?.text = "v37 Precision Architecture"
+        val versionName = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: getString(R.string.app_version)
+        } catch (_: Exception) {
+            getString(R.string.app_version)
+        }
+
+        (root.findViewByNames("tvVersion") as? TextView)?.text = versionName
         (root.findViewByNames("tvSubTitle") as? TextView)?.text = "Комплекс Автоматизации и ИИ Поиска"
 
         root.bindClickByNames("btnStartPanel") {

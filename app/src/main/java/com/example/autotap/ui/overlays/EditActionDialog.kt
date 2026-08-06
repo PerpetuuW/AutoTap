@@ -6,14 +6,16 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
@@ -25,6 +27,11 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
     private var currentStepIdx = 0
     private var tvStepIndexView: TextView? = null
+    private var etDelayView: EditText? = null
+    private var etHoldDurationView: EditText? = null
+    private var etRepeatCountView: EditText? = null
+    private var etSimilarityPercentView: EditText? = null
+    private var etRandomRadiusView: EditText? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -41,7 +48,12 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.floating_edit_dialog, null)
 
-        tvStepIndexView = view.findViewByNames("tvTemplateIndex") as? TextView
+        tvStepIndexView = view.findViewByNames("tvTemplateIndex", "tvDialogTitle") as? TextView
+        etDelayView = view.findViewByNames("etDelay") as? EditText
+        etHoldDurationView = view.findViewByNames("etHoldDuration") as? EditText
+        etRepeatCountView = view.findViewByNames("etRepeatCount") as? EditText
+        etSimilarityPercentView = view.findViewByNames("etSimilarityPercent") as? EditText
+        etRandomRadiusView = view.findViewByNames("etRandomRadius") as? EditText
 
         view.bindClickByNames("btnNextStep") {
             val listSize = MyAutoClickService.instance?.actionsList?.size ?: 0
@@ -63,7 +75,7 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
             if (list != null && list.isNotEmpty() && currentStepIdx in list.indices) {
                 list.removeAt(currentStepIdx)
                 context.vibrateFeedback()
-                logDiagnostic("SCRIPT", "Шаг #$currentStepIdx удален из сценария.")
+                logDiagnostic("SCRIPT", "Шаг #$currentStepIdx удален.")
                 if (currentStepIdx >= list.size) {
                     currentStepIdx = (list.size - 1).coerceAtLeast(0)
                 }
@@ -84,7 +96,7 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         }
 
         view.bindClickByNames("btnSave", "btnSaveHeader") {
-            logDiagnostic("SCRIPT", "Шаг сохранен в EditActionDialog.")
+            saveCurrentStepConfig()
             context.vibrateFeedback()
             hide()
         }
@@ -98,7 +110,29 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     }
 
     private fun updateStepDisplay() {
-        val listSize = MyAutoClickService.instance?.actionsList?.size ?: 0
-        tvStepIndexView?.text = "Шаг ${currentStepIdx + 1} из $listSize"
+        val list = MyAutoClickService.instance?.actionsList ?: return
+        if (currentStepIdx in list.indices) {
+            val action = list[currentStepIdx]
+            tvStepIndexView?.text = "Шаг ${currentStepIdx + 1} из ${list.size} (${action.type.name})"
+            etDelayView?.setText((action.delay / 1000f).toString())
+            etHoldDurationView?.setText(action.holdDuration.toString())
+            etSimilarityPercentView?.setText(action.similarityPercent.toString())
+            etRandomRadiusView?.setText(action.randomRadius.toInt().toString())
+        } else {
+            tvStepIndexView?.text = "Сценарий пуст"
+        }
+    }
+
+    private fun saveCurrentStepConfig() {
+        val list = MyAutoClickService.instance?.actionsList ?: return
+        if (currentStepIdx in list.indices) {
+            val action = list[currentStepIdx]
+            val delaySec = etDelayView?.text?.toString()?.toFloatOrNull() ?: 1.0f
+            action.delay = (delaySec * 1000L).toLong()
+            action.holdDuration = etHoldDurationView?.text?.toString()?.toLongOrNull() ?: 100L
+            action.similarityPercent = etSimilarityPercentView?.text?.toString()?.toIntOrNull() ?: 70
+            action.randomRadius = etRandomRadiusView?.text?.toString()?.toFloatOrNull() ?: 0f
+            logDiagnostic("SCRIPT", "Настройки шага #${currentStepIdx + 1} обновлены из UI!")
+        }
     }
 }
