@@ -4,20 +4,20 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.PointF
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
-import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
-import com.example.autotap.dpToPx
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.model.TutorialStepConfig
 import com.example.autotap.ui.base.OverlayBase
@@ -29,7 +29,8 @@ class TutorialOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
     private var currentStep: TutorialStepConfig? = null
-    private var messageTextView: TextView? = null
+    private var tvTitleView: TextView? = null
+    private var tvDescView: TextView? = null
     private var spotlightView: SpotlightCustomView? = null
 
     init {
@@ -54,51 +55,35 @@ class TutorialOverlay(context: Context, overlayManager: OverlayManager) :
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
 
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#EE1E1E2C"))
-            setPadding(32, 32, 32, 32)
+        val inflater = LayoutInflater.from(context)
+        val card = try {
+            inflater.inflate(R.layout.floating_tutorial_card, null)
+        } catch (e: Exception) {
+            View(context)
         }
 
-        val tv = TextView(context).apply {
-            text = "Инструкция туториала"
-            setTextColor(Color.WHITE)
-            textSize = 16f
-            setPadding(0, 0, 0, 16)
-        }
-        messageTextView = tv
-        card.addView(tv)
+        tvTitleView = card.findViewByNames("tvTutTitle") as? TextView
+        tvDescView = card.findViewByNames("tvTutDesc") as? TextView
 
-        val btnContainer = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+        card.bindClickByNames("btnTutNext") {
+            logDiagnostic("TUTORIAL", "Нажата btnTutNext в floating_tutorial_card.")
+            MyAutoClickService.instance?.tutorialEngine?.nextStep()
         }
 
-        val btnNext = Button(context).apply {
-            text = "Далее"
-            setOnClickListener {
-                logDiagnostic("TUTORIAL", "Нажата кнопка 'Далее' в туториале.")
-                MyAutoClickService.instance?.tutorialEngine?.nextStep()
-            }
+        card.bindClickByNames("btnTutPrev") {
+            logDiagnostic("TUTORIAL", "Нажата btnTutPrev в floating_tutorial_card.")
         }
-        btnContainer.addView(btnNext)
 
-        val btnSkip = Button(context).apply {
-            text = "Пропустить"
-            setOnClickListener {
-                logDiagnostic("TUTORIAL", "Туториал пропущен пользователем.")
-                MyAutoClickService.instance?.tutorialEngine?.stopTutorial()
-            }
+        card.bindClickByNames("btnTutSkip") {
+            logDiagnostic("TUTORIAL", "Нажата btnTutSkip в floating_tutorial_card.")
+            MyAutoClickService.instance?.tutorialEngine?.stopTutorial()
         }
-        btnContainer.addView(btnSkip)
-
-        card.addView(btnContainer)
 
         val cardParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            bottomMargin = 100.dpToPx(context)
         }
 
         root.addView(card, cardParams)
@@ -107,9 +92,10 @@ class TutorialOverlay(context: Context, overlayManager: OverlayManager) :
 
     fun renderStep(step: TutorialStepConfig) {
         currentStep = step
-        messageTextView?.text = step.message
+        tvTitleView?.text = step.id
+        tvDescView?.text = step.message
         spotlightView?.setHighlightArea(step.highlightArea)
-        logDiagnostic("TUTORIAL", "Отображение шага туториала: ${step.id}")
+        logDiagnostic("TUTORIAL", "Отображение туториала: ${step.id}")
     }
 
     private fun handleTouchInTutorial(event: MotionEvent): Boolean {
@@ -123,10 +109,10 @@ class TutorialOverlay(context: Context, overlayManager: OverlayManager) :
             if (targetArea != null && targetArea.contains(touchX, touchY)) {
                 logDiagnostic("TUTORIAL", "Клик попал в целевую область туториала ($touchX, $touchY).")
                 MyAutoClickService.instance?.tutorialEngine?.nextStep()
-                return false // Пропускаем клик дальше к подлежащему элементу UI
+                return false
             } else {
                 logDiagnostic("TUTORIAL", "Клик вне целевой области туториала ($touchX, $touchY). Игнорируется.")
-                return true // Поглощаем клик
+                return true
             }
         }
         return false

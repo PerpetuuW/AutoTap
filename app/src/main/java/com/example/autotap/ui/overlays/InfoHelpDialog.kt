@@ -5,8 +5,10 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.TextView
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -15,6 +17,8 @@ import com.example.autotap.ui.base.OverlayPriority
 
 class InfoHelpDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
+
+    private var tvContent: TextView? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -29,14 +33,27 @@ class InfoHelpDialog(context: Context, overlayManager: OverlayManager) :
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = try {
-            inflater.inflate(R.layout.dialog_info, null)
-        } catch (e: Exception) {
-            View(context)
+        val view = inflater.inflate(R.layout.dialog_info, null)
+
+        tvContent = view.findViewByNames("tvTabContent") as? TextView
+
+        view.bindClickByNames("tabClick") {
+            tvContent?.text = "Справка по Кликам и Длительности кликов."
+            logDiagnostic("UI", "Переключение таба CLICK в InfoHelpDialog.")
         }
 
-        view.bindClickByNames("btn_close_info", "btnCloseInfo", "btn_close", "btnClose", "btn_ok") {
-            logDiagnostic("UI", "Закрыта справка (dialog_info.xml).")
+        view.bindClickByNames("tabSwipe") {
+            tvContent?.text = "Справка по Свайпам и Траекториям Движения."
+            logDiagnostic("UI", "Переключение таба SWIPE в InfoHelpDialog.")
+        }
+
+        view.bindClickByNames("tabAi") {
+            tvContent?.text = "Справка по ИИ-Поиску и Семействам Масок."
+            logDiagnostic("UI", "Переключение таба AI в InfoHelpDialog.")
+        }
+
+        view.bindClickByNames("btnCloseInfoDialog") {
+            logDiagnostic("UI", "Закрыта справка btnCloseInfoDialog.")
             hide()
         }
 

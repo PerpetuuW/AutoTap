@@ -1,15 +1,17 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.TextView
+import com.example.autotap.R
 import com.example.autotap.engine.ai.MatchCandidate
+import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 
 class CandidateSelectionOverlay(context: Context, overlayManager: OverlayManager) :
@@ -20,29 +22,15 @@ class CandidateSelectionOverlay(context: Context, overlayManager: OverlayManager
 
     init {
         gravity = Gravity.CENTER
+        layer = OverlayLayer.CANDIDATE_LAYER
     }
 
     override fun createView(): View {
-        val root = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#DD000000"))
-            setPadding(32, 32, 32, 32)
-        }
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.candidate_selection_overlay, null)
 
-        val title = TextView(context).apply {
-            text = "Выберите цель"
-            setTextColor(Color.WHITE)
-            textSize = 16f
-        }
-        root.addView(title)
-
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        candidatesContainer = container
-        root.addView(container)
-
-        return root
+        candidatesContainer = view.findViewByNames("candidateContainer") as? LinearLayout
+        return view
     }
 
     fun showCandidates(candidates: List<MatchCandidate>, callback: (MatchCandidate) -> Unit) {

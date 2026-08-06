@@ -16,7 +16,11 @@ import com.example.autotap.ui.overlays.GlobalSettingsDialog
 import com.example.autotap.ui.overlays.InfoHelpDialog
 import com.example.autotap.ui.overlays.JoystickOverlay
 import com.example.autotap.ui.overlays.MaskEditorDialog
+import com.example.autotap.ui.overlays.PermissionsDialog
+import com.example.autotap.ui.overlays.SaveRecordingDialog
 import com.example.autotap.ui.overlays.ScriptsDialog
+import com.example.autotap.ui.overlays.SearchAreaOverlay
+import com.example.autotap.ui.overlays.TargetMarkerOverlay
 import com.example.autotap.ui.overlays.TemplatesManagerDialog
 import com.example.autotap.ui.overlays.TutorialOverlay
 
@@ -38,6 +42,10 @@ class OverlayManager(val context: Context) {
     val floatingStopButton by lazy { FloatingStopButtonOverlay(context, this) }
     val addActionDialog by lazy { AddActionDialog(context, this) }
     val exportImportDialog by lazy { ExportImportDialog(context, this) }
+    val permissionsDialog by lazy { PermissionsDialog(context, this) }
+    val saveRecordingDialog by lazy { SaveRecordingDialog(context, this) }
+    val searchAreaOverlay by lazy { SearchAreaOverlay(context, this) }
+    val targetMarkerOverlay by lazy { TargetMarkerOverlay(context, this) }
 
     fun showControlPanel() {
         controlPanel.show()
@@ -76,5 +84,9 @@ class OverlayManager(val context: Context) {
         floatingStopButton.hide()
         addActionDialog.hide()
         exportImportDialog.hide()
+        permissionsDialog.hide()
+        saveRecordingDialog.hide()
+        searchAreaOverlay.hide()
+        targetMarkerOverlay.hide()
     }
 }

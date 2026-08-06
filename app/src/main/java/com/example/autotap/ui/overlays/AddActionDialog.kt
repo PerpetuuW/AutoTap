@@ -30,18 +30,23 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.dialog_add_action, null)
 
-        view.bindClickByNames("btn_add_click", "btnAddClick", "btn_click", "btn_add") {
+        view.bindClickByNames("btnAddClick") {
             MyAutoClickService.instance?.addNewActionAtPosition(0.5f, 0.5f)
-            logDiagnostic("SCRIPT", "Добавлено действие КЛИК через dialog_add_action.")
+            logDiagnostic("SCRIPT", "Добавлено действие через btnAddClick.")
             hide()
         }
 
-        view.bindClickByNames("btn_add_ai", "btnAddAi", "btn_ai", "btn_capture") {
+        view.bindClickByNames("btnAddSwipe") {
+            logDiagnostic("SCRIPT", "Запрос добавления свайпа через btnAddSwipe.")
+            hide()
+        }
+
+        view.bindClickByNames("btnAddTrigger") {
             overlayManager.captureFrameOverlay.show()
             hide()
         }
 
-        view.bindClickByNames("btn_cancel", "btnCancel", "btn_close", "btnClose") {
+        view.bindClickByNames("btnCancelAdd") {
             hide()
         }
 

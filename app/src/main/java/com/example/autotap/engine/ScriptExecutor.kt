@@ -9,6 +9,12 @@ import com.example.autotap.model.ActionType
 
 class ScriptExecutor(private val service: MyAutoClickService) {
 
+    val gestureExecutor: GestureExecutor
+        get() = service.gestureExecutor
+
+    val aiScannerEngine: AiScannerEngine
+        get() = service.aiScannerEngine
+
     @Volatile private var isRunning = false
     @Volatile var currentStepIndex = 0
         private set
@@ -67,25 +73,25 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         when (action.type) {
             ActionType.CLICK -> {
                 service.showClickVisualizer(pt.x, pt.y)
-                service.gestureExecutor.performClickWithJitter(pt.x, pt.y, action.randomRadius, action.holdDuration) { success ->
+                gestureExecutor.performClickWithJitter(pt.x, pt.y, action.randomRadius, action.holdDuration) { success ->
                     onStepCompleted(success, action)
                 }
             }
             ActionType.LONG_PRESS -> {
                 service.showClickVisualizer(pt.x, pt.y)
-                service.gestureExecutor.performLongPress(pt.x, pt.y, action.holdDuration) { success ->
+                gestureExecutor.performLongPress(pt.x, pt.y, action.holdDuration) { success ->
                     onStepCompleted(success, action)
                 }
             }
             ActionType.SWIPE -> {
                 val endPt = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
-                service.gestureExecutor.performSwipe(pt.x, pt.y, endPt.x, endPt.y, action.holdDuration) { success ->
+                gestureExecutor.performSwipe(pt.x, pt.y, endPt.x, endPt.y, action.holdDuration) { success ->
                     onStepCompleted(success, action)
                 }
             }
             ActionType.JOYSTICK_PATH -> {
                 if (action.joystickPath.isNotEmpty()) {
-                    service.gestureExecutor.performJoystickPath(action.joystickPath, action.holdDuration) { success ->
+                    gestureExecutor.performJoystickPath(action.joystickPath, action.holdDuration) { success ->
                         onStepCompleted(success, action)
                     }
                 } else {
@@ -117,20 +123,20 @@ class ScriptExecutor(private val service: MyAutoClickService) {
     private fun executeMultiSearchLoop(action: ActionConfig) {
         if (!isRunning) return
 
-        service.aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
+        aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
             if (!isRunning) return@scanAsync
 
             if (foundPoint != null) {
                 logDiagnostic("SCRIPT", "Совпадение найдено в $foundPoint. Выполнение клика...")
                 service.showClickVisualizer(foundPoint.x, foundPoint.y)
-                service.gestureExecutor.performClick(foundPoint.x, foundPoint.y, service.globalClickDurationMs) { success ->
+                gestureExecutor.performClick(foundPoint.x, foundPoint.y, service.globalClickDurationMs) { success ->
                     if (!isRunning) return@performClick
 
                     if (action.loopUntilStopped) {
                         val delayMs = action.delay.coerceAtLeast(50L)
                         logDiagnostic("SCRIPT", "Мультипоиск: задержка ${delayMs}мс перед зашифровкой НОВОГО кадра экрана...")
                         Thread.sleep(delayMs)
-                        executeMultiSearchLoop(action) // Повторный запуск на свежем кадре
+                        executeMultiSearchLoop(action)
                     } else {
                         onStepCompleted(success, action)
                     }
@@ -139,7 +145,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                 if (action.loopUntilStopped) {
                     val scanIntervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(100L)
                     Thread.sleep(scanIntervalMs)
-                    executeMultiSearchLoop(action) // Пауза и повторный запуск
+                    executeMultiSearchLoop(action)
                 } else {
                     onStepCompleted(false, action)
                 }

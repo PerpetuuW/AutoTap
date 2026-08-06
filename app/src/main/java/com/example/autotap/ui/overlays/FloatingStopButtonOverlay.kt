@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
+import com.example.autotap.bindClickByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -25,14 +26,10 @@ class FloatingStopButtonOverlay(context: Context, overlayManager: OverlayManager
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = try {
-            inflater.inflate(R.layout.floating_stop_button, null)
-        } catch (e: Exception) {
-            View(context)
-        }
+        val view = inflater.inflate(R.layout.floating_stop_button, null)
 
-        view.setOnClickListener {
-            logDiagnostic("OVERLAY", "Нажата плавающая кнопка СТОП в floating_stop_button.xml")
+        view.bindClickByNames("btnFloatingStop") {
+            logDiagnostic("OVERLAY", "Нажата кнопка btnFloatingStop")
             MyAutoClickService.instance?.scriptExecutor?.stop()
             hide()
         }

@@ -4,7 +4,6 @@ import android.content.Context
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
-import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.findViewByNames
@@ -13,9 +12,8 @@ import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
-import com.example.autotap.vibrateFeedback
 
-class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
+class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
     init {
@@ -26,20 +24,18 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(R.layout.floating_capture_frame, null)
+        val view = inflater.inflate(R.layout.floating_search_area_frame, null)
 
-        view.bindClickByNames("btnDoCapture") {
-            logDiagnostic("OVERLAY", "Нажата кнопка btnDoCapture.")
-            context.vibrateFeedback()
-            MyAutoClickService.instance?.addNewActionAtPosition(0.5f, 0.5f)
+        view.bindClickByNames("btnSaveSearchArea") {
+            logDiagnostic("AI_SCANNER", "Область поиска сохранена.")
             hide()
         }
 
-        view.bindClickByNames("btnCancelCapture") {
+        view.bindClickByNames("btnResetSearchArea", "btnCancelSearchArea") {
             hide()
         }
 
-        val handle = view.findViewByNames("handleMoveFrame") ?: view
+        val handle = view.findViewByNames("handleMoveSearchArea") ?: view
         setupDragAndDrop(handle)
 
         return view

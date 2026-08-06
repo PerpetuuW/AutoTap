@@ -1,11 +1,15 @@
 package com.example.autotap
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.autotap.data.ScriptRepository
 import com.example.autotap.data.TemplateRepository
@@ -28,27 +32,39 @@ class MainActivity : AppCompatActivity() {
         initRepositories()
         initEngines()
 
-        // Устанавливаем физический XML макет Главного Меню activity_main.xml
         try {
             setContentView(R.layout.activity_main)
-            logDiagnostic("UI", "Главное меню успешно установлено из setContentView(R.layout.activity_main).")
+            logDiagnostic("UI", "Главное меню успешно надуло activity_main.xml")
         } catch (e: Exception) {
             logError("UI", "Ошибка установки setContentView(R.layout.activity_main)", e)
         }
 
         val root = window.decorView.findViewById<View>(android.R.id.content)
 
-        // Безопасная привязка интерактивных элементов Главного Меню из XML
-        root.bindClickByNames("btn_enable_accessibility", "btnAccessibility", "btn_accessibility", "accessibility") {
+        (root.findViewByNames("tvVersion") as? TextView)?.text = "v37 Precision Architecture"
+        (root.findViewByNames("tvSubTitle") as? TextView)?.text = "Комплекс Автоматизации и ИИ Поиска"
+
+        root.bindClickByNames("btnStartPanel") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.showControlPanel()
+                logDiagnostic("UI", "Запуск панели оверлеев.")
+            } else {
+                Toast.makeText(this, "Сначала включите Accessibility Service!", Toast.LENGTH_LONG).show()
+                logError("UI", "MyAutoClickService не запущен!", null)
+            }
+        }
+
+        root.bindClickByNames("btnAccessibility") {
             try {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                logDiagnostic("UI", "Переход в настройки Accessibility из Главного Меню.")
+                logDiagnostic("UI", "Переход в настройки Accessibility.")
             } catch (e: Exception) {
                 logError("UI", "Ошибка перехода в настройки Accessibility", e)
             }
         }
 
-        root.bindClickByNames("btn_overlay_permission", "btnOverlayPerm", "btn_overlay", "overlay") {
+        root.bindClickByNames("btnOverlay") {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
                 try {
                     val intent = Intent(
@@ -56,67 +72,92 @@ class MainActivity : AppCompatActivity() {
                         Uri.parse("package:$packageName")
                     )
                     startActivity(intent)
-                    logDiagnostic("UI", "Запрос разрешения на оверлеи из Главного Меню.")
+                    logDiagnostic("UI", "Запрос разрешения оверлея.")
                 } catch (e: Exception) {
-                    logError("UI", "Ошибка запроса разрешения оверлеев", e)
+                    logError("UI", "Ошибка запроса разрешения оверлея", e)
                 }
             } else {
-                logDiagnostic("UI", "Разрешение на оверлеи уже активно.")
+                Toast.makeText(this, "Разрешение оверлея уже предоставлено!", Toast.LENGTH_SHORT).show()
             }
         }
 
-        root.bindClickByNames("btn_start_service", "btnStartPanel", "btn_start_overlay", "btn_panel", "btn_start") {
-            val service = MyAutoClickService.instance
-            if (service != null) {
-                service.showControlPanel()
-                logDiagnostic("UI", "Запуск Панели Управления из Главного Меню.")
-            } else {
-                logError("UI", "Служба не заложена, запустите Accessibility Service", null)
-            }
+        root.bindClickByNames("btnAppDetails", "btnPermissionsHelp") {
+            openRestrictedSettingsMenu()
         }
 
-        root.bindClickByNames("btn_open_settings", "btnSettings", "btn_global_settings") {
-            val service = MyAutoClickService.instance
-            if (service != null) {
-                service.overlayManager.globalSettingsDialog.show()
-            }
-        }
-
-        root.bindClickByNames("btn_open_templates", "btnTemplates", "btn_templates_manager") {
-            val service = MyAutoClickService.instance
-            if (service != null) {
-                service.overlayManager.templatesManagerDialog.show()
-            }
-        }
-
-        root.bindClickByNames("btn_open_logs", "btnLogs", "btn_log_viewer") {
+        root.bindClickByNames("btnShowLogs") {
             try {
                 startActivity(Intent(this@MainActivity, LogViewerActivity::class.java))
             } catch (e: Exception) {
-                logError("UI", "Ошибка открытия экрана логов", e)
+                logError("UI", "Ошибка открытия LogViewerActivity", e)
             }
         }
 
-        root.bindClickByNames("btn_open_help", "btnHelp", "btn_info") {
+        root.bindClickByNames("btnInfoHelp") {
             val service = MyAutoClickService.instance
             if (service != null) {
                 service.overlayManager.infoHelpDialog.show()
             }
         }
 
-        root.bindClickByNames("btn_start_tutorial", "btnTutorial", "btn_education") {
+        root.bindClickByNames("btnManageTemplates") {
             val service = MyAutoClickService.instance
             if (service != null) {
-                service.tutorialEngine.startDefaultTutorial()
+                service.overlayManager.templatesManagerDialog.show()
             }
         }
 
-        logDiagnostic("UI", "MainActivity (Оригинальное Главное Меню) успешно инициализирована.")
+        root.bindClickByNames("btnExport", "btnImport") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.overlayManager.exportImportDialog.show()
+            }
+        }
+
+        updateUIStatusIndicators()
     }
 
     override fun onResume() {
         super.onResume()
-        checkSystemStatus()
+        updateUIStatusIndicators()
+    }
+
+    private fun openRestrictedSettingsMenu() {
+        try {
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName")
+            )
+            startActivity(intent)
+            Toast.makeText(
+                this,
+                "Нажмите 3 точки в правом верхнем углу и выберите 'Разрешить ограниченные настройки'",
+                Toast.LENGTH_LONG
+            ).show()
+            logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
+        } catch (e: Exception) {
+            logError("UI", "Ошибка открытия настроек приложения", e)
+        }
+    }
+
+    private fun updateUIStatusIndicators() {
+        val root = window.decorView.findViewById<View>(android.R.id.content)
+        val isServiceActive = MyAutoClickService.instance != null
+        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
+
+        (root.findViewByNames("btnAccessibility") as? Button)?.apply {
+            text = if (isServiceActive) "1. Accessibility Service: [ ВКЛЮЧЕНО ]" else "1. Accessibility Service: [ ВЫКЛЮЧЕНО ]"
+            setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+        }
+
+        (root.findViewByNames("btnOverlay") as? Button)?.apply {
+            text = if (hasOverlay) "2. Оверлеи: [ РАЗРЕШЕНО ]" else "2. Оверлеи: [ ТРЕБУЕТСЯ РАЗРЕШЕНИЕ ]"
+            setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+        }
+
+        (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
+            text = "3. Снятие Ограничений (Restricted Settings)"
+        }
     }
 
     private fun initRepositories() {
@@ -126,11 +167,5 @@ class MainActivity : AppCompatActivity() {
 
     private fun initEngines() {
         actionEditorEngine = ActionEditorEngine()
-    }
-
-    private fun checkSystemStatus() {
-        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
-        val serviceActive = MyAutoClickService.instance != null
-        logDiagnostic("CORE", "Статус Главного Меню: Accessibility=$serviceActive, OverlayPermission=$hasOverlay")
     }
 }

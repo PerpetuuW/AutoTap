@@ -30,17 +30,17 @@ class LogViewerActivity : AppCompatActivity() {
 
         val root = window.decorView.findViewById<View>(android.R.id.content)
 
-        logTextView = root.findViewByNames("tv_logs", "tv_log_content", "log_text", "txt_logs") as? TextView
+        logTextView = root.findViewByNames("tvLogsContent") as? TextView
 
-        root.bindClickByNames("btn_share_logs", "btnShare", "btn_share") {
+        root.bindClickByNames("btnShareLogs") {
             shareLogFile()
         }
 
-        root.bindClickByNames("btn_clear_logs", "btnClear", "btn_clear") {
+        root.bindClickByNames("btnClearLogs") {
             clearLogFile()
         }
 
-        root.bindClickByNames("btn_close_logs", "btnClose", "btn_close") {
+        root.bindClickByNames("btnCloseLogs") {
             finish()
         }
 
@@ -61,7 +61,7 @@ class LogViewerActivity : AppCompatActivity() {
         val file = StructuredLogger.getLogFile()
         if (file != null && file.exists()) {
             file.writeText("")
-            logDiagnostic("LOGS", "Лог-файл очищен из dialog_logs.")
+            logDiagnostic("LOGS", "Лог-файл очищен по btnClearLogs.")
         }
         refreshLogs()
     }

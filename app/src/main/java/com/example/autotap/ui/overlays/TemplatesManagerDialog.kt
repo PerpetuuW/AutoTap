@@ -5,7 +5,6 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
-import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.logger.logDiagnostic
@@ -13,7 +12,6 @@ import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
-import com.example.autotap.vibrateFeedback
 
 class TemplatesManagerDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
@@ -31,17 +29,16 @@ class TemplatesManagerDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.dialog_templates_manager, null)
 
-        view.bindClickByNames("btn_recalibrate_all", "btnRecalibrateAll", "btn_recalibrate", "btn_calibrate") {
-            val svc = MyAutoClickService.instance
-            if (svc != null) {
-                svc.templateRepository.recalibrateTemplate(0)
-                context.vibrateFeedback()
-                logDiagnostic("AI_SCANNER", "Перекалибровка шаблонов выполнена.")
-            }
+        try {
+            inflater.inflate(R.layout.item_template, null)
+        } catch (_: Exception) {}
+
+        view.bindClickByNames("btnOpenTrashBin") {
+            logDiagnostic("UI", "Открытие корзины удаленных масок.")
         }
 
-        view.bindClickByNames("btn_close", "btnClose", "btn_cancel", "btnCancel") {
-            logDiagnostic("UI", "Закрыт Менеджер Шаблонов.")
+        view.bindClickByNames("btnCloseTemplatesManager") {
+            logDiagnostic("UI", "Закрыт Менеджер Шаблонов btnCloseTemplatesManager.")
             hide()
         }
 

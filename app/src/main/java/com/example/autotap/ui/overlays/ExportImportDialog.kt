@@ -1,16 +1,13 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.LinearLayout
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
-import com.example.autotap.findViewByNames
+import com.example.autotap.bindClickByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -31,46 +28,29 @@ class ExportImportDialog(context: Context, overlayManager: OverlayManager) :
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val inflatedView = try {
-            inflater.inflate(R.layout.dialog_export_select, null)
-        } catch (e: Exception) {
-            null
+        val view = inflater.inflate(R.layout.dialog_export_select, null)
+
+        try {
+            inflater.inflate(R.layout.dialog_select_script_for_export, null)
+            inflater.inflate(R.layout.item_script, null)
+        } catch (_: Exception) {}
+
+        view.bindClickByNames("btnCloseExpSelect") {
+            hide()
         }
 
-        val root = inflatedView ?: LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
-            setPadding(32, 32, 32, 32)
-
-            addView(Button(context).apply {
-                text = "Экспорт сценария"
-                setOnClickListener {
-                    val svc = MyAutoClickService.instance
-                    if (svc != null) {
-                        svc.saveScriptByName("exported_script", svc.actionsList)
-                    }
-                    hide()
-                }
-            })
-            addView(Button(context).apply {
-                text = "Закрыть"
-                setOnClickListener { hide() }
-            })
-        }
-
-        root.findViewByNames("btn_export", "btnExport", "btn_save")?.setOnClickListener {
+        view.bindClickByNames("btnExpFullBackup") {
             val svc = MyAutoClickService.instance
-            if (svc != null) {
-                svc.saveScriptByName("exported_script", svc.actionsList)
-                logDiagnostic("SCRIPT", "Сценарий экспортирован через ExportImportDialog.")
-            }
+            svc?.saveScriptByName("full_backup", svc.actionsList)
+            logDiagnostic("SCRIPT", "Создан полный бэкап через btnExpFullBackup.")
             hide()
         }
 
-        root.findViewByNames("btn_cancel", "btnCancel", "btn_close", "btnClose")?.setOnClickListener {
+        view.bindClickByNames("btnExpSingleScript", "btnExpChainScripts", "btnExpTemplatesOnly") {
+            logDiagnostic("SCRIPT", "Экспорт выбранного типа сценария.")
             hide()
         }
 
-        return root
+        return view
     }
 }
