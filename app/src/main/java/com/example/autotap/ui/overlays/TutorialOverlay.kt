@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
@@ -66,16 +67,17 @@ class TutorialOverlay(context: Context, overlayManager: OverlayManager) :
         tvDescView = card.findViewByNames("tvTutDesc") as? TextView
 
         card.bindClickByNames("btnTutNext") {
-            logDiagnostic("TUTORIAL", "Нажата btnTutNext в floating_tutorial_card.")
+            logDiagnostic("TUTORIAL", "Нажата btnTutNext.")
             MyAutoClickService.instance?.tutorialEngine?.nextStep()
         }
 
         card.bindClickByNames("btnTutPrev") {
-            logDiagnostic("TUTORIAL", "Нажата btnTutPrev в floating_tutorial_card.")
+            logDiagnostic("TUTORIAL", "Нажата btnTutPrev (Возврат назад).")
+            MyAutoClickService.instance?.tutorialEngine?.previousStep()
         }
 
         card.bindClickByNames("btnTutSkip") {
-            logDiagnostic("TUTORIAL", "Нажата btnTutSkip в floating_tutorial_card.")
+            logDiagnostic("TUTORIAL", "Нажата btnTutSkip.")
             MyAutoClickService.instance?.tutorialEngine?.stopTutorial()
         }
 
@@ -92,10 +94,10 @@ class TutorialOverlay(context: Context, overlayManager: OverlayManager) :
 
     fun renderStep(step: TutorialStepConfig) {
         currentStep = step
-        tvTitleView?.text = step.id
+        tvTitleView?.text = step.title
         tvDescView?.text = step.message
         spotlightView?.setHighlightArea(step.highlightArea)
-        logDiagnostic("TUTORIAL", "Отображение туториала: ${step.id}")
+        logDiagnostic("TUTORIAL", "Отображение туториала: ${step.title}")
     }
 
     private fun handleTouchInTutorial(event: MotionEvent): Boolean {
@@ -107,11 +109,11 @@ class TutorialOverlay(context: Context, overlayManager: OverlayManager) :
             val touchY = event.rawY.toInt()
 
             if (targetArea != null && targetArea.contains(touchX, touchY)) {
-                logDiagnostic("TUTORIAL", "Клик попал в целевую область туториала ($touchX, $touchY).")
+                logDiagnostic("TUTORIAL", "Клик попал в целевую область ($touchX, $touchY).")
                 MyAutoClickService.instance?.tutorialEngine?.nextStep()
                 return false
             } else {
-                logDiagnostic("TUTORIAL", "Клик вне целевой области туториала ($touchX, $touchY). Игнорируется.")
+                logDiagnostic("TUTORIAL", "Клик вне целевой области ($touchX, $touchY). Игнорируется.")
                 return true
             }
         }

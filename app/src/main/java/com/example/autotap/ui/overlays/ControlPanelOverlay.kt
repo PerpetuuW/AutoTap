@@ -14,6 +14,7 @@ import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
 
 class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
@@ -21,6 +22,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     private var btnPlayView: View? = null
     private var btnRecordView: View? = null
     private var btnJoystickView: View? = null
+    private var panelState = 0 // 0 = 2 строки (Full), 1 = 1 строка (Compact), 2 = 1 кнопка (Bubble)
 
     init {
         layer = OverlayLayer.PANEL_LAYER
@@ -35,6 +37,18 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         btnRecordView = view.findViewByNames("btnRecord")
         btnJoystickView = view.findViewByNames("btnToggleJoystick")
 
+        // 3-Этапный циклический режим сворачивания
+        view.bindClickByNames("btnToggleMenu", "btnSingleBubble") {
+            cyclePanelState(view)
+        }
+
+        // КНОПКА ПРИЦЕЛА И СОЗДАНИЯ ШАБЛОНА
+        view.bindClickByNames("btnCapturePool", "btnAdd") {
+            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона (CaptureFrameOverlay).")
+            context.vibrateFeedback()
+            overlayManager.captureFrameOverlay.show()
+        }
+
         view.bindClickByNames("btnPlay") {
             val svc = MyAutoClickService.instance
             if (svc != null) {
@@ -47,11 +61,6 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
             }
         }
 
-        view.bindClickByNames("btnAdd") {
-            logDiagnostic("OVERLAY", "Кнопка btnAdd нажата.")
-            overlayManager.addActionDialog.show()
-        }
-
         view.bindClickByNames("btnRecord") {
             val svc = MyAutoClickService.instance
             if (svc != null) {
@@ -61,6 +70,15 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                     svc.recordingEngine.startRecording()
                 }
                 updateToggleStates()
+            }
+        }
+
+        view.bindClickByNames("btnClearAll") {
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.actionsList.clear()
+                context.vibrateFeedback()
+                logDiagnostic("OVERLAY", "Очищены все шаги сценария.")
             }
         }
 
@@ -93,6 +111,39 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         setupDragAndDrop(dragHandle)
         updateToggleStates()
         return view
+    }
+
+    private fun cyclePanelState(root: View) {
+        panelState = (panelState + 1) % 3
+        val mainRow = root.findViewByNames("layoutMainRow")
+        val subMenu = root.findViewByNames("layoutSubMenu")
+        val mainCard = root.findViewByNames("layoutMainCard")
+        val singleBubble = root.findViewByNames("btnSingleBubble")
+
+        when (panelState) {
+            0 -> { // 2 строки (Full)
+                mainCard?.visibility = View.VISIBLE
+                mainRow?.visibility = View.VISIBLE
+                subMenu?.visibility = View.VISIBLE
+                singleBubble?.visibility = View.GONE
+                logDiagnostic("OVERLAY", "Панель: Режим 2 строки (Full)")
+            }
+            1 -> { // 1 строка (Compact)
+                mainCard?.visibility = View.VISIBLE
+                mainRow?.visibility = View.VISIBLE
+                subMenu?.visibility = View.GONE
+                singleBubble?.visibility = View.GONE
+                logDiagnostic("OVERLAY", "Панель: Режим 1 строка (Compact)")
+            }
+            2 -> { // 1 кнопка (Bubble)
+                mainCard?.visibility = View.GONE
+                mainRow?.visibility = View.GONE
+                subMenu?.visibility = View.GONE
+                singleBubble?.visibility = View.VISIBLE
+                logDiagnostic("OVERLAY", "Панель: Режим 1 кнопка (Single Bubble)")
+            }
+        }
+        context.vibrateFeedback()
     }
 
     fun updateToggleStates() {

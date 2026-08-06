@@ -16,6 +16,7 @@ import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
 import kotlin.math.max
 
 class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
@@ -39,10 +40,28 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
 
         view.bindClickByNames("btnSaveSearchArea") {
             logDiagnostic("AI_SCANNER", "Область поиска сохранена: ${currentWidthPx}x${currentHeightPx}px")
+            context.vibrateFeedback()
             hide()
         }
 
-        view.bindClickByNames("btnResetSearchArea", "btnCancelSearchArea") {
+        view.bindClickByNames("btnResetSearchArea") {
+            currentWidthPx = 200.dpToPx(context)
+            currentHeightPx = 200.dpToPx(context)
+            width = currentWidthPx
+            height = currentHeightPx
+            val lp = layoutParams
+            if (lp != null) {
+                lp.width = currentWidthPx
+                lp.height = currentHeightPx
+                try {
+                    windowManager.updateViewLayout(overlayView, lp)
+                } catch (_: Exception) {}
+            }
+            context.vibrateFeedback()
+            logDiagnostic("AI_SCANNER", "Размер области поиска сброшен к стандартному.")
+        }
+
+        view.bindClickByNames("btnCancelSearchArea") {
             hide()
         }
 

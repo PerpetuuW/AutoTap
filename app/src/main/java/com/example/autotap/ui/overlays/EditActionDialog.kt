@@ -8,7 +8,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
-import android.widget.ImageView
+import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
@@ -23,10 +23,8 @@ import com.example.autotap.vibrateFeedback
 class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
-    private var etDelayView: EditText? = null
-    private var etHoldDurationView: EditText? = null
-    private var isClickTarget = false
-    private var isAiNotification = true
+    private var currentStepIdx = 0
+    private var tvStepIndexView: TextView? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -43,11 +41,50 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.floating_edit_dialog, null)
 
-        etDelayView = view.findViewByNames("etDelay") as? EditText
-        etHoldDurationView = view.findViewByNames("etHoldDuration") as? EditText
+        tvStepIndexView = view.findViewByNames("tvTemplateIndex") as? TextView
+
+        view.bindClickByNames("btnNextStep") {
+            val listSize = MyAutoClickService.instance?.actionsList?.size ?: 0
+            if (currentStepIdx < listSize - 1) {
+                currentStepIdx++
+                updateStepDisplay()
+            }
+        }
+
+        view.bindClickByNames("btnPrevStep") {
+            if (currentStepIdx > 0) {
+                currentStepIdx--
+                updateStepDisplay()
+            }
+        }
+
+        view.bindClickByNames("btnDeleteAction") {
+            val list = MyAutoClickService.instance?.actionsList
+            if (list != null && list.isNotEmpty() && currentStepIdx in list.indices) {
+                list.removeAt(currentStepIdx)
+                context.vibrateFeedback()
+                logDiagnostic("SCRIPT", "Шаг #$currentStepIdx удален из сценария.")
+                if (currentStepIdx >= list.size) {
+                    currentStepIdx = (list.size - 1).coerceAtLeast(0)
+                }
+                updateStepDisplay()
+            }
+        }
+
+        view.bindClickByNames("btnCloneAction") {
+            val list = MyAutoClickService.instance?.actionsList
+            if (list != null && list.isNotEmpty() && currentStepIdx in list.indices) {
+                val cloned = list[currentStepIdx].copy()
+                list.add(currentStepIdx + 1, cloned)
+                context.vibrateFeedback()
+                logDiagnostic("SCRIPT", "Шаг #$currentStepIdx скопирован.")
+                currentStepIdx++
+                updateStepDisplay()
+            }
+        }
 
         view.bindClickByNames("btnSave", "btnSaveHeader") {
-            logDiagnostic("SCRIPT", "Шаг сохранен в floating_edit_dialog.")
+            logDiagnostic("SCRIPT", "Шаг сохранен в EditActionDialog.")
             context.vibrateFeedback()
             hide()
         }
@@ -56,24 +93,12 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        view.bindClickByNames("btnToggleClickTarget") { btn ->
-            isClickTarget = !isClickTarget
-            btn.isSelected = isClickTarget
-            (btn as? Button)?.apply {
-                text = if (isClickTarget) "Целевой клик: [ ВКЛ ]" else "Целевой клик: [ ВЫКЛ ]"
-                setTextColor(if (isClickTarget) Color.parseColor("#00E676") else Color.WHITE)
-            }
-        }
-
-        view.bindClickByNames("btnToggleAiNotification") { btn ->
-            isAiNotification = !isAiNotification
-            btn.isSelected = isAiNotification
-            (btn as? Button)?.apply {
-                text = if (isAiNotification) "Уведомление AI: [ ВКЛ ]" else "Уведомление AI: [ ВЫКЛ ]"
-                setTextColor(if (isAiNotification) Color.parseColor("#00E676") else Color.WHITE)
-            }
-        }
-
+        updateStepDisplay()
         return view
+    }
+
+    private fun updateStepDisplay() {
+        val listSize = MyAutoClickService.instance?.actionsList?.size ?: 0
+        tvStepIndexView?.text = "Шаг ${currentStepIdx + 1} из $listSize"
     }
 }

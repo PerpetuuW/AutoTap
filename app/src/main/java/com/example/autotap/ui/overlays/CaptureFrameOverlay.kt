@@ -1,6 +1,7 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -23,17 +24,16 @@ import kotlin.math.max
 class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
-    // Минимальный размер прицела снижен до 24dp для выделения микро-икон и элементов
     private val minSizePx = 24.dpToPx(context)
-    private var currentWidthPx = 120.dpToPx(context)
-    private var currentHeightPx = 120.dpToPx(context)
+    private var currentFrameWidthPx = 120.dpToPx(context)
+    private var currentFrameHeightPx = 120.dpToPx(context)
 
     init {
         gravity = Gravity.CENTER
         layer = OverlayLayer.CAPTURE_LAYER
         priority = OverlayPriority.HIGH
-        width = currentWidthPx
-        height = currentHeightPx
+        width = currentFrameWidthPx
+        height = currentFrameHeightPx
     }
 
     override fun createView(): View {
@@ -41,19 +41,33 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(R.layout.floating_capture_frame, null)
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
-            logDiagnostic("OVERLAY", "Захват центра прицела (${currentWidthPx}x${currentHeightPx}px)")
+            logDiagnostic("OVERLAY", "Вырезание реальной маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
             context.vibrateFeedback()
 
+            val svc = MyAutoClickService.instance
             val lp = layoutParams
-            if (lp != null) {
+            if (svc != null && lp != null) {
                 val metrics = context.resources.displayMetrics
-                val centerXNorm = (lp.x + currentWidthPx / 2f) / metrics.widthPixels.toFloat()
-                val centerYNorm = (lp.y + currentHeightPx / 2f) / metrics.heightPixels.toFloat()
-                
-                MyAutoClickService.instance?.addNewActionAtPosition(
-                    centerXNorm.coerceIn(0f, 1f),
-                    centerYNorm.coerceIn(0f, 1f)
-                )
+                val centerXNorm = (lp.x + currentFrameWidthPx / 2f) / metrics.widthPixels.toFloat()
+                val centerYNorm = (lp.y + currentFrameHeightPx / 2f) / metrics.heightPixels.toFloat()
+
+                // Добавление клик-действия
+                svc.addNewActionAtPosition(centerXNorm.coerceIn(0f, 1f), centerYNorm.coerceIn(0f, 1f))
+
+                // Захват и вырезание реального фрагмента изображения
+                val fullBitmap = svc.captureScreenBitmap()
+                if (fullBitmap != null) {
+                    val cropX = ((lp.x).coerceAtLeast(0)).coerceAtMost(fullBitmap.width - 20)
+                    val cropY = ((lp.y).coerceAtLeast(0)).coerceAtMost(fullBitmap.height - 20)
+                    val cropW = currentFrameWidthPx.coerceAtMost(fullBitmap.width - cropX)
+                    val cropH = currentFrameHeightPx.coerceAtMost(fullBitmap.height - cropY)
+
+                    if (cropW > 10 && cropH > 10) {
+                        val croppedMask = Bitmap.createBitmap(fullBitmap, cropX, cropY, cropW, cropH)
+                        svc.templateRepository.saveTemplate(0, croppedMask)
+                        logDiagnostic("AI_SCANNER", "Реальный шаблон #0 сохранен на диск (${cropW}x${cropH}px) и откалиброван.")
+                    }
+                }
             }
             hide()
         }
@@ -89,8 +103,8 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             val lp = layoutParams ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = lp.width.takeIf { it > 0 } ?: currentWidthPx
-                    startH = lp.height.takeIf { it > 0 } ?: currentHeightPx
+                    startW = lp.width.takeIf { it > 0 } ?: currentFrameWidthPx
+                    startH = lp.height.takeIf { it > 0 } ?: currentFrameHeightPx
                     touchX = event.rawX
                     touchY = event.rawY
                     true
@@ -99,11 +113,11 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     val dx = (event.rawX - touchX).toInt()
                     val dy = (event.rawY - touchY).toInt()
 
-                    currentWidthPx = max(minSizePx, startW + dx)
-                    currentHeightPx = max(minSizePx, startH + dy)
+                    currentFrameWidthPx = max(minSizePx, startW + dx)
+                    currentFrameHeightPx = max(minSizePx, startH + dy)
 
-                    lp.width = currentWidthPx
-                    lp.height = currentHeightPx
+                    lp.width = currentFrameWidthPx
+                    lp.height = currentFrameHeightPx
                     width = currentFrameWidthPx
                     height = currentFrameHeightPx
 
@@ -118,12 +132,4 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             }
         }
     }
-
-    private var currentFrameWidthPx: Int
-        get() = currentWidthPx
-        set(value) { currentWidthPx = value }
-
-    private var currentFrameHeightPx: Int
-        get() = currentHeightPx
-        set(value) { currentHeightPx = value }
 }

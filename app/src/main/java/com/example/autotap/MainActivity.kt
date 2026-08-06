@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -146,17 +147,23 @@ class MainActivity : AppCompatActivity() {
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
 
         (root.findViewByNames("btnAccessibility") as? Button)?.apply {
-            text = if (isServiceActive) "1. Accessibility Service: [ ВКЛЮЧЕНО ]" else "1. Accessibility Service: [ ВЫКЛЮЧЕНО ]"
+            text = if (isServiceActive) "1. Accessibility: [ ВКЛ ]" else "1. Accessibility: [ ВЫКЛ ]"
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
         }
 
         (root.findViewByNames("btnOverlay") as? Button)?.apply {
-            text = if (hasOverlay) "2. Оверлеи: [ РАЗРЕШЕНО ]" else "2. Оверлеи: [ ТРЕБУЕТСЯ РАЗРЕШЕНИЕ ]"
+            text = if (hasOverlay) "2. Оверлеи: [ ВКЛ ]" else "2. Оверлеи: [ ВЫКЛ ]"
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
         }
 
         (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
-            text = "3. Снятие Ограничений (Restricted Settings)"
+            text = "3. Снятие ограничений"
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
         }
     }
 

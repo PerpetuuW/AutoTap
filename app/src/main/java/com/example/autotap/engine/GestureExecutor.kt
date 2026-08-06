@@ -56,6 +56,23 @@ class GestureExecutor(private val service: MyAutoClickService) {
         }
     }
 
+    fun performJoystickRealtime(dx: Float, dy: Float, centerX: Float, centerY: Float, speedFactor: Float = 1.0f) {
+        try {
+            val targetX = (centerX + dx * speedFactor).coerceAtLeast(0f)
+            val targetY = (centerY + dy * speedFactor).coerceAtLeast(0f)
+
+            val path = Path().apply {
+                moveTo(centerX, centerY)
+                lineTo(targetX, targetY)
+            }
+
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 25L)
+            service.dispatchGestureTask(stroke, "JoystickRealtime dx=$dx dy=$dy", null)
+        } catch (e: Exception) {
+            logError("GESTURE", "Ошибка выполнения микро-жеста джойстика", e)
+        }
+    }
+
     fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
         performSwipe(startX, startY, endX, endY, durationMs, callback)
     }

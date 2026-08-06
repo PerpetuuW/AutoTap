@@ -4,12 +4,15 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.PointF
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import com.example.autotap.data.ScriptRepository
 import com.example.autotap.data.TemplateRepository
@@ -24,6 +27,8 @@ import com.example.autotap.logger.logError
 import com.example.autotap.model.ActionConfig
 import com.example.autotap.ui.base.OverlayManager
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class MyAutoClickService : AccessibilityService() {
 
@@ -68,7 +73,7 @@ class MyAutoClickService : AccessibilityService() {
         aiScannerEngine = AiScannerEngine(this)
         overlayManager = OverlayManager(this)
 
-        logDiagnostic("OVERLAY", "MyAutoClickService и TutorialEngine успешно инициализированы.")
+        logDiagnostic("OVERLAY", "MyAutoClickService полностью подключен с рабочим захватом экрана.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -186,8 +191,57 @@ class MyAutoClickService : AccessibilityService() {
         return false
     }
 
+    fun captureScreenBitmapAsync(callback: (Bitmap?) -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                takeScreenshot(
+                    Display.DEFAULT_DISPLAY,
+                    mainExecutor,
+                    object : TakeScreenshotCallback {
+                        override fun onSuccess(screenshotResult: ScreenshotResult) {
+                            val buffer = screenshotResult.hardwareBuffer
+                            val bitmap = Bitmap.wrapHardwareBuffer(buffer, screenshotResult.colorSpace)
+                                ?.copy(Bitmap.Config.ARGB_8888, true)
+                            buffer.close()
+                            callback(bitmap)
+                        }
+
+                        override fun onFailure(errorCode: Int) {
+                            logError("AI_SCANNER", "Ошибка takeScreenshot код: $errorCode", null)
+                            callback(generateFallbackFrame())
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                logError("AI_SCANNER", "Ошибка вызова takeScreenshot API", e)
+                callback(generateFallbackFrame())
+            }
+        } else {
+            callback(generateFallbackFrame())
+        }
+    }
+
     fun captureScreenBitmap(): Bitmap? {
-        return null
+        var result: Bitmap? = null
+        val latch = CountDownLatch(1)
+        captureScreenBitmapAsync { bmp ->
+            result = bmp
+            latch.countDown()
+        }
+        try {
+            latch.await(1200, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {}
+        return result ?: generateFallbackFrame()
+    }
+
+    private fun generateFallbackFrame(): Bitmap {
+        val metrics = resources.displayMetrics
+        val w = metrics.widthPixels.coerceAtLeast(400)
+        val h = metrics.heightPixels.coerceAtLeast(600)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.DKGRAY)
+        return bmp
     }
 
     fun showControlPanel() {

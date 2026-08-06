@@ -32,16 +32,12 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
 
         view.bindClickByNames("btnAddClick") {
             MyAutoClickService.instance?.addNewActionAtPosition(0.5f, 0.5f)
-            logDiagnostic("SCRIPT", "Добавлено действие через btnAddClick.")
+            logDiagnostic("SCRIPT", "Добавлено действие КЛИК.")
             hide()
         }
 
-        view.bindClickByNames("btnAddSwipe") {
-            logDiagnostic("SCRIPT", "Запрос добавления свайпа через btnAddSwipe.")
-            hide()
-        }
-
-        view.bindClickByNames("btnAddTrigger") {
+        view.bindClickByNames("btnAddTrigger", "btnAddAi", "btnAddSwipe") {
+            logDiagnostic("OVERLAY", "Открытие прицела захвата маски из AddActionDialog.")
             overlayManager.captureFrameOverlay.show()
             hide()
         }

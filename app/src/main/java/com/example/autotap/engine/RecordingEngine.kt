@@ -34,6 +34,20 @@ class RecordingEngine(private val service: MyAutoClickService) {
         return false
     }
 
+    fun startJoystickRecording() {
+        isRecording = true
+        logDiagnostic("RECORDING", "Начата активная запись джойстика.")
+    }
+
+    fun finishJoystickRecording(action: ActionConfig) {
+        if (action.joystickPath.isNotEmpty()) {
+            recordedActions.add(action)
+            service.actionsList.add(action)
+            service.saveScriptByName("recorded_joystick_script", service.actionsList)
+            logDiagnostic("RECORDING", "Завершена запись джойстика (точек: ${action.joystickPath.size}).")
+        }
+    }
+
     fun recordClick(xNorm: Float, yNorm: Float, randomRadius: Float = 0f) {
         if (!isRecording) return
         val action = ActionConfig(
@@ -58,17 +72,6 @@ class RecordingEngine(private val service: MyAutoClickService) {
         )
         recordedActions.add(action)
         logDiagnostic("RECORDING", "Записан свайп ($startXNorm, $startYNorm) -> ($endXNorm, $endYNorm)")
-    }
-
-    fun recordJoystickPath(path: List<PointF>, durationMs: Long) {
-        if (!isRecording) return
-        val action = ActionConfig(
-            type = ActionType.JOYSTICK_PATH,
-            joystickPath = path,
-            holdDuration = durationMs
-        )
-        recordedActions.add(action)
-        logDiagnostic("RECORDING", "Записана траектория джойстика (${path.size} точек)")
     }
 
     fun recordAiSearch(templateIndex: Int) {

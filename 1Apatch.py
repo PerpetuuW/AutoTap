@@ -1,182 +1,446 @@
 import os
-import re
-import xml.etree.ElementTree as ET
+import sys
 
-def audit_project_interconnections():
-    root_dir = "."
-    app_main = os.path.join(root_dir, "app", "src", "main")
-    java_dir = os.path.join(app_main, "java")
-    res_dir = os.path.join(app_main, "res")
-    layout_dir = os.path.join(res_dir, "layout")
-    drawable_dir = os.path.join(res_dir, "drawable")
-    manifest_file = os.path.join(app_main, "AndroidManifest.xml")
+def validate_kotlin(content, filename):
+    brackets = {'(': ')', '{': '}', '[': ']'}
+    stack = []
+    for char in content:
+        if char in brackets.keys():
+            stack.append(char)
+        elif char in brackets.values():
+            if not stack:
+                raise ValueError(f"Ошибка синтаксиса в {filename}: Лишняя закрывающая скобка '{char}'")
+            top = stack.pop()
+            if brackets[top] != char:
+                raise ValueError(f"Ошибка синтаксиса в {filename}: Несоответствие скобок '{top}' и '{char}'")
+    if stack:
+        raise ValueError(f"Ошибка синтаксиса в {filename}: Незакрытые скобки {stack}")
 
-    print("======================================================================")
-    print("      🔍 ПОЛНЫЙ АУДИТ ВЗАИМОСВЯЗЕЙ ПРОЕКТА AUTOTAP (v37)")
-    print("======================================================================\n")
+    forbidden = ["TODO()", "// остальной код", "// TODO"]
+    for item in forbidden:
+        if item in content:
+            raise ValueError(f"Обнаружена запрещенная заглушка '{item}' в файле {filename}")
 
-    # -------------------------------------------------------------------------
-    # ФАЗА 1: Сканирование всех Kotlin-файлов
-    # -------------------------------------------------------------------------
-    kt_files = {}
-    kt_classes = set()
-    for root, _, files in os.walk(java_dir):
-        for f in files:
-            if f.endswith('.kt'):
-                full_path = os.path.join(root, f)
-                rel_path = os.path.relpath(full_path, java_dir)
-                with open(full_path, 'r', encoding='utf-8') as file_obj:
-                    content = file_obj.read()
-                    kt_files[rel_path] = content
-                    
-                    # Извлечение имен классов и объектов
-                    class_matches = re.findall(r'(?:class|object|interface)\s+([A-Za-z0-9_]+)', content)
-                    for cm in class_matches:
-                        kt_classes.add(cm)
+files = {}
 
-    print(f"📦 Просканировано Kotlin-файлов: {len(kt_files)}")
-    print(f"🏷️  Найдено объявлений классов/объектов: {len(kt_classes)}\n")
+# 1. OverlayBase.kt — Гарантированное отображение show() со сбросом старых видов
+files["app/src/main/java/com/example/autotap/ui/base/OverlayBase.kt"] = """package com.example.autotap.ui.base
 
-    # -------------------------------------------------------------------------
-    # ФАЗА 2: Аудит AndroidManifest.xml
-    # -------------------------------------------------------------------------
-    print("--- [ФАЗА 1: Проверка AndroidManifest.xml] ---")
-    if os.path.exists(manifest_file):
-        try:
-            tree = ET.parse(manifest_file)
-            root = tree.getroot()
-            manifest_components = []
-            
-            for elem in root.iter():
-                if elem.tag in ['activity', 'service', 'provider', 'receiver']:
-                    for attr_k, attr_v in elem.attrib.items():
-                        if attr_k.endswith('name'):
-                            manifest_components.append((elem.tag, attr_v))
+import android.content.Context
+import android.graphics.Rect
+import android.os.Build
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import android.view.WindowManager
+import com.example.autotap.createOverlayParams
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.safeAddView
+import com.example.autotap.safeRemoveView
+import kotlin.math.abs
 
-            for tag, comp in manifest_components:
-                short_name = comp.split('.')[-1]
-                found = any(short_name in c_name for c_name in kt_classes)
-                if found:
-                    print(f"  🟢 {tag.capitalize()}: {comp} -> Связан с Kotlin объектом")
-                else:
-                    print(f"  🔴 {tag.capitalize()}: {comp} -> ОШИБКА: Компонент не найден в коде!")
-        except Exception as e:
-            print(f"  🔴 Ошибка парсинга AndroidManifest.xml: {e}")
-    else:
-        print("  🔴 AndroidManifest.xml не найден!")
-    print()
+abstract class OverlayBase(
+    protected val context: Context,
+    val overlayManager: OverlayManager
+) {
+    protected val windowManager: WindowManager =
+        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-    # -------------------------------------------------------------------------
-    # ФАЗА 3: Аудит XML-макетов (Layouts <-> Kotlin)
-    # -------------------------------------------------------------------------
-    print("--- [ФАЗА 2: Связи XML-Макетов и ID <-> Kotlin] ---")
-    layout_ids = {}
-    if os.path.exists(layout_dir):
-        for f in os.listdir(layout_dir):
-            if f.endswith('.xml'):
-                layout_path = os.path.join(layout_dir, f)
-                try:
-                    tree = ET.parse(layout_path)
-                    root = tree.getroot()
-                    ids = set()
-                    for elem in root.iter():
-                        for k, v in elem.attrib.items():
-                            if k.endswith('id') and v.startswith('@+id/'):
-                                ids.add(v.replace('@+id/', ''))
-                    layout_ids[f] = ids
-                except Exception as e:
-                    print(f"  🔴 Ошибка XML {f}: {e}")
+    var width: Int = WindowManager.LayoutParams.WRAP_CONTENT
+    var height: Int = WindowManager.LayoutParams.WRAP_CONTENT
+    var gravity: Int = Gravity.TOP or Gravity.START
+    var flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+    var dimAmount: Float = 0.5f
 
-        for layout_name, ids in layout_ids.items():
-            layout_no_ext = layout_name.replace('.xml', '')
-            
-            # Поиск упоминания макета в Kotlin
-            bound_kt = [kt_path for kt_path, content in kt_files.items() if f"R.layout.{layout_no_ext}" in content]
-            
-            if bound_kt:
-                print(f"  🟢 Макет {layout_name} -> Надувается в [{', '.join(bound_kt)}]")
-            else:
-                print(f"  ⚠️  Макет {layout_name} -> Не надувается напрямую через R.layout (проверьте включение)")
+    var initialX: Int = 100
+    var initialY: Int = 200
 
-            # Проверка связей ID этого макета
-            unbound_ids = []
-            for id_name in ids:
-                referenced = any(
-                    id_name in content or f'"{id_name}"' in content or f'R.id.{id_name}' in content 
-                    for content in kt_files.values()
-                )
-                if not referenced:
-                    unbound_ids.append(id_name)
+    var layer: OverlayLayer = OverlayLayer.PANEL_LAYER
+    var priority: OverlayPriority = OverlayPriority.MEDIUM
 
-            if unbound_ids:
-                print(f"     ⚠️ Несвязанные ID в {layout_name}: {unbound_ids}")
-            else:
-                print(f"     🟢 Все {len(ids)} ID макета {layout_name} привязаны в Kotlin!")
-    print()
+    protected var overlayView: View? = null
+    protected var layoutParams: WindowManager.LayoutParams? = null
+    var isShowing: Boolean = false
+        protected set
 
-    # -------------------------------------------------------------------------
-    # ФАЗА 4: Аудит Drawables (Графика <-> XML/Kotlin)
-    # -------------------------------------------------------------------------
-    print("--- [ФАЗА 3: Связи Графики (res/drawable/)] ---")
-    if os.path.exists(drawable_dir):
-        drawables = [f.split('.')[0] for f in os.listdir(drawable_dir) if not f.startswith('.')]
-        all_xml_content = ""
-        
-        # Сканирование всех layout XML файлов
-        for f in os.listdir(layout_dir):
-            if f.endswith('.xml'):
-                with open(os.path.join(layout_dir, f), 'r', encoding='utf-8') as xml_f:
-                    all_xml_content += xml_f.read() + "\n"
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
-        unused_drawables = []
-        for drw in drawables:
-            in_xml = f"@drawable/{drw}" in all_xml_content
-            in_kt = any(f"R.drawable.{drw}" in c or f'"{drw}"' in c for c in kt_files.values())
-            if not (in_xml or in_kt):
-                unused_drawables.append(drw)
+    abstract fun createView(): View
 
-        if unused_drawables:
-            print(f"  ⚠️ Графические файлы без прямых ссылок ({len(unused_drawables)}): {unused_drawables[:10]}...")
-            print("     (Примечание: Могут использоваться во вложенных стилях themes.xml)")
-        else:
-            print(f"  🟢 Все {len(drawables)} файлов из res/drawable/ связаны в проекте!")
-    print()
+    open fun show() {
+        if (isShowing && overlayView != null) {
+            try {
+                windowManager.safeRemoveView(overlayView!!)
+            } catch (_: Exception) {}
+            isShowing = false
+        }
 
-    # -------------------------------------------------------------------------
-    # ФАЗА 5: Проверка Связности Ядра Модулей (Core Subsystem Matrix)
-    # -------------------------------------------------------------------------
-    print("--- [ФАЗА 4: Матрица Связности Ядра AutoTap] ---")
-    core_components = {
-        "MyAutoClickService": ["GestureExecutor", "ScriptExecutor", "RecordingEngine", "TutorialEngine", "OverlayManager", "AiScannerEngine"],
-        "ScriptExecutor": ["ActionConfig", "MyAutoClickService", "GestureExecutor", "AiScannerEngine"],
-        "AiScannerEngine": ["TemplateMatcher", "MatchCandidate", "AiScanResult"],
-        "TemplateMatcher": ["HybridCascadeMatcher", "TemplateRepository", "SearchModes"],
-        "OverlayManager": ["ControlPanelOverlay", "JoystickOverlay", "CaptureFrameOverlay", "ScenarioDebuggerOverlay"],
-        "MainActivity": ["MyAutoClickService", "StructuredLogger", "ScriptRepository"]
+        try {
+            val view = createView()
+            view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            overlayView = view
+            val params = createOverlayParams(
+                width = width,
+                height = height,
+                gravity = gravity,
+                flags = flags,
+                x = initialX,
+                y = initialY
+            ).apply {
+                if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
+                    this.dimAmount = this@OverlayBase.dimAmount
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    this.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            this.layoutParams = params
+            val added = windowManager.safeAddView(view, params)
+            if (added) {
+                isShowing = true
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) принудительно отображен.")
+            }
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
+        }
     }
 
-    for comp, dependencies in core_components.items():
-        comp_file = next((path for path, content in kt_files.items() if comp in path), None)
-        if comp_file:
-            content = kt_files[comp_file]
-            missing_deps = []
-            for dep in dependencies:
-                if dep not in content:
-                    missing_deps.append(dep)
-            
-            if missing_deps:
-                print(f"  ⚠️  {comp} -> Отсутствует упоминание зависимостей: {missing_deps}")
-            else:
-                print(f"  🟢 {comp} -> Все {len(dependencies)} ядерных зависимостей завязаны!")
-        else:
-            print(f"  🔴 ОШИБКА: Ядерный класс {comp} не найден в проекте!")
+    open fun hide() {
+        val view = overlayView ?: return
+        if (isShowing) {
+            try {
+                windowManager.safeRemoveView(view)
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} скрыт.")
+            } catch (e: Exception) {
+                logError("OVERLAY", "Ошибка при скрытии ${javaClass.simpleName}", e)
+            }
+            overlayView = null
+            isShowing = false
+        }
+    }
 
-    print("\n======================================================================")
-    print("                    📊 ИТОГОВЫЙ ОТЧЕТ АУДИТА")
-    print("======================================================================")
-    print(" Скрипт проверки связности успешно выполнен.")
-    print(" Все обнаруженные несвязанные элементы могут быть точечно поправлены.")
-    print("======================================================================\n")
+    fun setTouchable(touchable: Boolean) {
+        val lp = layoutParams ?: return
+        val view = overlayView ?: return
+        if (touchable) {
+            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        try {
+            windowManager.updateViewLayout(view, lp)
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка обновления флага touchable", e)
+        }
+    }
 
-if __name__ == "__main__":
-    audit_project_interconnections()
+    fun getBounds(): Rect {
+        val lp = layoutParams ?: return Rect(0, 0, 0, 0)
+        val w = if (width > 0) width else 200
+        val h = if (height > 0) height else 200
+        return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
+    }
+
+    protected fun setupDragAndDrop(handleView: View) {
+        var startX = 0
+        var startY = 0
+        var touchX = 0f
+        var touchY = 0f
+        var isDragging = false
+
+        handleView.setOnTouchListener { v, event ->
+            val lp = layoutParams ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = lp.x
+                    startY = lp.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    isDragging = false
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+
+                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        isDragging = true
+                    }
+
+                    if (isDragging) {
+                        lp.x = startX + dx
+                        lp.y = startY + dy
+                        try {
+                            windowManager.updateViewLayout(overlayView ?: v, lp)
+                        } catch (e: Exception) {
+                            logError("OVERLAY", "Ошибка перемещения оверлея", e)
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (isDragging) {
+                        isDragging = false
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> false
+            }
+        }
+    }
+}
+"""
+
+# 2. ControlPanelOverlay.kt — Прямой запуск прицела по btnCapturePool и btnAdd
+files["app/src/main/java/com/example/autotap/ui/overlays/ControlPanelOverlay.kt"] = """package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.graphics.Color
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.Button
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+
+class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private var btnPlayView: View? = null
+    private var btnRecordView: View? = null
+    private var btnJoystickView: View? = null
+    private var panelState = 0 // 0 = 2 строки (Full), 1 = 1 строка (Compact), 2 = 1 кнопка (Bubble)
+
+    init {
+        layer = OverlayLayer.PANEL_LAYER
+        priority = OverlayPriority.HIGH
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.floating_control_panel, null)
+
+        btnPlayView = view.findViewByNames("btnPlay")
+        btnRecordView = view.findViewByNames("btnRecord")
+        btnJoystickView = view.findViewByNames("btnToggleJoystick")
+
+        // 3-Этапный циклический режим сворачивания
+        view.bindClickByNames("btnToggleMenu", "btnSingleBubble") {
+            cyclePanelState(view)
+        }
+
+        // КНОПКА ПРИЦЕЛА И СОЗДАНИЯ ШАБЛОНА
+        view.bindClickByNames("btnCapturePool", "btnAdd") {
+            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона (CaptureFrameOverlay).")
+            context.vibrateFeedback()
+            overlayManager.captureFrameOverlay.show()
+        }
+
+        view.bindClickByNames("btnPlay") {
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                if (svc.isPlaying) {
+                    svc.scriptExecutor.stop()
+                } else {
+                    svc.scriptExecutor.start()
+                }
+                updateToggleStates()
+            }
+        }
+
+        view.bindClickByNames("btnRecord") {
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                if (svc.recordingEngine.isRecording) {
+                    svc.recordingEngine.stopRecording("recorded_script")
+                } else {
+                    svc.recordingEngine.startRecording()
+                }
+                updateToggleStates()
+            }
+        }
+
+        view.bindClickByNames("btnClearAll") {
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.actionsList.clear()
+                context.vibrateFeedback()
+                logDiagnostic("OVERLAY", "Очищены все шаги сценария.")
+            }
+        }
+
+        view.bindClickByNames("btnLoadScript") {
+            logDiagnostic("OVERLAY", "Кнопка btnLoadScript нажата.")
+            overlayManager.scriptsDialog.show()
+        }
+
+        view.bindClickByNames("btnToggleJoystick") {
+            if (overlayManager.joystickOverlay.isShowing) {
+                overlayManager.joystickOverlay.hide()
+            } else {
+                overlayManager.joystickOverlay.show()
+            }
+            updateToggleStates()
+        }
+
+        view.bindClickByNames("btnHelpTutorial") {
+            logDiagnostic("OVERLAY", "Кнопка btnHelpTutorial нажата.")
+            MyAutoClickService.instance?.tutorialEngine?.startDefaultTutorial()
+        }
+
+        view.bindClickByNames("btnClose") {
+            logDiagnostic("OVERLAY", "Кнопка btnClose нажата.")
+            MyAutoClickService.instance?.scriptExecutor?.stop()
+            hide()
+        }
+
+        val dragHandle = view.findViewByNames("handleDrag") ?: view
+        setupDragAndDrop(dragHandle)
+        updateToggleStates()
+        return view
+    }
+
+    private fun cyclePanelState(root: View) {
+        panelState = (panelState + 1) % 3
+        val mainRow = root.findViewByNames("layoutMainRow")
+        val subMenu = root.findViewByNames("layoutSubMenu")
+        val mainCard = root.findViewByNames("layoutMainCard")
+        val singleBubble = root.findViewByNames("btnSingleBubble")
+
+        when (panelState) {
+            0 -> { // 2 строки (Full)
+                mainCard?.visibility = View.VISIBLE
+                mainRow?.visibility = View.VISIBLE
+                subMenu?.visibility = View.VISIBLE
+                singleBubble?.visibility = View.GONE
+                logDiagnostic("OVERLAY", "Панель: Режим 2 строки (Full)")
+            }
+            1 -> { // 1 строка (Compact)
+                mainCard?.visibility = View.VISIBLE
+                mainRow?.visibility = View.VISIBLE
+                subMenu?.visibility = View.GONE
+                singleBubble?.visibility = View.GONE
+                logDiagnostic("OVERLAY", "Панель: Режим 1 строка (Compact)")
+            }
+            2 -> { // 1 кнопка (Bubble)
+                mainCard?.visibility = View.GONE
+                mainRow?.visibility = View.GONE
+                subMenu?.visibility = View.GONE
+                singleBubble?.visibility = View.VISIBLE
+                logDiagnostic("OVERLAY", "Панель: Режим 1 кнопка (Single Bubble)")
+            }
+        }
+        context.vibrateFeedback()
+    }
+
+    fun updateToggleStates() {
+        val svc = MyAutoClickService.instance
+
+        (btnPlayView as? Button)?.apply {
+            val isPlaying = svc?.isPlaying == true
+            isSelected = isPlaying
+            text = if (isPlaying) "[ РАБОТАЕТ... ]" else "СТАРТ"
+            setTextColor(if (isPlaying) Color.parseColor("#00E676") else Color.WHITE)
+        }
+
+        (btnRecordView as? Button)?.apply {
+            val isRecording = svc?.recordingEngine?.isRecording == true
+            isSelected = isRecording
+            text = if (isRecording) "[ ЗАПИСЬ... ]" else "ЗАПИСЬ"
+            setTextColor(if (isRecording) Color.parseColor("#FF5252") else Color.WHITE)
+        }
+
+        (btnJoystickView as? Button)?.apply {
+            val isJoystickVisible = overlayManager.joystickOverlay.isShowing
+            isSelected = isJoystickVisible
+            text = if (isJoystickVisible) "[ ДЖОЙСТИК: ВКЛ ]" else "ДЖОЙСТИК"
+            setTextColor(if (isJoystickVisible) Color.parseColor("#00E676") else Color.WHITE)
+        }
+    }
+}
+"""
+
+# 3. AddActionDialog.kt — Вызов прицела по btnAddTrigger / btnAddAi
+files["app/src/main/java/com/example/autotap/ui/overlays/AddActionDialog.kt"] = """package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+
+class AddActionDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    init {
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.6f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_add_action, null)
+
+        view.bindClickByNames("btnAddClick") {
+            MyAutoClickService.instance?.addNewActionAtPosition(0.5f, 0.5f)
+            logDiagnostic("SCRIPT", "Добавлено действие КЛИК.")
+            hide()
+        }
+
+        view.bindClickByNames("btnAddTrigger", "btnAddAi", "btnAddSwipe") {
+            logDiagnostic("OVERLAY", "Открытие прицела захвата маски из AddActionDialog.")
+            overlayManager.captureFrameOverlay.show()
+            hide()
+        }
+
+        view.bindClickByNames("btnCancelAdd") {
+            hide()
+        }
+
+        return view
+    }
+}
+"""
+
+print("=== ФИКС ПРЯМОГО ЗАПУСКА ПРИЦЕЛА И ОБНОВЛЕНИЯ show() ===")
+
+for rel_path, content in files.items():
+    abs_path = os.path.abspath(rel_path)
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+
+    if rel_path.endswith(".kt"):
+        validate_kotlin(content, rel_path)
+
+    with open(abs_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"SUCCESS: {rel_path}")
+
+print("=== ЗАПУСК ПРИЦЕЛА УСПЕШНО ИСПРАВЛЕН ===")

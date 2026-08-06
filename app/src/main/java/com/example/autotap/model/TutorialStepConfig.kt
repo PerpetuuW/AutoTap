@@ -4,6 +4,7 @@ import android.graphics.Rect
 
 data class TutorialStepConfig(
     val id: String,
+    val title: String,
     val message: String,
     val highlightArea: Rect? = null,
     val waitForClickOnArea: Rect? = null,

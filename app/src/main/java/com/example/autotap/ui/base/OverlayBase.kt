@@ -46,7 +46,13 @@ abstract class OverlayBase(
     abstract fun createView(): View
 
     open fun show() {
-        if (isShowing) return
+        if (isShowing && overlayView != null) {
+            try {
+                windowManager.safeRemoveView(overlayView!!)
+            } catch (_: Exception) {}
+            isShowing = false
+        }
+
         try {
             val view = createView()
             view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -70,7 +76,7 @@ abstract class OverlayBase(
             val added = windowManager.safeAddView(view, params)
             if (added) {
                 isShowing = true
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен.")
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) принудительно отображен.")
             }
         } catch (e: Exception) {
             logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
@@ -129,7 +135,7 @@ abstract class OverlayBase(
                     touchX = event.rawX
                     touchY = event.rawY
                     isDragging = false
-                    false // Пропускаем событие вниз к дочерним кнопкам!
+                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - touchX).toInt()
@@ -157,7 +163,7 @@ abstract class OverlayBase(
                         isDragging = false
                         true
                     } else {
-                        false // Клик свободно проходит к OnClickListener!
+                        false
                     }
                 }
                 else -> false
