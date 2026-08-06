@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootTutorialOverlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#00000000"
+    android:elevation="50dp">
+
+    <!-- Затемнение -->
+    <View
+        android:id="@+id/tutorialDim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#88000000" />
+
+    <!-- Вырез spotlight -->
+    <View
+        android:id="@+id/tutorialSpotlight"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:background="@drawable/tutorial_spotlight_bg"
+        android:visibility="gone" />
+
+    <!-- Стрелка -->
+    <ImageView
+        android:id="@+id/tutorialArrow"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:src="@drawable/tutorial_arrow"
+        android:visibility="gone" />
+
+    <!-- Текстовая подсказка -->
+    <LinearLayout
+        android:id="@+id/tutorialHintCard"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/panel_background"
+        android:padding="12dp"
+        android:elevation="60dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tutorialHintText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Подсказка"
+            android:textColor="@color/text_white"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/tutorialNextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Далее"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/accent_blue"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+</FrameLayout>

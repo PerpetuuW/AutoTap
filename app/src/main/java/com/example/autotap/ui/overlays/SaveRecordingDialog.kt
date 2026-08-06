@@ -5,22 +5,31 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
-import com.example.autotap.bindClickByNames
-import com.example.autotap.findViewByNames
+import com.example.autotap.data.ScriptMetadata
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
 import com.example.autotap.vibrateFeedback
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-class SaveRecordingDialog(context: Context, overlayManager: OverlayManager) :
-    OverlayBase(context, overlayManager) {
+class SaveRecordingDialog(
+    context: Context,
+    overlayManager: OverlayManager
+) : OverlayBase(context, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
 
-    private var etScriptNameView: EditText? = null
+    override val layoutResId: Int = R.layout.dialog_save_recording
+
+    private var onSavedCallback: ((String) -> Unit)? = null
+    private var onCloseCallback: (() -> Unit)? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -29,31 +38,60 @@ class SaveRecordingDialog(context: Context, overlayManager: OverlayManager) :
         flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         dimAmount = 0.6f
-        layer = OverlayLayer.DIALOG_LAYER
-        priority = OverlayPriority.CRITICAL
     }
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(R.layout.dialog_save_recording, null)
+        val view = inflater.inflate(layoutResId, null)
+        bind(view)
+        return view
+    }
 
-        etScriptNameView = view.findViewByNames("etRecordScriptName") as? EditText
+    fun openForSaving(
+        onSaved: ((String) -> Unit)? = null,
+        onClose: (() -> Unit)? = null
+    ) {
+        this.onSavedCallback = onSaved
+        this.onCloseCallback = onClose
+        show()
+        val v = rootView ?: return
+        bind(v)
+    }
 
-        view.bindClickByNames("btnSaveRecordScript") {
-            val name = etScriptNameView?.text?.toString()?.ifBlank { "recorded_script" } ?: "recorded_script"
+    private fun bind(v: View) {
+        val etName = v.findViewById<EditText>(R.id.etSaveScriptName)
+        val etLoop = v.findViewById<EditText>(R.id.etSaveLoopCount)
+        val cbInfinite = v.findViewById<CheckBox>(R.id.cbSaveInfinite)
+        val btnSave = v.findViewById<Button>(R.id.btnSaveRecording)
+        val btnClose = v.findViewById<Button>(R.id.btnSaveClose)
+
+        btnSave?.setOnClickListener {
+            val name = etName?.text?.toString()?.trim()?.ifBlank {
+                "script_${SimpleDateFormat("MMdd_HHmm", Locale.US).format(Date())}"
+            } ?: "script_${System.currentTimeMillis() % 10000}"
+
+            val loopCount = etLoop?.text?.toString()?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+            val isInfinite = cbInfinite?.isChecked ?: false
+
             val svc = MyAutoClickService.instance
             if (svc != null) {
-                svc.recordingEngine.stopRecording(name)
+                val metadata = ScriptMetadata(
+                    name = name,
+                    stepCount = svc.actionsList.size,
+                    loopCount = loopCount,
+                    isInfinite = isInfinite
+                )
+                svc.scriptRepository.saveScript(name, svc.actionsList, metadata)
                 context.vibrateFeedback()
-                logDiagnostic("SCRIPT", "Запись сохранена под именем '$name'")
+                logDiagnostic("SCRIPT", "Запись '$name' успешно сохранена из SaveRecordingDialog (loopCount=$loopCount, infinite=$isInfinite)")
+                onSavedCallback?.invoke(name)
             }
             hide()
         }
 
-        view.bindClickByNames("btnSkipRecordScript") {
+        btnClose?.setOnClickListener {
             hide()
+            onCloseCallback?.invoke()
         }
-
-        return view
     }
 }

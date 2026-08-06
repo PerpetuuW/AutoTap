@@ -1,245 +1,115 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="340dp"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="@color/panel_blue"
-    android:padding="12dp"
-    android:elevation="18dp">
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootMaskEditor"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#CC000000"
+    android:padding="12dp">
 
-    <!-- Заголовок с крестиком закрытия справа -->
-    <RelativeLayout
+    <!-- ЦЕНТРАЛЬНАЯ КАРТОЧКА -->
+    <LinearLayout
+        android:id="@+id/layoutMaskCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="4dp">
+        android:orientation="vertical"
+        android:background="@drawable/panel_background"
+        android:padding="12dp"
+        android:elevation="22dp">
 
+        <!-- Заголовок -->
         <TextView
+            android:id="@+id/tvMaskEditorTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignParentStart="true"
-            android:layout_centerVertical="true"
-            android:text="Редактирование Шаблонов"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp"
-            android:textStyle="bold" />
-
-        <ImageButton
-            android:id="@+id/btnCloseMaskEditor"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:background="@null"
-            android:contentDescription="Close"
-            android:src="@drawable/ic_close"
-            android:tint="#FFFFFF" />
-    </RelativeLayout>
-
-    <!-- Выбор формы кадра (Круг / Прямоугольник) -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="6dp">
-
-        <Button
-            android:id="@+id/btnToggleMaskShape"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="34dp"
-            android:minHeight="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="Форма: 🔘 Круг / 🔲 Прямоугольник"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/accent_blue"
-            android:textSize="10sp"
+            android:text="Редактор маски"
+            android:textColor="@color/text_white"
+            android:textSize="18sp"
             android:textStyle="bold"
-            android:padding="0dp" />
-    </LinearLayout>
+            android:layout_marginBottom="8dp" />
 
-    <!-- Регулировка ширины и высоты кадра W / H -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="6dp">
-
-        <Button
-            android:id="@+id/btnCropWidthMinus"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="32dp"
-            android:minHeight="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="➖ W-20"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/bg_dark_blue"
-            android:textSize="10sp"
-            android:padding="0dp" />
-
-        <TextView
-            android:id="@+id/tvCropSizeDisplay"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📏 100x100 px"
-            android:textColor="#00F5D4"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp" />
-
-        <Button
-            android:id="@+id/btnCropWidthPlus"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="32dp"
-            android:minHeight="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="➕ W+20"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/bg_dark_blue"
-            android:textSize="10sp"
-            android:padding="0dp" />
-
-        <Button
-            android:id="@+id/btnCropHeightPlus"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="32dp"
-            android:minHeight="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="➕ H+20"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/bg_dark_blue"
-            android:textSize="10sp"
-            android:padding="0dp"
-            android:layout_marginStart="4dp"/>
-    </LinearLayout>
-
-    <Button
-        android:id="@+id/btnTemplateSearchArea"
-        android:layout_width="match_parent"
-        android:layout_height="34dp"
-        android:minHeight="34dp"
-        android:insetTop="0dp"
-        android:insetBottom="0dp"
-        android:text="📐 Задать зону поиска шаблона"
-        android:textColor="#FFB703"
-        android:backgroundTint="@color/bg_dark_blue"
-        android:textSize="10sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="6dp"/>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="👉 Кликните на скриншот для вырезки кадра:"
-        android:textColor="#00B4D8"
-        android:textSize="10sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="4dp"/>
-
-    <!-- Адаптивный фоновый скриншот -->
-    <ImageView
-        android:id="@+id/ivEditorFullScreenshot"
-        android:layout_width="match_parent"
-        android:layout_height="260dp"
-        android:scaleType="fitCenter"
-        android:background="#000000"
-        android:layout_marginBottom="8dp"/>
-
-    <!-- Нижняя панель с маской и кнопками -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginEnd="8dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Маска:"
-                android:textColor="@color/text_gray"
-                android:textSize="9sp"
-                android:layout_marginBottom="2dp"/>
+        <!-- Область изображения -->
+        <FrameLayout
+            android:id="@+id/layoutMaskImageContainer"
+            android:layout_width="match_parent"
+            android:layout_height="260dp"
+            android:background="@color/bg_dark_blue"
+            android:padding="4dp">
 
             <ImageView
-                android:id="@+id/ivEditorMaskPreview"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:scaleType="fitCenter"
-                android:background="#1C2541"
-                android:padding="2dp"/>
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <LinearLayout
+                android:id="@+id/ivMaskPreview"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="4dp">
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"
+                android:adjustViewBounds="true" />
 
-                <Button
-                    android:id="@+id/btnSaveMaskEdits"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="36dp"
-                    android:text="Сохранить"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="@color/accent_blue"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:padding="0dp"/>
+            <!-- Рамка кропа -->
+            <FrameLayout
+                android:id="@+id/maskCropFrame"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:layout_gravity="center"
+                android:background="@drawable/border_yellow_search_area">
 
                 <View
-                    android:layout_width="4dp"
-                    android:layout_height="match_parent"/>
+                    android:id="@+id/handleResizeMask"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_gravity="bottom|end"
+                    android:background="@drawable/handle_manipulator_bg"
+                    android:padding="4dp" />
+            </FrameLayout>
+        </FrameLayout>
 
-                <Button
-                    android:id="@+id/btnCopyMaskEdits"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="36dp"
-                    android:text="📋 Копия"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="#1C2541"
-                    android:textSize="11sp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:padding="0dp"/>
-            </LinearLayout>
+        <!-- Кнопки -->
+        <LinearLayout
+            android:id="@+id/layoutMaskButtons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginTop="12dp">
 
             <Button
-                android:id="@+id/btnCancelMaskEdits"
-                android:layout_width="match_parent"
-                android:layout_height="34dp"
-                android:text="Отмена"
-                android:textColor="#FFFFFF"
+                android:id="@+id/btnMaskSave"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="💾 Сохранить"
+                android:textColor="@color/text_white"
+                android:backgroundTint="@color/accent_blue"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnMaskCopy"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="📄 Копировать"
+                android:textColor="@color/text_white"
+                android:backgroundTint="@color/bg_dark_blue"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnMaskDelete"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="🗑 Удалить"
+                android:textColor="@color/text_white"
                 android:backgroundTint="@color/red_close"
-                android:textSize="11sp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:padding="0dp"/>
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp" />
         </LinearLayout>
+
+        <!-- Закрыть -->
+        <Button
+            android:id="@+id/btnMaskClose"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:text="Закрыть"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:layout_marginTop="12dp" />
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>

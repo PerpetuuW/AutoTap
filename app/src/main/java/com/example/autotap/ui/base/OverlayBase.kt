@@ -1,14 +1,18 @@
 package com.example.autotap.ui.base
 
 import android.content.Context
+import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import androidx.core.view.ViewCompat
 import com.example.autotap.createOverlayParams
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
 import com.example.autotap.safeAddView
@@ -21,6 +25,8 @@ abstract class OverlayBase(
 ) {
     protected val windowManager: WindowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    open val layoutResId: Int = 0
 
     var width: Int = WindowManager.LayoutParams.WRAP_CONTENT
     var height: Int = WindowManager.LayoutParams.WRAP_CONTENT
@@ -37,13 +43,50 @@ abstract class OverlayBase(
     var priority: OverlayPriority = OverlayPriority.MEDIUM
 
     protected var overlayView: View? = null
+    protected var rootView: View? = null
     protected var layoutParams: WindowManager.LayoutParams? = null
+    protected var params: WindowManager.LayoutParams? = null
     var isShowing: Boolean = false
         protected set
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
-    abstract fun createView(): View
+    open fun createView(): View {
+        if (layoutResId != 0) {
+            return LayoutInflater.from(context).inflate(layoutResId, null)
+        }
+        throw UnsupportedOperationException("Оверлей должен переопределить layoutResId или createView()")
+    }
+
+    open fun inflate() {
+        if (rootView != null) return
+        val view = createView()
+        rootView = view
+        overlayView = view
+
+        val lp = createOverlayParams(
+            width = width,
+            height = height,
+            gravity = gravity,
+            flags = flags,
+            x = initialX,
+            y = initialY
+        ).apply {
+            if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
+                this.dimAmount = this@OverlayBase.dimAmount
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                this.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+
+        this.layoutParams = lp
+        this.params = lp
+        ViewCompat.setImportantForAccessibility(
+            view,
+            ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_NO
+        )
+    }
 
     open fun show() {
         if (isShowing && overlayView != null) {
@@ -54,26 +97,11 @@ abstract class OverlayBase(
         }
 
         try {
-            val view = createView()
-            view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            overlayView = view
-            val params = createOverlayParams(
-                width = width,
-                height = height,
-                gravity = gravity,
-                flags = flags,
-                x = initialX,
-                y = initialY
-            ).apply {
-                if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
-                    this.dimAmount = this@OverlayBase.dimAmount
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    this.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                }
-            }
-            this.layoutParams = params
-            val added = windowManager.safeAddView(view, params)
+            inflate()
+            val view = overlayView ?: rootView ?: return
+            val lp = layoutParams ?: params ?: return
+            reboundToScreen(lp)
+            val added = windowManager.safeAddView(view, lp)
             if (added) {
                 isShowing = true
                 logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) принудительно отображен.")
@@ -84,7 +112,7 @@ abstract class OverlayBase(
     }
 
     open fun hide() {
-        val view = overlayView ?: return
+        val view = overlayView ?: rootView ?: return
         if (isShowing) {
             try {
                 windowManager.safeRemoveView(view)
@@ -93,13 +121,35 @@ abstract class OverlayBase(
                 logError("OVERLAY", "Ошибка при скрытии ${javaClass.simpleName}", e)
             }
             overlayView = null
+            rootView = null
             isShowing = false
         }
     }
 
+    fun reboundToScreen(lp: WindowManager.LayoutParams) {
+        val screenSize = context.getRealScreenSize()
+        val maxX = (screenSize.x - 100).coerceAtLeast(10)
+        val maxY = (screenSize.y - 100).coerceAtLeast(10)
+        lp.x = lp.x.coerceIn(0, maxX)
+        lp.y = lp.y.coerceIn(0, maxY)
+    }
+
+    fun updatePosition(x: Int, y: Int) {
+        val lp = layoutParams ?: params ?: return
+        val screenSize = context.getRealScreenSize()
+        lp.x = x.coerceIn(0, (screenSize.x - 100).coerceAtLeast(10))
+        lp.y = y.coerceIn(0, (screenSize.y - 100).coerceAtLeast(10))
+        val v = overlayView ?: rootView ?: return
+        try {
+            windowManager.updateViewLayout(v, lp)
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка обновления позиции $layer", e)
+        }
+    }
+
     fun setTouchable(touchable: Boolean) {
-        val lp = layoutParams ?: return
-        val view = overlayView ?: return
+        val lp = layoutParams ?: params ?: return
+        val view = overlayView ?: rootView ?: return
         if (touchable) {
             lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
         } else {
@@ -113,7 +163,7 @@ abstract class OverlayBase(
     }
 
     fun getBounds(): Rect {
-        val lp = layoutParams ?: return Rect(0, 0, 0, 0)
+        val lp = layoutParams ?: params ?: return Rect(0, 0, 0, 0)
         val w = if (width > 0) width else 200
         val h = if (height > 0) height else 200
         return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
@@ -127,7 +177,7 @@ abstract class OverlayBase(
         var isDragging = false
 
         handleView.setOnTouchListener { v, event ->
-            val lp = layoutParams ?: return@setOnTouchListener false
+            val lp = layoutParams ?: params ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = lp.x
@@ -146,13 +196,9 @@ abstract class OverlayBase(
                     }
 
                     if (isDragging) {
-                        lp.x = startX + dx
-                        lp.y = startY + dy
-                        try {
-                            windowManager.updateViewLayout(overlayView ?: v, lp)
-                        } catch (e: Exception) {
-                            logError("OVERLAY", "Ошибка перемещения оверлея", e)
-                        }
+                        val newX = startX + dx
+                        val newY = startY + dy
+                        updatePosition(newX, newY)
                         true
                     } else {
                         false

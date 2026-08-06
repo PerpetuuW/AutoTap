@@ -27,12 +27,11 @@ import kotlin.math.max
 class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
+    override val layoutResId: Int = R.layout.floating_capture_frame
+
     private val minSizePx = 24.dpToPx(context)
     private var currentFrameWidthPx = 240.dpToPx(context)
     private var currentFrameHeightPx = 240.dpToPx(context)
-
-    private var captureSquareView: View? = null
-    private var layoutBottomBarView: View? = null
 
     init {
         gravity = Gravity.CENTER
@@ -44,17 +43,14 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(R.layout.floating_capture_frame, null)
-
-        captureSquareView = view.findViewByNames("captureSquare")
-        layoutBottomBarView = view.findViewByNames("layoutBottomBar")
+        val view = inflater.inflate(layoutResId, null)
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
             logDiagnostic("OVERLAY", "Вырезание маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
             context.vibrateFeedback()
 
             val svc = MyAutoClickService.instance
-            val lp = layoutParams
+            val lp = layoutParams ?: params
             if (svc != null && lp != null) {
                 val metrics = context.resources.displayMetrics
                 val centerXNorm = (lp.x + currentFrameWidthPx / 2f) / metrics.widthPixels.toFloat()
@@ -85,14 +81,12 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 }
             }
             hide()
-        }
-
-        view.bindClickByNames("btnToggleCaptureShape") {
-            logDiagnostic("OVERLAY", "Переключение формы рамки захвата.")
+            overlayManager.showControlPanel()
         }
 
         view.bindClickByNames("btnCancelCapture", "btn_cancel_capture", "btn_close") {
             hide()
+            overlayManager.showControlPanel()
         }
 
         view.bindClickByNames("btnCaptureSearchArea") {
@@ -119,7 +113,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         var touchY = 0f
 
         resizeView.setOnTouchListener { _, event ->
-            val lp = layoutParams ?: return@setOnTouchListener false
+            val lp = layoutParams ?: params ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startW = lp.width.takeIf { it > 0 } ?: currentFrameWidthPx
@@ -141,7 +135,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     height = currentFrameHeightPx
 
                     try {
-                        windowManager.updateViewLayout(overlayView, lp)
+                        windowManager.updateViewLayout(overlayView ?: rootView, lp)
                     } catch (e: Exception) {
                         logError("OVERLAY", "Ошибка ресайза прицела", e)
                     }

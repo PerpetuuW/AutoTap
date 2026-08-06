@@ -1,21 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/layoutSearchAreaContainer"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:clipChildren="false"
-    android:clipToPadding="false">
+    android:id="@+id/rootSearchArea"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/panel_background"
+    android:padding="4dp"
+    android:elevation="16dp">
 
-    <!-- ВЕРХНЯЯ ПАНЕЛЬ ДЕЙСТВИЙ -->
+    <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
     <LinearLayout
         android:id="@+id/layoutSearchTopBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
         android:padding="4dp">
+
+        <TextView
+            android:id="@+id/handleMoveSearchArea"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:text="✥"
+            android:textColor="@color/gold_accent"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:layout_marginEnd="6dp" />
 
         <Button
             android:id="@+id/btnSaveSearchArea"
@@ -23,10 +35,8 @@
             android:layout_height="32dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
             android:text="✅ Задать"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text_white"
             android:backgroundTint="@color/accent_blue"
             android:textSize="10sp"
             android:textStyle="bold"
@@ -40,10 +50,8 @@
             android:layout_height="32dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
             android:text="🌐 Сброс"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text_white"
             android:backgroundTint="@color/bg_dark_blue"
             android:textSize="10sp"
             android:paddingStart="8dp"
@@ -61,12 +69,12 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- СРЕДНЯЯ ЗОНА: Желтая рамка Зоны Поиска -->
+    <!-- ЖЁЛТАЯ РАМКА ЗОНЫ ПОИСКА -->
     <FrameLayout
         android:id="@+id/viewSearchAreaFrame"
         android:layout_width="160dp"
         android:layout_height="160dp"
-        android:layout_gravity="top|start"
+        android:layout_marginTop="40dp"
         android:background="@drawable/border_yellow_search_area">
 
         <TextView
@@ -76,33 +84,22 @@
             android:background="#E60D1117"
             android:padding="4dp"
             android:text="📐 Зона поиска ИИ"
-            android:textColor="#FFB703"
+            android:textColor="@color/gold_accent"
             android:textSize="11sp"
             android:textStyle="bold" />
     </FrameLayout>
 
-    <!-- НИЖНЯЯ ПАНЕЛЬ ПОЗИЦИОНИРОВАНИЯ -->
+    <!-- НИЖНЯЯ ПАНЕЛЬ РЕСАЙЗА -->
     <LinearLayout
         android:id="@+id/layoutSearchBottomBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
+        android:layout_gravity="bottom|start"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
-        android:padding="4dp">
-
-        <TextView
-            android:id="@+id/handleMoveSearchArea"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:text="✥"
-            android:textColor="#FFB703"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:background="@drawable/drag_handle_bg"
-            android:layout_marginEnd="6dp" />
+        android:padding="4dp"
+        android:layout_marginTop="4dp">
 
         <TextView
             android:id="@+id/handleResizeSearchArea"
@@ -110,7 +107,7 @@
             android:layout_height="32dp"
             android:gravity="center"
             android:text="⤢"
-            android:textColor="#00F5D4"
+            android:textColor="@color/electric_cyan"
             android:textSize="16sp"
             android:textStyle="bold"
             android:background="@drawable/handle_manipulator_bg" />

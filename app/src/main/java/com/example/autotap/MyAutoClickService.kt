@@ -14,6 +14,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
 import com.example.autotap.data.ScriptRepository
 import com.example.autotap.data.TemplateRepository
 import com.example.autotap.engine.AiScannerEngine
@@ -39,7 +40,6 @@ class MyAutoClickService : AccessibilityService() {
     val actionsList = mutableListOf<ActionConfig>()
     @Volatile var isPlaying = false
 
-    // Глобальные настройки длительностей
     var globalClickDurationMs: Long = 120L
     var globalSwipeDurationMs: Long = 300L
     var globalPreScreenshotDelayMs: Long = 250L
@@ -77,7 +77,7 @@ class MyAutoClickService : AccessibilityService() {
         aiScannerEngine = AiScannerEngine(this)
         overlayManager = OverlayManager(this)
 
-        logDiagnostic("OVERLAY", "MyAutoClickService полностью инициализирован.")
+        logDiagnostic("OVERLAY", "MyAutoClickService v40 полностью инициализирован.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -218,6 +218,12 @@ class MyAutoClickService : AccessibilityService() {
                             }
                         }
                     )
+                } catch (e: SecurityException) {
+                    logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите службу AutoTap в Спец. возможностях", e)
+                    mainHandler.post {
+                        Toast.makeText(this@MyAutoClickService, "Перезапустите тумблер AutoTap в Спец. возможностях для скриншотов!", Toast.LENGTH_LONG).show()
+                    }
+                    callback(generateFallbackFrame())
                 } catch (e: Exception) {
                     logError("AI_SCANNER", "Ошибка вызова takeScreenshot API", e)
                     callback(generateFallbackFrame())

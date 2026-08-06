@@ -1,9 +1,11 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
+import android.graphics.PixelFormat
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
+import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.R

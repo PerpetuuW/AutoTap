@@ -44,7 +44,10 @@ class TemplateRepository(private val context: Context) {
 
     fun loadTemplate(index: Int): Bitmap? {
         if (bitmapCache.containsKey(index)) {
-            return bitmapCache[index]
+            val cached = bitmapCache[index]
+            if (cached != null && !cached.isRecycled) {
+                return cached
+            }
         }
         return try {
             val file = File(context.filesDir, "template_$index.png")
@@ -68,7 +71,10 @@ class TemplateRepository(private val context: Context) {
 
     fun loadCalibratedMask(index: Int): CalibratedMask? {
         if (calibratedMaskCache.containsKey(index)) {
-            return calibratedMaskCache[index]
+            val cached = calibratedMaskCache[index]
+            if (cached != null && !cached.original.isRecycled) {
+                return cached
+            }
         }
         val bitmap = loadTemplate(index) ?: return null
         val calibrated = calibrator.calibrate(bitmap)
@@ -92,9 +98,12 @@ class TemplateRepository(private val context: Context) {
                 trashDir.mkdirs()
                 val trashFile = File(trashDir, "template_$index.png")
                 file.renameTo(trashFile)
-                bitmapCache.remove(index)
+
+                // Очистка памяти Bitmap для утилизации ОЗУ
+                bitmapCache.remove(index)?.recycle()
                 calibratedMaskCache.remove(index)
-                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину.")
+
+                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину с высвобождением ОЗУ.")
                 true
             } else false
         } catch (e: Exception) {

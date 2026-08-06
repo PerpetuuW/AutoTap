@@ -21,10 +21,12 @@ import com.example.autotap.vibrateFeedback
 class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
+    override val layoutResId: Int = R.layout.floating_control_panel
+
     private var btnPlayView: View? = null
     private var btnRecordView: View? = null
     private var btnJoystickView: View? = null
-    private var panelState = 0 // 0 = Full (2 строки), 1 = Single Bubble (1 шарик), 2 = Compact (1 строка)
+    private var panelState = 0
 
     init {
         layer = OverlayLayer.PANEL_LAYER
@@ -33,13 +35,12 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(R.layout.floating_control_panel, null)
+        val view = inflater.inflate(layoutResId, null)
 
         btnPlayView = view.findViewByNames("btnPlay")
         btnRecordView = view.findViewByNames("btnRecord")
         btnJoystickView = view.findViewByNames("btnToggleJoystick")
 
-        // 3-Этапный циклический режим сворачивания
         view.bindClickByNames("btnToggleMenu", "btnSingleBubble") {
             cyclePanelState(view)
         }
@@ -127,10 +128,10 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         val mainCard = root.findViewByNames("layoutMainCard")
         val singleBubble = root.findViewByNames("btnSingleBubble")
 
-        val lp = layoutParams ?: return
+        val lp = layoutParams ?: params ?: return
 
         when (panelState) {
-            0 -> { // 2 строки (Full)
+            0 -> {
                 lp.width = WindowManager.LayoutParams.WRAP_CONTENT
                 lp.height = WindowManager.LayoutParams.WRAP_CONTENT
                 mainCard?.visibility = View.VISIBLE
@@ -139,7 +140,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 singleBubble?.visibility = View.GONE
                 logDiagnostic("OVERLAY", "Панель: Режим 2 строки (Full)")
             }
-            1 -> { // 1 кнопка (Single Bubble) - ФИКС: singleBubble виден!
+            1 -> {
                 val bubbleSizePx = 56.dpToPx(context)
                 lp.width = bubbleSizePx
                 lp.height = bubbleSizePx
@@ -149,7 +150,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 singleBubble?.visibility = View.VISIBLE
                 logDiagnostic("OVERLAY", "Панель: Режим Одиночный Шарик (Bubble ${bubbleSizePx}px)")
             }
-            2 -> { // 1 строка (Compact)
+            2 -> {
                 lp.width = WindowManager.LayoutParams.WRAP_CONTENT
                 lp.height = WindowManager.LayoutParams.WRAP_CONTENT
                 mainCard?.visibility = View.VISIBLE
@@ -161,7 +162,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         }
 
         try {
-            windowManager.updateViewLayout(overlayView, lp)
+            windowManager.updateViewLayout(overlayView ?: rootView, lp)
         } catch (e: Exception) {
             logDiagnostic("OVERLAY", "Ошибка обновления размера окна при сворачивании.")
         }

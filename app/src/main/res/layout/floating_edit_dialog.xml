@@ -1,699 +1,114 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootEditActionDialog"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/bg_dark_blue"
-    android:padding="14dp">
+    android:background="#CC000000"
+    android:padding="12dp">
 
-    <!-- ВЕРХНИЙ ЗАГОЛОВОК С КНОПКАМИ 💾 И ✕ -->
     <LinearLayout
+        android:id="@+id/layoutEditCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="6dp">
-
-        <Button
-            android:id="@+id/btnPrevStep"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:text="◄"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/accent_blue"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:padding="0dp"
-            android:layout_marginEnd="4dp"/>
+        android:orientation="vertical"
+        android:background="@drawable/panel_background"
+        android:padding="12dp"
+        android:elevation="22dp">
 
         <TextView
-            android:id="@+id/tvDialogTitle"
-            android:layout_width="0dp"
-            android:layout_weight="1"
+            android:id="@+id/tvEditTitle"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="start|center_vertical"
-            android:text="Действие #1"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp"
+            android:text="Редактирование действия"
+            android:textColor="@color/text_white"
+            android:textSize="18sp"
             android:textStyle="bold"
-            android:paddingStart="4dp"/>
+            android:layout_marginBottom="8dp" />
 
-        <Button
-            android:id="@+id/btnSaveHeader"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:gravity="center"
-            android:text="💾"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/accent_blue"
-            android:textSize="13sp"
-            android:padding="0dp"
-            android:layout_marginEnd="4dp" />
+        <EditText
+            android:id="@+id/etEditX"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:hint="X (px)"
+            android:inputType="number"
+            android:textColor="@color/text_white"
+            android:textColorHint="@color/text_gray"
+            android:background="@drawable/drag_handle_bg"
+            android:padding="8dp"
+            android:layout_marginBottom="6dp" />
 
-        <ImageButton
-            android:id="@+id/btnCloseHeader"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:src="@drawable/ic_close"
-            android:scaleType="centerInside"
-            android:background="@drawable/btn_premium_record"
-            android:padding="5dp"
-            android:contentDescription="Close"
-            android:layout_marginEnd="4dp" />
+        <EditText
+            android:id="@+id/etEditY"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:hint="Y (px)"
+            android:inputType="number"
+            android:textColor="@color/text_white"
+            android:textColorHint="@color/text_gray"
+            android:background="@drawable/drag_handle_bg"
+            android:padding="8dp"
+            android:layout_marginBottom="6dp" />
 
-        <Button
-            android:id="@+id/btnNextStep"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:text="►"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/accent_blue"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:padding="0dp"/>
-    </LinearLayout>
+        <EditText
+            android:id="@+id/etEditDelayMs"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:hint="Задержка (мс)"
+            android:inputType="number"
+            android:textColor="@color/text_white"
+            android:textColorHint="@color/text_gray"
+            android:background="@drawable/drag_handle_bg"
+            android:padding="8dp"
+            android:layout_marginBottom="6dp" />
 
-    <ScrollView
-        android:id="@+id/scrollViewEdit"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:scrollbars="vertical"
-        android:overScrollMode="never"
-        android:fillViewport="true"
-        android:layout_marginBottom="6dp">
+        <EditText
+            android:id="@+id/etEditComment"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:hint="Комментарий"
+            android:inputType="text"
+            android:textColor="@color/text_white"
+            android:textColorHint="@color/text_gray"
+            android:background="@drawable/drag_handle_bg"
+            android:padding="8dp"
+            android:layout_marginBottom="10dp" />
 
         <LinearLayout
+            android:id="@+id/layoutEditButtons"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <!-- Выбор типа действия -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Тип действия:"
-                android:textColor="@color/text_gray"
-                android:textSize="10sp"
-                android:layout_marginBottom="2dp"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="6dp">
-                <Button
-                    android:id="@+id/btnTypeClick"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="34dp"
-                    android:text="Клик"
-                    android:textSize="10sp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:padding="2dp"
-                    android:backgroundTint="@color/accent_blue"/>
-                <Button
-                    android:id="@+id/btnTypeHold"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="34dp"
-                    android:text="Зажатие"
-                    android:textSize="10sp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:padding="2dp"
-                    android:backgroundTint="@color/bg_dark_blue"
-                    android:layout_marginStart="2dp"/>
-                <Button
-                    android:id="@+id/btnTypeSwipe"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="34dp"
-                    android:text="Свайп"
-                    android:textSize="10sp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:padding="2dp"
-                    android:backgroundTint="@color/bg_dark_blue"
-                    android:layout_marginStart="2dp"/>
-                <Button
-                    android:id="@+id/btnTypeTrigger"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="34dp"
-                    android:text="ИИ"
-                    android:textSize="10sp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:padding="2dp"
-                    android:backgroundTint="@color/bg_dark_blue"
-                    android:layout_marginStart="2dp"/>
-            </LinearLayout>
-
-            <!-- Основной блок -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginBottom="6dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="4dp">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:layout_marginEnd="4dp">
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Порядок №:"
-                            android:textColor="@color/text_gray"
-                            android:textSize="10sp"/>
-                        <EditText
-                            android:id="@+id/etStepOrder"
-                            android:layout_width="match_parent"
-                            android:layout_height="36dp"
-                            android:background="@color/panel_blue"
-                            android:textColor="#FFFFFF"
-                            android:inputType="number"
-                            android:padding="4dp"
-                            android:text="1"
-                            android:textSize="12sp"/>
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_weight="1.2"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:layout_marginEnd="4dp">
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Задержка (сек):"
-                            android:textColor="@color/text_gray"
-                            android:textSize="10sp"/>
-                        <EditText
-                            android:id="@+id/etDelay"
-                            android:layout_width="match_parent"
-                            android:layout_height="36dp"
-                            android:background="@color/panel_blue"
-                            android:textColor="#FFFFFF"
-                            android:inputType="numberDecimal"
-                            android:padding="4dp"
-                            android:text="1.0"
-                            android:textSize="12sp"/>
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical">
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Повторов:"
-                            android:textColor="@color/text_gray"
-                            android:textSize="10sp"/>
-                        <EditText
-                            android:id="@+id/etRepeatCount"
-                            android:layout_width="match_parent"
-                            android:layout_height="36dp"
-                            android:background="@color/panel_blue"
-                            android:textColor="#FFFFFF"
-                            android:inputType="number"
-                            android:padding="4dp"
-                            android:text="1"
-                            android:textSize="12sp"/>
-                    </LinearLayout>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/layoutAiTimeoutBlock"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="6dp"
-                    android:layout_marginBottom="6dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:id="@+id/tvAiTimeoutTitle"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="Таймаут ожидания ИИ (сек):"
-                            android:textColor="#58A6FF"
-                            android:textSize="10sp"
-                            android:textStyle="bold"/>
-
-                        <EditText
-                            android:id="@+id/etAiTimeout"
-                            android:layout_width="60dp"
-                            android:layout_height="34dp"
-                            android:background="@color/panel_blue"
-                            android:textColor="#FFFFFF"
-                            android:inputType="number"
-                            android:padding="4dp"
-                            android:text="15"
-                            android:gravity="center"
-                            android:textSize="12sp"/>
-                    </LinearLayout>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="6dp"
-                    android:layout_marginBottom="6dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="Случайный разброс клика (±px):"
-                            android:textColor="#58A6FF"
-                            android:textSize="10sp"
-                            android:textStyle="bold"/>
-
-                        <EditText
-                            android:id="@+id/etRandomRadius"
-                            android:layout_width="60dp"
-                            android:layout_height="34dp"
-                            android:background="@color/panel_blue"
-                            android:textColor="#FFFFFF"
-                            android:inputType="number"
-                            android:padding="4dp"
-                            android:text="0"
-                            android:gravity="center"
-                            android:textSize="12sp"/>
-                    </LinearLayout>
-                </LinearLayout>
-            </LinearLayout>
-
-            <!-- Длительность зажатия -->
-            <TextView
-                android:id="@+id/tvHoldTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Длительность зажатия (мс):"
-                android:textColor="@color/text_gray"
-                android:textSize="10sp"
-                android:visibility="gone"/>
-            <EditText
-                android:id="@+id/etHoldDuration"
-                android:layout_width="match_parent"
-                android:layout_height="36dp"
-                android:background="@color/panel_blue"
-                android:textColor="#FFFFFF"
-                android:inputType="number"
-                android:padding="4dp"
-                android:text="1000"
-                android:textSize="12sp"
-                android:visibility="gone"
-                android:layout_marginBottom="6dp"/>
-
-            <!-- БЛОК ВЫБОРА ИИ-ШАБЛОНА -->
-            <LinearLayout
-                android:id="@+id/layoutAiParametersBlock"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <Button
-                    android:id="@+id/btnCalibrateMatchesOnScreen"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:minHeight="36dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:text="🔍 Калибровка совпадений на экране"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="@color/accent_blue"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="6dp"/>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="6dp"
-                    android:layout_marginBottom="6dp">
-
-                    <TextView
-                        android:id="@+id/tvSelectTemplateTitle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Выбор маски ИИ-шаблона:"
-                        android:textColor="#58A6FF"
-                        android:textSize="10sp"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="4dp"/>
-
-                    <LinearLayout
-                        android:id="@+id/layoutTemplateSelector"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginBottom="6dp">
-
-                        <Button
-                            android:id="@+id/btnPrevTemplate"
-                            android:layout_width="32dp"
-                            android:layout_height="32dp"
-                            android:text="◄"
-                            android:textColor="#FFFFFF"
-                            android:textSize="12sp"
-                            android:backgroundTint="@color/accent_blue"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
-                            android:padding="0dp"/>
-
-                        <ImageView
-                            android:id="@+id/ivSelectedTemplateImagePreview"
-                            android:layout_width="38dp"
-                            android:layout_height="38dp"
-                            android:scaleType="fitCenter"
-                            android:background="#3A4763"
-                            android:padding="2dp"
-                            android:layout_marginStart="6dp"
-                            android:layout_marginEnd="6dp"/>
-
-                        <TextView
-                            android:id="@+id/tvTemplateIndex"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:gravity="center"
-                            android:text="Шаблон: Нет"
-                            android:textColor="#FFFFFF"
-                            android:textSize="11sp"
-                            android:textStyle="bold"/>
-
-                        <Button
-                            android:id="@+id/btnNextTemplate"
-                            android:layout_width="32dp"
-                            android:layout_height="32dp"
-                            android:text="►"
-                            android:textColor="#FFFFFF"
-                            android:textSize="12sp"
-                            android:backgroundTint="@color/accent_blue"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
-                            android:padding="0dp"/>
-                    </LinearLayout>
-
-                    <Button
-                        android:id="@+id/btnDeleteSelectedTemplate"
-                        android:layout_width="match_parent"
-                        android:layout_height="32dp"
-                        android:minHeight="0dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:text="🗑 Удалить выбранную маску"
-                        android:textColor="#FFFFFF"
-                        android:backgroundTint="@color/red_close"
-                        android:textSize="10sp"
-                        android:padding="0dp"/>
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/btnToggleAiNotification"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="36dp"
-                    android:text="🔔 Звук / Вибро при совпадении: [ВЫКЛ]"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="@color/panel_blue"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="6dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"/>
-
-                <Button
-                    android:id="@+id/btnManageMultiTemplates"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="36dp"
-                    android:text="🗂 Мультишаблоны: [ Обычный режим (1 маска) ]"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="@color/panel_blue"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="6dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"/>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-
-                    <Button
-                        android:id="@+id/btnToggleClickTarget"
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:minHeight="34dp"
-                        android:text="🎯 Клик по мишени: [ВКЛ]"
-                        android:textColor="#FFFFFF"
-                        android:backgroundTint="@color/accent_blue"
-                        android:textSize="10sp"
-                        android:textStyle="bold"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"/>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:text="🔀 Перейти к шагу № (0 = по порядку):"
-                        android:textColor="#58A6FF"
-                        android:textSize="10sp"
-                        android:textStyle="bold"/>
-
-                    <EditText
-                        android:id="@+id/etJumpToStep"
-                        android:layout_width="60dp"
-                        android:layout_height="34dp"
-                        android:background="@color/panel_blue"
-                        android:textColor="#FFFFFF"
-                        android:inputType="number"
-                        android:padding="4dp"
-                        android:text="0"
-                        android:gravity="center"
-                        android:textSize="12sp"/>
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/btnSelectScriptToLoad"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="36dp"
-                    android:text="📁 Переход на другой сценарий: [ НЕТ ]"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="@color/panel_blue"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="6dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"/>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:text="🎯 Порог совпадения (%):"
-                        android:textColor="#58A6FF"
-                        android:textSize="10sp"
-                        android:textStyle="bold"/>
-
-                    <EditText
-                        android:id="@+id/etSimilarityPercent"
-                        android:layout_width="60dp"
-                        android:layout_height="34dp"
-                        android:background="@color/panel_blue"
-                        android:textColor="#FFFFFF"
-                        android:inputType="number"
-                        android:padding="4dp"
-                        android:text="70"
-                        android:gravity="center"
-                        android:textSize="12sp"/>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:text="⏱ Пауза поиска (сек):"
-                        android:textColor="#58A6FF"
-                        android:textSize="10sp"
-                        android:textStyle="bold"/>
-
-                    <EditText
-                        android:id="@+id/etScanInterval"
-                        android:layout_width="60dp"
-                        android:layout_height="34dp"
-                        android:background="@color/panel_blue"
-                        android:textColor="#FFFFFF"
-                        android:inputType="number"
-                        android:padding="4dp"
-                        android:text="5"
-                        android:gravity="center"
-                        android:textSize="12sp"/>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:text="⏳ Задержка после совпадения (сек):"
-                        android:textColor="#58A6FF"
-                        android:textSize="10sp"
-                        android:textStyle="bold"/>
-
-                    <EditText
-                        android:id="@+id/etPostMatchDelay"
-                        android:layout_width="60dp"
-                        android:layout_height="34dp"
-                        android:background="@color/panel_blue"
-                        android:textColor="#FFFFFF"
-                        android:inputType="number"
-                        android:padding="4dp"
-                        android:text="3"
-                        android:gravity="center"
-                        android:textSize="12sp"/>
-                </LinearLayout>
-
-
-            </LinearLayout>
+            android:orientation="horizontal"
+            android:gravity="center">
 
             <Button
-                android:id="@+id/btnCloneAction"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="34dp"
-                android:text="📋 КЛОНИРОВАТЬ ЭТОТ ШАГ"
-                android:textColor="#FFFFFF"
+                android:id="@+id/btnEditApply"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="✅ Применить"
+                android:textColor="@color/text_white"
                 android:backgroundTint="@color/accent_blue"
-                android:textSize="10sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="4dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"/>
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:layout_marginEnd="8dp" />
 
             <Button
-                android:id="@+id/btnDeleteAction"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="34dp"
-                android:text="УДАЛИТЬ ЭТОТ ШАГ"
-                android:textColor="#FFFFFF"
+                android:id="@+id/btnEditDelete"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="🗑 Удалить"
+                android:textColor="@color/text_white"
                 android:backgroundTint="@color/red_close"
-                android:textStyle="bold"
-                android:textSize="10sp"
-                android:layout_marginBottom="6dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"/>
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp" />
         </LinearLayout>
-    </ScrollView>
 
-    <!-- НИЖНЯЯ ПАНЕЛЬ СОХРАНИТЬ / ОТМЕНА -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
         <Button
-            android:id="@+id/btnSave"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="38dp"
-            android:text="Сохранить"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/accent_blue"
-            android:textSize="11sp"
-            android:textStyle="bold"/>
-        <View
-            android:layout_width="6dp"
-            android:layout_height="match_parent"/>
-        <Button
-            android:id="@+id/btnCancel"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="38dp"
-            android:text="Отмена"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/red_close"
-            android:textSize="11sp"/>
+            android:id="@+id/btnEditClose"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:text="Закрыть"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:layout_marginTop="12dp" />
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>
