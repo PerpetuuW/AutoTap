@@ -15,7 +15,14 @@ class HybridCascadeMatcher {
         threshold: Float
     ): List<MatchCandidate> {
         val candidates = mutableListOf<MatchCandidate>()
-        val step = if (modes.hybridCascadeMode) 4 else 1
+        val step = if (modes.hybridCascadeMode) {
+            when (modes.profile) {
+                TemplateProfile.SMALL -> 2
+                TemplateProfile.LARGE -> 6
+                TemplateProfile.THIN_LINE -> 1
+                else -> 4
+            }
+        } else 1
 
         val startX = searchArea.left
         val startY = searchArea.top
@@ -28,11 +35,19 @@ class HybridCascadeMatcher {
         while (x <= endX) {
             var y = startY
             while (y <= endY) {
-                val score = comparePatch(frame, mask, x, y)
-                if (score >= threshold) {
+                val pixelScore = comparePixels(frame, mask, x, y)
+                val contourScore = if (modes.shapeOnlyMode || modes.profile == TemplateProfile.THIN_LINE) {
+                    compareEdges(frame, mask, x, y)
+                } else {
+                    pixelScore
+                }
+
+                val finalScore = (contourScore * modes.contourWeight) + (pixelScore * modes.pixelWeight)
+
+                if (finalScore >= threshold) {
                     val pt = PointF(x + mask.width / 2f, y + mask.height / 2f)
                     val bbox = Rect(x, y, x + mask.width, y + mask.height)
-                    candidates.add(MatchCandidate(pt, score, bbox, 1.0f, 0))
+                    candidates.add(MatchCandidate(pt, finalScore, bbox, 1.0f, 0))
                 }
                 y += step
             }
@@ -41,7 +56,7 @@ class HybridCascadeMatcher {
         return candidates
     }
 
-    private fun comparePatch(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+    private fun comparePixels(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
         var totalDiff = 0L
         var pixelCount = 0
 
@@ -75,5 +90,38 @@ class HybridCascadeMatcher {
         val maxDiff = pixelCount * 255f * 3f
         val similarity = 1.0f - (totalDiff.toFloat() / maxDiff)
         return similarity.coerceIn(0f, 1f)
+    }
+
+    private fun compareEdges(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+        var edgeDiff = 0L
+        var count = 0
+        val stepX = (mask.width / 12).coerceAtLeast(1)
+        val stepY = (mask.height / 12).coerceAtLeast(1)
+
+        var mx = 1
+        while (mx < mask.width - 1) {
+            var my = 1
+            while (my < mask.height - 1) {
+                val maskGrad = getGradient(mask, mx, my)
+                val frameGrad = getGradient(frame, x + mx, y + my)
+
+                edgeDiff += abs(maskGrad - frameGrad)
+                count++
+                my += stepY
+            }
+            mx += stepX
+        }
+
+        if (count == 0) return 0f
+        val maxGradDiff = count * 255f
+        return (1.0f - (edgeDiff.toFloat() / maxGradDiff)).coerceIn(0f, 1f)
+    }
+
+    private fun getGradient(bmp: Bitmap, x: Int, y: Int): Int {
+        val p1 = bmp.getPixel(x - 1, y) and 0xFF
+        val p2 = bmp.getPixel(x + 1, y) and 0xFF
+        val p3 = bmp.getPixel(x, y - 1) and 0xFF
+        val p4 = bmp.getPixel(x, y + 1) and 0xFF
+        return abs(p2 - p1) + abs(p4 - p3)
     }
 }

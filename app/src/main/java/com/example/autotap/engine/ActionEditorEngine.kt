@@ -1,9 +1,17 @@
 package com.example.autotap.engine
 
-import com.example.autotap.*
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
 
 class ActionEditorEngine {
-    fun editAction(action: AutoTapAction, similarity: Number) {
-        action.similarityPercent = similarity.toFloat()
+
+    fun updateSimilarity(action: ActionConfig, newPercent: Int): ActionConfig {
+        action.similarityPercent = newPercent.coerceIn(10, 100)
+        return action
+    }
+
+    fun setActionType(action: ActionConfig, newType: ActionType): ActionConfig {
+        action.type = newType
+        return action
     }
 }

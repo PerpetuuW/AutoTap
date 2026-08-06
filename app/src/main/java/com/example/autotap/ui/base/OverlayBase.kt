@@ -1,6 +1,7 @@
 package com.example.autotap.ui.base
 
 import android.content.Context
+import android.graphics.Rect
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -29,6 +30,9 @@ abstract class OverlayBase(
     var initialX: Int = 100
     var initialY: Int = 200
 
+    var layer: OverlayLayer = OverlayLayer.PANEL_LAYER
+    var priority: OverlayPriority = OverlayPriority.MEDIUM
+
     protected var overlayView: View? = null
     protected var layoutParams: WindowManager.LayoutParams? = null
     var isShowing: Boolean = false
@@ -40,6 +44,7 @@ abstract class OverlayBase(
         if (isShowing) return
         try {
             val view = createView()
+            view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             overlayView = view
             val params = createOverlayParams(
                 width = width,
@@ -57,7 +62,7 @@ abstract class OverlayBase(
             val added = windowManager.safeAddView(view, params)
             if (added) {
                 isShowing = true
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} отображен.")
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен.")
             }
         } catch (e: Exception) {
             logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
@@ -76,6 +81,29 @@ abstract class OverlayBase(
             overlayView = null
             isShowing = false
         }
+    }
+
+    fun setTouchable(touchable: Boolean) {
+        val lp = layoutParams ?: return
+        val view = overlayView ?: return
+        if (touchable) {
+            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        try {
+            windowManager.updateViewLayout(view, lp)
+            logDiagnostic("OVERLAY", "Флаг touchable для ${javaClass.simpleName} установлен в $touchable")
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка обновления флага touchable", e)
+        }
+    }
+
+    fun getBounds(): Rect {
+        val lp = layoutParams ?: return Rect(0, 0, 0, 0)
+        val w = if (width > 0) width else 200
+        val h = if (height > 0) height else 200
+        return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
     }
 
     protected fun setupDragAndDrop(view: View) {

@@ -11,7 +11,9 @@ import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
 
 class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
@@ -21,6 +23,8 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
         flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         dimAmount = 0.5f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
     }
 
     override fun createView(): View {
@@ -33,6 +37,7 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
                 text = "Менеджер сценариев"
                 setTextColor(Color.WHITE)
                 textSize = 18f
+                setPadding(0, 0, 0, 16)
             })
 
             addView(Button(context).apply {
@@ -43,6 +48,13 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
                         svc.saveScriptByName("default_script", svc.actionsList)
                         logDiagnostic("SCRIPT", "Сценарий 'default_script' сохранен")
                     }
+                    hide()
+                }
+            })
+
+            addView(Button(context).apply {
+                text = "Закрыть"
+                setOnClickListener {
                     hide()
                 }
             })

@@ -9,10 +9,17 @@ import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
 
 class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
+
+    init {
+        layer = OverlayLayer.PANEL_LAYER
+        priority = OverlayPriority.HIGH
+    }
 
     override fun createView(): View {
         val container = LinearLayout(context).apply {
@@ -41,7 +48,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         val btnAddAction = Button(context).apply {
             text = "+ ДЕЙСТВИЕ"
             setOnClickListener {
-                logDiagnostic("OVERLAY", "Запрос добавления действия.")
+                logDiagnostic("OVERLAY", "Кнопка +ДЕЙСТВИЕ нажата.")
                 overlayManager.captureFrameOverlay.show()
             }
         }
@@ -50,17 +57,27 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         val btnScripts = Button(context).apply {
             text = "СЦЕНАРИИ"
             setOnClickListener {
-                logDiagnostic("OVERLAY", "Открытие диалога сценариев.")
+                logDiagnostic("OVERLAY", "Кнопка СЦЕНАРИИ нажата.")
                 overlayManager.scriptsDialog.show()
             }
         }
         container.addView(btnScripts)
+
+        val btnHelp = Button(context).apply {
+            text = "СПРАВКА"
+            setOnClickListener {
+                logDiagnostic("OVERLAY", "Открытие справки InfoHelpDialog.")
+                overlayManager.infoHelpDialog.show()
+            }
+        }
+        container.addView(btnHelp)
 
         val btnStop = Button(context).apply {
             text = "СТОП"
             setOnClickListener {
                 logDiagnostic("OVERLAY", "Кнопка СТОП нажата.")
                 MyAutoClickService.instance?.scriptExecutor?.stop()
+                hide()
             }
         }
         container.addView(btnStop)

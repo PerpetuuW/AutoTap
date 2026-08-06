@@ -11,7 +11,9 @@ import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
 import com.example.autotap.vibrateFeedback
 
 class EditActionDialog(context: Context, overlayManager: OverlayManager) :
@@ -24,6 +26,8 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         dimAmount = 0.6f
+        layer = OverlayLayer.DIALOG_LAYER
+        priority = OverlayPriority.CRITICAL
     }
 
     override fun createView(): View {

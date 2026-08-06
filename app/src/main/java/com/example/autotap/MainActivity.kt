@@ -68,6 +68,19 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(btnLogs)
 
+        val btnHelp = Button(this).apply {
+            text = "Справка по приложению"
+            setOnClickListener {
+                val service = MyAutoClickService.instance
+                if (service != null) {
+                    service.overlayManager.infoHelpDialog.show()
+                } else {
+                    logError("UI", "Служба не заложена, откройте оверлей после запуска службы", null)
+                }
+            }
+        }
+        layout.addView(btnHelp)
+
         setContentView(layout)
         logDiagnostic("UI", "MainActivity успешно инициализирована.")
     }

@@ -11,6 +11,12 @@ import kotlin.random.Random
 class GestureExecutor(private val service: MyAutoClickService) {
 
     fun performClick(x: Float, y: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        if (service.isOverlayArea(x, y)) {
+            logDiagnostic("GESTURE", "Пропуск клика в ($x, $y): точка попадает в область активного оверлея.")
+            callback?.invoke(false)
+            return
+        }
+
         try {
             val path = Path()
             path.moveTo(x, y)
@@ -32,7 +38,7 @@ class GestureExecutor(private val service: MyAutoClickService) {
         val offsetY = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
         val targetX = (x + offsetX).coerceAtLeast(0f)
         val targetY = (y + offsetY).coerceAtLeast(0f)
-        
+
         logDiagnostic("GESTURE", "Клик с джиттером: база=($x, $y), итоговая=($targetX, $targetY)")
         performClick(targetX, targetY, durationMs, callback)
     }

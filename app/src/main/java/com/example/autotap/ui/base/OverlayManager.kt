@@ -9,8 +9,10 @@ import com.example.autotap.ui.overlays.CaptureFrameOverlay
 import com.example.autotap.ui.overlays.ClickVisualizerOverlay
 import com.example.autotap.ui.overlays.ControlPanelOverlay
 import com.example.autotap.ui.overlays.EditActionDialog
+import com.example.autotap.ui.overlays.InfoHelpDialog
 import com.example.autotap.ui.overlays.JoystickOverlay
 import com.example.autotap.ui.overlays.ScriptsDialog
+import com.example.autotap.ui.overlays.TutorialOverlay
 
 class OverlayManager(val context: Context) {
 
@@ -22,6 +24,8 @@ class OverlayManager(val context: Context) {
     val captureFrameOverlay by lazy { CaptureFrameOverlay(context, this) }
     val scriptsDialog by lazy { ScriptsDialog(context, this) }
     val clickVisualizer by lazy { ClickVisualizerOverlay(context, this) }
+    val tutorialOverlay by lazy { TutorialOverlay(context, this) }
+    val infoHelpDialog by lazy { InfoHelpDialog(context, this) }
 
     fun showControlPanel() {
         controlPanel.show()
@@ -52,5 +56,7 @@ class OverlayManager(val context: Context) {
         captureFrameOverlay.hide()
         scriptsDialog.hide()
         clickVisualizer.hide()
+        tutorialOverlay.hide()
+        infoHelpDialog.hide()
     }
 }

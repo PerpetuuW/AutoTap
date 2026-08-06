@@ -8,5 +8,7 @@ data class TemplateMetadata(
     val scale: Float = 1.0f,
     val boundingBox: Rect = Rect(),
     val contour: List<PointF> = emptyList(),
-    val calibratedRect: Rect = Rect()
+    val calibratedRect: Rect = Rect(),
+    val profile: TemplateProfile = TemplateProfile.MEDIUM,
+    val layoutHints: String = "ANY"
 )

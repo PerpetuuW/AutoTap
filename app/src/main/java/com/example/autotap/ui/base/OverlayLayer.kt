@@ -1,12 +1,12 @@
 package com.example.autotap.ui.base
 
-import com.example.autotap.*
-
-enum class OverlayLayer(val zOrder: Int) {
-    PANEL(100),
-    JOYSTICK(200),
-    CAPTURE(300),
-    CANDIDATE(400),
-    DEBUG(500),
-    VISUALIZER(600)
+enum class OverlayLayer {
+    PANEL_LAYER,
+    CAPTURE_LAYER,
+    JOYSTICK_LAYER,
+    DEBUG_LAYER,
+    VISUALIZER_LAYER,
+    CANDIDATE_LAYER,
+    DIALOG_LAYER,
+    TUTORIAL_LAYER
 }

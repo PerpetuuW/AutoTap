@@ -7,7 +7,8 @@ data class SearchModes(
     val autoTuningMode: Boolean = false,
     val shapeOnlyMode: Boolean = false,
     val allowWeakCandidates: Boolean = false,
-    val contourWeight: Float = 0.0f,
-    val pixelWeight: Float = 1.0f,
-    val scaleBoost: Float = 0.0f
+    val contourWeight: Float = 0.3f,
+    val pixelWeight: Float = 0.7f,
+    val scaleBoost: Float = 0.0f,
+    val profile: TemplateProfile = TemplateProfile.MEDIUM
 )

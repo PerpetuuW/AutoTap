@@ -15,11 +15,14 @@ import com.example.autotap.data.ScriptRepository
 import com.example.autotap.data.TemplateRepository
 import com.example.autotap.engine.AiScannerEngine
 import com.example.autotap.engine.GestureExecutor
+import com.example.autotap.engine.RecordingEngine
 import com.example.autotap.engine.ScriptExecutor
+import com.example.autotap.engine.TutorialEngine
 import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
 import com.example.autotap.model.ActionConfig
+import com.example.autotap.ui.base.OverlayManager
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class MyAutoClickService : AccessibilityService() {
@@ -34,9 +37,12 @@ class MyAutoClickService : AccessibilityService() {
 
     lateinit var gestureExecutor: GestureExecutor
     lateinit var scriptExecutor: ScriptExecutor
+    lateinit var recordingEngine: RecordingEngine
+    lateinit var tutorialEngine: TutorialEngine
     lateinit var scriptRepository: ScriptRepository
     lateinit var templateRepository: TemplateRepository
     lateinit var aiScannerEngine: AiScannerEngine
+    lateinit var overlayManager: OverlayManager
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val gestureQueue = ConcurrentLinkedQueue<GestureTask>()
@@ -55,11 +61,14 @@ class MyAutoClickService : AccessibilityService() {
 
         gestureExecutor = GestureExecutor(this)
         scriptExecutor = ScriptExecutor(this)
+        recordingEngine = RecordingEngine(this)
+        tutorialEngine = TutorialEngine(this)
         scriptRepository = ScriptRepository(this)
         templateRepository = TemplateRepository(this)
         aiScannerEngine = AiScannerEngine(this)
+        overlayManager = OverlayManager(this)
 
-        logDiagnostic("OVERLAY", "MyAutoClickService и AiScannerEngine полностью инициализированы (Модуль 3).")
+        logDiagnostic("OVERLAY", "MyAutoClickService и TutorialEngine успешно инициализированы.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -78,6 +87,18 @@ class MyAutoClickService : AccessibilityService() {
         if (instance == this) {
             instance = null
         }
+    }
+
+    fun isOverlayArea(x: Float, y: Float): Boolean {
+        if (!::overlayManager.isInitialized) return false
+        val ptX = x.toInt()
+        val ptY = y.toInt()
+
+        if (overlayManager.controlPanel.isShowing && overlayManager.controlPanel.getBounds().contains(ptX, ptY)) return true
+        if (overlayManager.joystickOverlay.isShowing && overlayManager.joystickOverlay.getBounds().contains(ptX, ptY)) return true
+        if (overlayManager.debuggerOverlay.isShowing && overlayManager.debuggerOverlay.getBounds().contains(ptX, ptY)) return true
+
+        return false
     }
 
     fun dispatchGestureTask(stroke: GestureDescription.StrokeDescription, description: String, callback: ((Boolean) -> Unit)?) {
@@ -125,7 +146,13 @@ class MyAutoClickService : AccessibilityService() {
 
     fun vibrateFeedback() {
         try {
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getSystemService(Vibrator::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            } ?: return
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
@@ -139,6 +166,9 @@ class MyAutoClickService : AccessibilityService() {
 
     fun addNewActionAtPosition(xNorm: Float, yNorm: Float) {
         actionsList.add(ActionConfig(xNorm = xNorm, yNorm = yNorm))
+        if (recordingEngine.isRecording) {
+            recordingEngine.recordClick(xNorm, yNorm)
+        }
         logDiagnostic("SCRIPT", "Добавлено новое действие на позиции ($xNorm, $yNorm)")
     }
 
@@ -161,22 +191,22 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun showControlPanel() {
-        logDiagnostic("OVERLAY", "Запрос показа ControlPanel")
+        overlayManager.showControlPanel()
     }
 
     fun hideControlPanel() {
-        logDiagnostic("OVERLAY", "Запрос скрытия ControlPanel")
+        overlayManager.hideControlPanel()
     }
 
     fun showFloatingStopButton() {
-        logDiagnostic("OVERLAY", "Запрос показа кнопки СТОП")
+        overlayManager.showFloatingStopButton()
     }
 
     fun hideFloatingStopButton() {
-        logDiagnostic("OVERLAY", "Запрос скрытия кнопки СТОП")
+        overlayManager.hideFloatingStopButton()
     }
 
     fun showClickVisualizer(x: Float, y: Float) {
-        logDiagnostic("OVERLAY", "Визуализация клика в ($x, $y)")
+        overlayManager.showClickVisualizer(x, y)
     }
 }

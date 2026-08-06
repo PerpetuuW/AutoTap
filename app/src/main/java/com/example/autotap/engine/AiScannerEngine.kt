@@ -36,49 +36,25 @@ class AiScannerEngine(private val service: MyAutoClickService) {
     }
 
     fun scan(frameProvider: () -> Bitmap?, action: ActionConfig): AiScanResult {
-        val frames = captureFrames(frameProvider, action)
-        if (frames.isEmpty()) {
-            logDiagnostic("AI_SCANNER", "Кадры не захвачены.")
+        val frame = frameProvider()
+        if (frame == null) {
+            logDiagnostic("AI_SCANNER", "Кадр экрана недоступен.")
             return AiScanResult(null, emptyList())
         }
 
-        val allCandidates = mutableListOf<MatchCandidate>()
-        for (frame in frames) {
-            val candidates = templateMatcher.matchSingleTemplate(frame, action)
-            allCandidates.addAll(candidates)
+        val candidates = if (action.multiTemplateIndices.isNotEmpty()) {
+            templateMatcher.matchMultiTemplate(frame, action)
+        } else {
+            templateMatcher.matchSingleTemplate(frame, action)
         }
 
-        if (allCandidates.isEmpty()) {
-            logDiagnostic("AI_SCANNER", "Совпадения не найдены.")
+        if (candidates.isEmpty()) {
+            logDiagnostic("AI_SCANNER", "Совпадений по шаблонам не найдено.")
             return AiScanResult(null, emptyList())
         }
 
-        val ranked = templateMatcher.rankCandidates(allCandidates)
-        val stablePoint = computeStablePoint(ranked)
-
-        logDiagnostic("AI_SCANNER", "Найдено кандидатов: ${ranked.size}, стабильная точка: $stablePoint")
-        return AiScanResult(stablePoint, ranked)
-    }
-
-    private fun captureFrames(frameProvider: () -> Bitmap?, action: ActionConfig): List<Bitmap> {
-        val frames = mutableListOf<Bitmap>()
-        val frameCount = 3
-        for (i in 0 until frameCount) {
-            val frame = frameProvider()
-            if (frame != null) {
-                frames.add(frame)
-            }
-            val intervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(30L)
-            try {
-                Thread.sleep(intervalMs)
-            } catch (_: Exception) {}
-        }
-        return frames
-    }
-
-    private fun computeStablePoint(candidates: List<MatchCandidate>): PointF? {
-        if (candidates.isEmpty()) return null
-        val best = candidates.first()
-        return best.point
+        val bestCandidate = candidates.first()
+        logDiagnostic("AI_SCANNER", "Мультипоиск: найден шаблон #${bestCandidate.templateIndex} со score=${"%.2f".format(bestCandidate.score)} в ${bestCandidate.point}")
+        return AiScanResult(bestCandidate.point, candidates)
     }
 }

@@ -36,7 +36,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         currentStepIndex = 0
         service.hideFloatingStopButton()
         service.showControlPanel()
-        logDiagnostic("SCRIPT", "Сценарий остановлен.")
+        logDiagnostic("SCRIPT", "Сценарий остановлен пользователем.")
     }
 
     fun jumpToStep(stepIndex: Int) {
@@ -54,7 +54,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         if (!isRunning) return
         val actions = service.actionsList
         if (currentStepIndex >= actions.size) {
-            logDiagnostic("SCRIPT", "Сценарий успешно завершен.")
+            logDiagnostic("SCRIPT", "Все шаги сценария выполнены.")
             stop()
             return
         }
@@ -85,7 +85,6 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             }
             ActionType.JOYSTICK_PATH -> {
                 if (action.joystickPath.isNotEmpty()) {
-                    logDiagnostic("SCRIPT", "Воспроизведение записанной траектории джойстика (${action.joystickPath.size} точек)")
                     service.gestureExecutor.performJoystickPath(action.joystickPath, action.holdDuration) { success ->
                         onStepCompleted(success, action)
                     }
@@ -94,17 +93,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                 }
             }
             ActionType.AI_SEARCH -> {
-                logDiagnostic("SCRIPT", "Запуск AI поиска для шага $currentStepIndex")
-                service.aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
-                    if (foundPoint != null) {
-                        service.showClickVisualizer(foundPoint.x, foundPoint.y)
-                        service.gestureExecutor.performClick(foundPoint.x, foundPoint.y, service.globalClickDurationMs) { success ->
-                            onStepCompleted(success, action)
-                        }
-                    } else {
-                        onStepCompleted(false, action)
-                    }
-                }
+                executeMultiSearchLoop(action)
             }
             ActionType.WAIT -> {
                 Thread.sleep(action.delay.coerceAtLeast(10L))
@@ -121,6 +110,39 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                     }
                 }
                 onStepCompleted(false, action)
+            }
+        }
+    }
+
+    private fun executeMultiSearchLoop(action: ActionConfig) {
+        if (!isRunning) return
+
+        service.aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
+            if (!isRunning) return@scanAsync
+
+            if (foundPoint != null) {
+                logDiagnostic("SCRIPT", "Совпадение найдено в $foundPoint. Выполнение клика...")
+                service.showClickVisualizer(foundPoint.x, foundPoint.y)
+                service.gestureExecutor.performClick(foundPoint.x, foundPoint.y, service.globalClickDurationMs) { success ->
+                    if (!isRunning) return@performClick
+
+                    if (action.loopUntilStopped) {
+                        val delayMs = action.delay.coerceAtLeast(50L)
+                        logDiagnostic("SCRIPT", "Мультипоиск: задержка ${delayMs}мс перед зашифровкой НОВОГО кадра экрана...")
+                        Thread.sleep(delayMs)
+                        executeMultiSearchLoop(action) // Повторный запуск на свежем кадре
+                    } else {
+                        onStepCompleted(success, action)
+                    }
+                }
+            } else {
+                if (action.loopUntilStopped) {
+                    val scanIntervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(100L)
+                    Thread.sleep(scanIntervalMs)
+                    executeMultiSearchLoop(action) // Пауза и повторный запуск
+                } else {
+                    onStepCompleted(false, action)
+                }
             }
         }
     }

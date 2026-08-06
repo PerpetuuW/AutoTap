@@ -20,6 +20,7 @@ data class ActionConfig(
     var similarityPercent: Int = 85,
     var scanIntervalSeconds: Float = 0.1f,
     var clickAiTarget: Boolean = false,
+    var loopUntilStopped: Boolean = true,
     var jumpToStepOnMatch: Int? = null,
     var jumpToStepOnFail: Int? = null,
     var targetScriptToLoad: String? = null,

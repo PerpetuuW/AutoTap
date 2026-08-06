@@ -1,11 +1,11 @@
 package com.example.autotap.engine
 
-import com.example.autotap.*
+import com.example.autotap.engine.ai.MatchCandidate
 
-import com.example.autotap.MatchCandidate
+class CandidateSelector {
 
-object CandidateSelector {
-    fun selectBest(candidates: List<MatchCandidate>): MatchCandidate? {
+    fun selectBestCandidate(candidates: List<MatchCandidate>): MatchCandidate? {
+        if (candidates.isEmpty()) return null
         return candidates.maxByOrNull { it.score }
     }
 }
