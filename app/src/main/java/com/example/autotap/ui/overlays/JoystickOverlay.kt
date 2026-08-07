@@ -68,12 +68,26 @@ class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
         val knob = joystickKnobView ?: return
         val maxRadius = 40.dpToPx(context).toFloat()
 
+        var startTouchX = 0f
+        var startTouchY = 0f
+
         knob.setOnTouchListener { v, event ->
             val svc = MyAutoClickService.instance ?: return@setOnTouchListener false
+            val lp = layoutParams ?: params
+            val centerX = (lp?.x ?: 100) + v.width / 2f
+            val centerY = (lp?.y ?: 200) + v.height / 2f
+
             when (event.action) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    val rawDx = event.x - (knob.width / 2f)
-                    val rawDy = event.y - (knob.height / 2f)
+                MotionEvent.ACTION_DOWN -> {
+                    startTouchX = event.rawX
+                    startTouchY = event.rawY
+                    // СТАРТ НЕПРЕРЫВНОГО ЖЕСТА В ИГРЕ
+                    svc.gestureExecutor.startContinuousJoystick(centerX, centerY)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val rawDx = event.rawX - startTouchX
+                    val rawDy = event.rawY - startTouchY
                     val dist = sqrt(rawDx * rawDx + rawDy * rawDy)
 
                     val clampedDx = if (dist > maxRadius) (rawDx / dist) * maxRadius else rawDx
@@ -83,15 +97,16 @@ class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
                     knob.translationY = clampedDy
 
                     val now = System.currentTimeMillis()
-                    if (now - lastImpulseTime >= 25L) {
+                    if (now - lastImpulseTime >= 40L) {
                         lastImpulseTime = now
 
-                        val lp = layoutParams ?: params
-                        val centerX = (lp?.x ?: 100) + v.width / 2f
-                        val centerY = (lp?.y ?: 200) + v.height / 2f
+                        val targetX = centerX + clampedDx
+                        val targetY = centerY + clampedDy
 
-                        svc.gestureExecutor.performJoystickRealtime(clampedDx, clampedDy, centerX, centerY)
+                        // ОБНОВЛЕНИЕ НЕПРЕРЫВНОГО ЖЕСТА В ИГРЕ (willContinue = true)
+                        svc.gestureExecutor.updateContinuousJoystick(targetX, targetY)
 
+                        // ПАРАЛЛЕЛЬНАЯ ЗАПИСЬ ТРАЕКТОРИИ
                         if (svc.recordingEngine.isJoystickRecording) {
                             svc.recordingEngine.joystickRecordedPath.add(PointF(clampedDx, clampedDy))
                         }
@@ -101,12 +116,15 @@ class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     knob.animate().translationX(0f).translationY(0f).setDuration(150L).start()
 
+                    // ЗАВЕРШЕНИЕ ЖЕСТА В ИГРЕ (willContinue = false -> ACTION_UP)
+                    svc.gestureExecutor.stopContinuousJoystick()
+
                     if (svc.recordingEngine.isJoystickRecording) {
                         val pathCopy = ArrayList(svc.recordingEngine.joystickRecordedPath)
                         val action = ActionConfig(
                             type = ActionType.JOYSTICK_PATH,
                             joystickPath = pathCopy,
-                            holdDuration = (pathCopy.size * 25L).coerceAtLeast(200L)
+                            holdDuration = (pathCopy.size * 40L).coerceAtLeast(200L)
                         )
                         svc.recordingEngine.finishJoystickRecording(action)
                     }

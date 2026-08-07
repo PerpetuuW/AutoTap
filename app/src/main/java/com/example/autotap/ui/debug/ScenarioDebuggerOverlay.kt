@@ -1,10 +1,12 @@
 package com.example.autotap.ui.debug
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.R
@@ -20,6 +22,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
     private var statusText: TextView? = null
     private var tvCandidatePercentView: TextView? = null
     private var viewCandidateBorderView: View? = null
+    private var ivHeatmap: ImageView? = null
 
     init {
         width = 600
@@ -40,6 +43,15 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             }
             statusText = tv
             addView(tv)
+
+            val img = ImageView(context).apply {
+                visibility = View.GONE
+            }
+            ivHeatmap = img
+            addView(img, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                200
+            ))
         }
 
         val inflater = LayoutInflater.from(context)
@@ -58,6 +70,11 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         statusText?.text = "Кандидатов найдено: ${candidates.size} ($scorePercent)"
         tvCandidatePercentView?.text = scorePercent
         logAppEvent("AI_SCANNER", "Debugger: кандидатов ${candidates.size}")
+    }
+
+    fun showHeatmap(heatmap: Bitmap) {
+        ivHeatmap?.setImageBitmap(heatmap)
+        ivHeatmap?.visibility = View.VISIBLE
     }
 
     fun showNoMatch() {

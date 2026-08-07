@@ -7,12 +7,15 @@ import com.example.autotap.engine.ai.CalibratedMask
 import com.example.autotap.engine.ai.MaskCalibrator
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
+import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 
 class TemplateRepository(private val context: Context) {
 
-    private val bitmapCache = mutableMapOf<Int, Bitmap>()
-    private val calibratedMaskCache = mutableMapOf<Int, CalibratedMask>()
+    private val bitmapCache = ConcurrentHashMap<Int, Bitmap>()
+    private val calibratedMaskCache = ConcurrentHashMap<Int, CalibratedMask>()
     private val calibrator = MaskCalibrator()
 
     fun getNextFreeTemplateIndex(): Int {
@@ -29,12 +32,22 @@ class TemplateRepository(private val context: Context) {
             file.outputStream().use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
+
+            // ЗАПИСЬ МЕТАДАННЫХ РАЗРЕШЕНИЯ И DPI ИСХОДНОГО УСТРОЙСТВА
+            val metrics = context.resources.displayMetrics
+            val metaObj = JSONObject().apply {
+                put("sourceWidth", metrics.widthPixels)
+                put("sourceHeight", metrics.heightPixels)
+                put("sourceDpi", metrics.densityDpi)
+            }
+            File(context.filesDir, "template_${index}_meta.json").writeText(metaObj.toString())
+
             bitmapCache[index] = bitmap
 
             val calibrated = calibrator.calibrate(bitmap)
             calibratedMaskCache[index] = calibrated
 
-            logDiagnostic("AI_SCANNER", "Маска #$index успешно сохранена и калибрована (контур: ${calibrated.contour.size} точек, BBox: ${calibrated.boundingBox}).")
+            logDiagnostic("AI_SCANNER", "Маска #$index сохранена с метаданными экрана (${metrics.widthPixels}x${metrics.heightPixels}, ${metrics.densityDpi} DPI).")
             true
         } catch (e: Exception) {
             logError("AI_SCANNER", "Ошибка сохранения и калибровки маски $index", e)
@@ -43,11 +56,9 @@ class TemplateRepository(private val context: Context) {
     }
 
     fun loadTemplate(index: Int): Bitmap? {
-        if (bitmapCache.containsKey(index)) {
-            val cached = bitmapCache[index]
-            if (cached != null && !cached.isRecycled) {
-                return cached
-            }
+        val cached = bitmapCache[index]
+        if (cached != null && !cached.isRecycled) {
+            return cached
         }
         return try {
             val file = File(context.filesDir, "template_$index.png")
@@ -55,14 +66,36 @@ class TemplateRepository(private val context: Context) {
                 logDiagnostic("AI_SCANNER", "Маска $index не найдена на диске.")
                 return null
             }
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-            if (bitmap != null) {
-                bitmapCache[index] = bitmap
-                val calibrated = calibrator.calibrate(bitmap)
-                calibratedMaskCache[index] = calibrated
-                logDiagnostic("AI_SCANNER", "Маска $index загружена с диска и откалибрована.")
-            }
-            bitmap
+            val rawBitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+
+            // АВТО-РЕСАЙЗ ПО DPI И РАЗРЕШЕНИЮ ТЕКУЩЕГО ЭКРАНА ПРИ ИМПОРТЕ/ЗАГРУЗКЕ
+            val metrics = context.resources.displayMetrics
+            val metaFile = File(context.filesDir, "template_${index}_meta.json")
+
+            val finalBitmap = if (metaFile.exists()) {
+                try {
+                    val metaJson = JSONObject(metaFile.readText())
+                    val srcW = metaJson.optInt("sourceWidth", metrics.widthPixels)
+                    val srcH = metaJson.optInt("sourceHeight", metrics.heightPixels)
+
+                    val scaleX = metrics.widthPixels.toFloat() / srcW.coerceAtLeast(1)
+                    val scaleY = metrics.heightPixels.toFloat() / srcH.coerceAtLeast(1)
+                    val avgScale = (scaleX + scaleY) / 2f
+
+                    if (abs(avgScale - 1.0f) > 0.04f) {
+                        val targetW = (rawBitmap.width * avgScale).toInt().coerceAtLeast(4)
+                        val targetH = (rawBitmap.height * avgScale).toInt().coerceAtLeast(4)
+                        logDiagnostic("AI_SCANNER", "Авто-ресайз маски #$index под текущий экран: scale=${"%.2f".format(avgScale)} (${rawBitmap.width}x${rawBitmap.height} -> ${targetW}x${targetH}px)")
+                        Bitmap.createScaledBitmap(rawBitmap, targetW, targetH, true)
+                    } else rawBitmap
+                } catch (_: Exception) { rawBitmap }
+            } else rawBitmap
+
+            bitmapCache[index] = finalBitmap
+            val calibrated = calibrator.calibrate(finalBitmap)
+            calibratedMaskCache[index] = calibrated
+            logDiagnostic("AI_SCANNER", "Маска $index успешно загружена и калибрована.")
+            finalBitmap
         } catch (e: Exception) {
             logError("AI_SCANNER", "Ошибка загрузки маски $index", e)
             null
@@ -70,11 +103,9 @@ class TemplateRepository(private val context: Context) {
     }
 
     fun loadCalibratedMask(index: Int): CalibratedMask? {
-        if (calibratedMaskCache.containsKey(index)) {
-            val cached = calibratedMaskCache[index]
-            if (cached != null && !cached.original.isRecycled) {
-                return cached
-            }
+        val cached = calibratedMaskCache[index]
+        if (cached != null && !cached.original.isRecycled) {
+            return cached
         }
         val bitmap = loadTemplate(index) ?: return null
         val calibrated = calibrator.calibrate(bitmap)
@@ -99,7 +130,8 @@ class TemplateRepository(private val context: Context) {
                 val trashFile = File(trashDir, "template_$index.png")
                 file.renameTo(trashFile)
 
-                // Очистка памяти Bitmap для утилизации ОЗУ
+                File(context.filesDir, "template_${index}_meta.json").delete()
+
                 bitmapCache.remove(index)?.recycle()
                 calibratedMaskCache.remove(index)
 

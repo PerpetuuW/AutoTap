@@ -7,10 +7,11 @@ import com.example.autotap.model.ActionConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class ScriptRepository(private val context: Context) {
 
-    private val cache = mutableMapOf<String, List<ActionConfig>>()
+    private val cache = ConcurrentHashMap<String, List<ActionConfig>>()
     var currentMetadata: ScriptMetadata? = null
 
     fun saveScript(name: String, actions: List<ActionConfig>, metadata: ScriptMetadata = ScriptMetadata(name = name, stepCount = actions.size)): Boolean {

@@ -25,7 +25,7 @@ abstract class OverlayBase(
     var layer: OverlayLayer = OverlayLayer.PANEL_LAYER,
     var priority: OverlayPriority = OverlayPriority.MEDIUM
 ) {
-    protected val windowManager: WindowManager =
+    val windowManager: WindowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     open val layoutResId: Int = 0
@@ -41,10 +41,10 @@ abstract class OverlayBase(
     var initialX: Int = 100
     var initialY: Int = 200
 
-    protected var overlayView: View? = null
-    protected var rootView: View? = null
-    protected var layoutParams: WindowManager.LayoutParams? = null
-    protected var params: WindowManager.LayoutParams? = null
+    var overlayView: View? = null
+    var rootView: View? = null
+    var layoutParams: WindowManager.LayoutParams? = null
+    var params: WindowManager.LayoutParams? = null
     var isShowing: Boolean = false
         protected set
 
@@ -187,44 +187,29 @@ abstract class OverlayBase(
     }
 
     protected fun setupDragAndDrop(handleView: View) {
-        var startX = 0
-        var startY = 0
-        var touchX = 0f
-        var touchY = 0f
-        var isDragging = false
+        var lastRawX = 0f
+        var lastRawY = 0f
 
         handleView.setOnTouchListener { _, event ->
             val lp = layoutParams ?: params ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startX = lp.x
-                    startY = lp.y
-                    touchX = event.rawX
-                    touchY = event.rawY
-                    isDragging = false
+                    lastRawX = event.rawX
+                    lastRawY = event.rawY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - touchX).toInt()
-                    val dy = (event.rawY - touchY).toInt()
+                    val dx = (event.rawX - lastRawX).toInt()
+                    val dy = (event.rawY - lastRawY).toInt()
 
-                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
-                        isDragging = true
-                    }
-
-                    if (isDragging) {
-                        val newX = startX + dx
-                        val newY = startY + dy
-                        updatePosition(newX, newY)
+                    if (dx != 0 || dy != 0) {
+                        updatePosition(lp.x + dx, lp.y + dy)
+                        lastRawX = event.rawX
+                        lastRawY = event.rawY
                     }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val wasDragging = isDragging
-                    isDragging = false
-                    if (!wasDragging) {
-                        handleView.performClick()
-                    }
                     true
                 }
                 else -> false

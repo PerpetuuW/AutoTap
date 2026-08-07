@@ -5,13 +5,13 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center_horizontal"
-    android:background="@drawable/panel_background"
-    android:padding="8dp"
+    android:background="#00000000"
+    android:padding="4dp"
     android:elevation="18dp"
     android:clipChildren="false"
     android:clipToPadding="false">
 
-    <!-- 1. ВЕРХНЯЯ ПАНЕЛЬ (НАД ПРИЦЕЛОМ - НЕ ПЕРЕКРЫВАЕТ ЕГО) -->
+    <!-- 1. ВЕРХНЯЯ ПАНЕЛЬ КНОПОК -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
@@ -20,7 +20,7 @@
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
         android:padding="4dp"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="6dp">
 
         <ImageButton
             android:id="@+id/btnDoCapture"
@@ -70,16 +70,16 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- 2. СРЕДНЯЯ ЗОНА: ЧИСТЫЙ ПРИЦЕЛЬНЫЙ КАДР -->
+    <!-- 2. ЧИСТЫЙ ПРИЦЕЛЬНЫЙ КВАДРАТ (БЕЗ ТЯЖЕЛОЙ РАМКИ ВОКРУГ) -->
     <FrameLayout
         android:id="@+id/captureSquare"
         android:layout_width="140dp"
         android:layout_height="140dp"
         android:layout_gravity="center_horizontal"
-        android:background="@drawable/border_capture"
-        android:layout_marginBottom="8dp" />
+        android:background="@drawable/border_capture_square"
+        android:layout_marginBottom="6dp" />
 
-    <!-- 3. НИЖНЯЯ ПАНЕЛЬ МАНИПУЛЯТОРОВ: ДВИГАТЬ ✥ И РАЗМЕР ⤢ (ПОД ПРИЦЕЛОМ) -->
+    <!-- 3. НИЖНЯЯ ПАНЕЛЬ МАНИПУЛЯТОРОВ -->
     <LinearLayout
         android:id="@+id/layoutBottomBar"
         android:layout_width="wrap_content"

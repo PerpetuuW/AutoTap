@@ -5,10 +5,10 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:background="@drawable/panel_background"
-    android:padding="6dp"
-    android:elevation="14dp">
+    android:padding="8dp"
+    android:elevation="16dp">
 
-    <!-- КНОПКА-БАББЛ ДЛЯ 3-ЭТАПНОГО РЕЖИМА (ЭТАП 1: SINGLE BUBBLE) -->
+    <!-- КНОПКА-БАББЛ ДЛЯ 3-ЭТАПНОГО РЕЖИМА (УДОБНЫЙ ТАЧ 56x56DP) -->
     <ImageButton
         android:id="@+id/btnSingleBubble"
         android:layout_width="56dp"
@@ -20,7 +20,7 @@
         android:visibility="gone"
         android:contentDescription="Bubble Mode" />
 
-    <!-- Строка 1: Главная панель (ВСЕГДА ВИДИМА В РЕЖИМЕ FULL / COMPACT) -->
+    <!-- Строка 1: Главная панель (Эргономичный размер 44x44dp) -->
     <LinearLayout
         android:id="@+id/layoutMainRow"
         android:layout_width="wrap_content"
@@ -30,68 +30,68 @@
 
         <TextView
             android:id="@+id/handleDrag"
-            android:layout_width="22dp"
-            android:layout_height="38dp"
+            android:layout_width="26dp"
+            android:layout_height="44dp"
             android:gravity="center"
             android:text="⁝⁝"
             android:textColor="#58A6FF"
-            android:textSize="14sp"
+            android:textSize="16sp"
             android:textStyle="bold"
             android:background="@drawable/drag_handle_bg"
             android:layout_marginEnd="6dp"/>
 
         <ImageButton
             android:id="@+id/btnPlay"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_play"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_primary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Play"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnAdd"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_add"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Add"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnCapturePool"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_camera"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Capture"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnHelpTutorial"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_help"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Help"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnToggleMenu"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_menu"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Menu"/>
     </LinearLayout>
 
@@ -102,72 +102,72 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="6dp"
         android:visibility="gone">
 
         <ImageButton
             android:id="@+id/btnClearAll"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_trash"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Clear"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnRecord"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_record"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Record"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnToggleJoystick"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/circle_target_end"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Joystick"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnLoadScript"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_folder"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Scripts"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnHideNumbers"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_eye"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Hide"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnClose"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Close"/>
     </LinearLayout>
 </LinearLayout>

@@ -1,37 +1,28 @@
 package com.example.autotap.engine.ai
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 
 class HeatmapGenerator {
 
-    fun generate(frame: Bitmap, mask: Bitmap): Bitmap {
-        val width = frame.width
-        val height = frame.height
-        val heatmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    fun generateHeatmap(frame: Bitmap, candidates: List<MatchCandidate>): Bitmap {
+        val heatmap = Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(heatmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+        }
 
-        for (x in 0 until width step 8) {
-            for (y in 0 until height step 8) {
-                val score = 0.5f
-                val color = colorize(score)
-                for (dx in 0 until 8) {
-                    for (dy in 0 until 8) {
-                        if (x + dx < width && y + dy < height) {
-                            heatmap.setPixel(x + dx, y + dy, color)
-                        }
-                    }
-                }
+        for (c in candidates) {
+            val score = c.score
+            paint.color = when {
+                score >= 0.85f -> Color.argb(140, 0, 245, 212)
+                score >= 0.70f -> Color.argb(110, 255, 183, 3)
+                else -> Color.argb(80, 240, 68, 56)
             }
+            canvas.drawRect(c.boundingBox, paint)
         }
         return heatmap
-    }
-
-    private fun colorize(score: Float): Int {
-        return when {
-            score > 0.85f -> Color.argb(150, 255, 0, 0)
-            score > 0.65f -> Color.argb(120, 255, 165, 0)
-            score > 0.45f -> Color.argb(90, 255, 255, 0)
-            else -> Color.argb(40, 0, 0, 255)
-        }
     }
 }

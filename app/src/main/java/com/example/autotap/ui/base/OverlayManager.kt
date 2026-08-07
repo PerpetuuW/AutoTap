@@ -100,4 +100,18 @@ class OverlayManager(val context: Context) {
     fun hideAll() {
         overlays.values.forEach { it.hide() }
     }
+
+    fun onConfigurationChanged() {
+        overlays.values.filter { it.isShowing }.forEach { overlay ->
+            val lp = overlay.layoutParams ?: overlay.params
+            val v = overlay.rootView ?: overlay.overlayView
+            if (lp != null && v != null) {
+                overlay.reboundToScreen(lp)
+                try {
+                    overlay.windowManager.updateViewLayout(v, lp)
+                } catch (_: Exception) {}
+            }
+        }
+        logDiagnostic("OVERLAY", "Автоматический пересчет позиций оверлеев при повороте экрана.")
+    }
 }

@@ -1,7 +1,6 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Rect
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -30,12 +29,10 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     private var currentWidthPx = 200.dpToPx(context)
     private var currentHeightPx = 200.dpToPx(context)
 
-    private var layoutSearchAreaContainerView: View? = null
     private var viewSearchAreaFrameView: View? = null
-    private var layoutSearchBottomBarView: View? = null
 
     init {
-        gravity = Gravity.CENTER
+        gravity = Gravity.TOP or Gravity.START
         layer = OverlayLayer.CAPTURE_LAYER
         priority = OverlayPriority.HIGH
         width = currentWidthPx
@@ -46,26 +43,31 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.floating_search_area_frame, null)
 
-        layoutSearchAreaContainerView = view.findViewByNames("layoutSearchAreaContainer")
         viewSearchAreaFrameView = view.findViewByNames("viewSearchAreaFrame")
-        layoutSearchBottomBarView = view.findViewByNames("layoutSearchBottomBar")
 
         view.bindClickByNames("btnSaveSearchArea") {
             val svc = MyAutoClickService.instance
             val lp = layoutParams
-            if (svc != null && lp != null) {
+            val frame = viewSearchAreaFrameView
+            if (svc != null && lp != null && frame != null) {
                 val screenSize = context.getRealScreenSize()
-                val rectPx = Rect(lp.x, lp.y, lp.x + currentWidthPx, lp.y + currentHeightPx)
+
+                val exactX = lp.x + frame.left
+                val exactY = lp.y + frame.top
+                val exactW = frame.width.takeIf { it > 0 } ?: currentWidthPx
+                val exactH = frame.height.takeIf { it > 0 } ?: currentHeightPx
+
+                val rectPx = Rect(exactX, exactY, exactX + exactW, exactY + exactH)
                 val rectNorm = CoordConverter.toNormalizedRect(rectPx, screenSize.x, screenSize.y)
 
                 if (svc.actionsList.isNotEmpty()) {
                     val currentAction = svc.actionsList.last()
                     currentAction.customSearchArea = true
-                    currentAction.searchAreaX = lp.x
-                    currentAction.searchAreaY = lp.y
-                    currentAction.searchAreaW = currentWidthPx
-                    currentAction.searchAreaH = currentHeightPx
-                    logDiagnostic("AI_SCANNER", "Зона поиска сохранена в ActionConfig: (${lp.x}, ${lp.y}, ${currentWidthPx}x${currentHeightPx}px), norm=$rectNorm")
+                    currentAction.searchAreaX = exactX
+                    currentAction.searchAreaY = exactY
+                    currentAction.searchAreaW = exactW
+                    currentAction.searchAreaH = exactH
+                    logDiagnostic("AI_SCANNER", "Зона поиска сохранена с точным смещением рамки: ($exactX, $exactY, ${exactW}x${exactH}px), norm=$rectNorm")
                 }
             }
             context.vibrateFeedback()

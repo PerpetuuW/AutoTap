@@ -3,6 +3,7 @@ package com.example.autotap
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -78,6 +79,14 @@ class MyAutoClickService : AccessibilityService() {
         overlayManager = OverlayManager(this)
 
         logDiagnostic("OVERLAY", "MyAutoClickService v40 полностью инициализирован.")
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        logDiagnostic("SYSTEM", "Смена конфигурации экрана (поворот / Fold).")
+        if (::overlayManager.isInitialized) {
+            overlayManager.onConfigurationChanged()
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -221,7 +230,7 @@ class MyAutoClickService : AccessibilityService() {
                 } catch (e: SecurityException) {
                     logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите службу AutoTap в Спец. возможностях", e)
                     mainHandler.post {
-                        Toast.makeText(this@MyAutoClickService, "Перезапустите тумблер AutoTap в Спец. возможностях для скриншотов!", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@MyAutoClickService, "Перезапустите тумблер AutoTap в Спец. возможностях для снятия скриншотов!", Toast.LENGTH_LONG).show()
                     }
                     callback(generateFallbackFrame())
                 } catch (e: Exception) {
@@ -258,22 +267,22 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun showControlPanel() {
-        overlayManager.showControlPanel()
+        if (::overlayManager.isInitialized) overlayManager.showControlPanel()
     }
 
     fun hideControlPanel() {
-        overlayManager.hideControlPanel()
+        if (::overlayManager.isInitialized) overlayManager.hideControlPanel()
     }
 
     fun showFloatingStopButton() {
-        overlayManager.showFloatingStopButton()
+        if (::overlayManager.isInitialized) overlayManager.showFloatingStopButton()
     }
 
     fun hideFloatingStopButton() {
-        overlayManager.hideFloatingStopButton()
+        if (::overlayManager.isInitialized) overlayManager.hideFloatingStopButton()
     }
 
     fun showClickVisualizer(x: Float, y: Float) {
-        overlayManager.showClickVisualizer(x, y)
+        if (::overlayManager.isInitialized) overlayManager.showClickVisualizer(x, y)
     }
 }

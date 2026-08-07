@@ -25,7 +25,6 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     private var btnRecordView: View? = null
     private var btnJoystickView: View? = null
 
-    // 3-Этапный циклический режим: 0 = Full, 1 = Single Bubble, 2 = Compact
     private var displayStage = 0
 
     init {
@@ -142,6 +141,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 if (lp != null && targetView != null) {
                     lp.width = WindowManager.LayoutParams.WRAP_CONTENT
                     lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+                    reboundToScreen(lp)
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
@@ -153,6 +153,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                     val bubbleSizePx = 56.dpToPx(context)
                     lp.width = bubbleSizePx
                     lp.height = bubbleSizePx
+                    reboundToScreen(lp)
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
@@ -163,6 +164,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 if (lp != null && targetView != null) {
                     lp.width = WindowManager.LayoutParams.WRAP_CONTENT
                     lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+                    reboundToScreen(lp)
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }

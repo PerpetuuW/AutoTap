@@ -140,6 +140,17 @@ dependencies {
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <service
+            android:name="com.example.autotap.service.QuickTileService"
+            android:icon="@drawable/ic_play"
+            android:label="AutoTap"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -402,11 +413,13 @@ val globalTemplates: MutableList<Any> = CopyOnWriteArrayList()
 --- START OF FILE: app/src/main/java/com/example/autotap/MainActivity.kt ---
 package com.example.autotap
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.View
@@ -453,23 +466,29 @@ class MainActivity : AppCompatActivity() {
         (root.findViewByNames("tvVersion") as? TextView)?.text = versionName
         (root.findViewByNames("tvSubTitle") as? TextView)?.text = "Комплекс Автоматизации и ИИ Поиска"
 
+        checkNotificationPermission()
+
         root.bindClickByNames("btnStartPanel") {
             val service = MyAutoClickService.instance
             if (service != null) {
                 service.showControlPanel()
                 logDiagnostic("UI", "Запуск панели оверлеев.")
             } else {
-                Toast.makeText(this, "Сначала включите Accessibility Service!", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Сначала включите Раздел 'Спец. возможности'!", Toast.LENGTH_LONG).show()
                 logError("UI", "MyAutoClickService не запущен!", null)
             }
+        }
+
+        root.bindClickByNames("btnAppDetails", "btnPermissionsHelp") {
+            openRestrictedSettingsMenu()
         }
 
         root.bindClickByNames("btnAccessibility") {
             try {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                logDiagnostic("UI", "Переход в настройки Accessibility.")
+                logDiagnostic("UI", "Переход в системное меню Спец. возможности.")
             } catch (e: Exception) {
-                logError("UI", "Ошибка перехода в настройки Accessibility", e)
+                logError("UI", "Ошибка перехода в Спец. возможности", e)
             }
         }
 
@@ -481,17 +500,13 @@ class MainActivity : AppCompatActivity() {
                         Uri.parse("package:$packageName")
                     )
                     startActivity(intent)
-                    logDiagnostic("UI", "Запрос разрешения оверлея.")
+                    logDiagnostic("UI", "Запрос разрешения Поверх других приложений.")
                 } catch (e: Exception) {
-                    logError("UI", "Ошибка запроса разрешения оверлея", e)
+                    logError("UI", "Ошибка запроса разрешения Поверх других приложений", e)
                 }
             } else {
-                Toast.makeText(this, "Разрешение оверлея уже предоставлено!", Toast.LENGTH_SHORT).show()
+                checkBatteryOptimization()
             }
-        }
-
-        root.bindClickByNames("btnAppDetails", "btnPermissionsHelp") {
-            openRestrictedSettingsMenu()
         }
 
         root.bindClickByNames("btnShowLogs") {
@@ -531,6 +546,34 @@ class MainActivity : AppCompatActivity() {
         updateUIStatusIndicators()
     }
 
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+    }
+
+    private fun checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    val intent = Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                    logDiagnostic("UI", "Запрос отключения оптимизации батареи.")
+                } catch (e: Exception) {
+                    logError("UI", "Ошибка запроса отключения оптимизации батареи", e)
+                }
+            } else {
+                Toast.makeText(this, "Оптимизация батареи уже отключена!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun openRestrictedSettingsMenu() {
         try {
             val intent = Intent(
@@ -540,7 +583,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
             Toast.makeText(
                 this,
-                "Нажмите 3 точки в правом верхнем углу и выберите 'Разрешить ограниченные настройки'",
+                "Прокрутите В САМЫЙ НИЗ экрана (или 3 точки вверху) -> нажмите 'Разрешить ограниченные настройки'",
                 Toast.LENGTH_LONG
             ).show()
             logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
@@ -554,24 +597,24 @@ class MainActivity : AppCompatActivity() {
         val isServiceActive = MyAutoClickService.instance != null
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
 
+        (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
+            text = "1. Ограниченные настройки (в самом низу)"
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+
         (root.findViewByNames("btnAccessibility") as? Button)?.apply {
-            text = if (isServiceActive) "1. Accessibility: [ ВКЛ ]" else "1. Accessibility: [ ВЫКЛ ]"
+            text = if (isServiceActive) "2. Спец. возможности: [ ВКЛ ]" else "2. Спец. возможности: [ ВЫКЛ ]"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
         }
 
         (root.findViewByNames("btnOverlay") as? Button)?.apply {
-            text = if (hasOverlay) "2. Оверлеи: [ ВКЛ ]" else "2. Оверлеи: [ ВЫКЛ ]"
+            text = if (hasOverlay) "3. Поверх других приложений: [ ВКЛ ]" else "3. Поверх других приложений: [ ВЫКЛ ]"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
-        }
-
-        (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
-            text = "3. Снятие ограничений"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
         }
     }
 
@@ -593,6 +636,7 @@ package com.example.autotap
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -668,6 +712,14 @@ class MyAutoClickService : AccessibilityService() {
         overlayManager = OverlayManager(this)
 
         logDiagnostic("OVERLAY", "MyAutoClickService v40 полностью инициализирован.")
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        logDiagnostic("SYSTEM", "Смена конфигурации экрана (поворот / Fold).")
+        if (::overlayManager.isInitialized) {
+            overlayManager.onConfigurationChanged()
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -811,7 +863,7 @@ class MyAutoClickService : AccessibilityService() {
                 } catch (e: SecurityException) {
                     logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите службу AutoTap в Спец. возможностях", e)
                     mainHandler.post {
-                        Toast.makeText(this@MyAutoClickService, "Перезапустите тумблер AutoTap в Спец. возможностях для скриншотов!", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@MyAutoClickService, "Перезапустите тумблер AutoTap в Спец. возможностях для снятия скриншотов!", Toast.LENGTH_LONG).show()
                     }
                     callback(generateFallbackFrame())
                 } catch (e: Exception) {
@@ -848,23 +900,23 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun showControlPanel() {
-        overlayManager.showControlPanel()
+        if (::overlayManager.isInitialized) overlayManager.showControlPanel()
     }
 
     fun hideControlPanel() {
-        overlayManager.hideControlPanel()
+        if (::overlayManager.isInitialized) overlayManager.hideControlPanel()
     }
 
     fun showFloatingStopButton() {
-        overlayManager.showFloatingStopButton()
+        if (::overlayManager.isInitialized) overlayManager.showFloatingStopButton()
     }
 
     fun hideFloatingStopButton() {
-        overlayManager.hideFloatingStopButton()
+        if (::overlayManager.isInitialized) overlayManager.hideFloatingStopButton()
     }
 
     fun showClickVisualizer(x: Float, y: Float) {
-        overlayManager.showClickVisualizer(x, y)
+        if (::overlayManager.isInitialized) overlayManager.showClickVisualizer(x, y)
     }
 }
 
@@ -926,10 +978,11 @@ import com.example.autotap.model.ActionConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class ScriptRepository(private val context: Context) {
 
-    private val cache = mutableMapOf<String, List<ActionConfig>>()
+    private val cache = ConcurrentHashMap<String, List<ActionConfig>>()
     var currentMetadata: ScriptMetadata? = null
 
     fun saveScript(name: String, actions: List<ActionConfig>, metadata: ScriptMetadata = ScriptMetadata(name = name, stepCount = actions.size)): Boolean {
@@ -1036,12 +1089,15 @@ import com.example.autotap.engine.ai.CalibratedMask
 import com.example.autotap.engine.ai.MaskCalibrator
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
+import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 
 class TemplateRepository(private val context: Context) {
 
-    private val bitmapCache = mutableMapOf<Int, Bitmap>()
-    private val calibratedMaskCache = mutableMapOf<Int, CalibratedMask>()
+    private val bitmapCache = ConcurrentHashMap<Int, Bitmap>()
+    private val calibratedMaskCache = ConcurrentHashMap<Int, CalibratedMask>()
     private val calibrator = MaskCalibrator()
 
     fun getNextFreeTemplateIndex(): Int {
@@ -1058,12 +1114,22 @@ class TemplateRepository(private val context: Context) {
             file.outputStream().use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
+
+            // ЗАПИСЬ МЕТАДАННЫХ РАЗРЕШЕНИЯ И DPI ИСХОДНОГО УСТРОЙСТВА
+            val metrics = context.resources.displayMetrics
+            val metaObj = JSONObject().apply {
+                put("sourceWidth", metrics.widthPixels)
+                put("sourceHeight", metrics.heightPixels)
+                put("sourceDpi", metrics.densityDpi)
+            }
+            File(context.filesDir, "template_${index}_meta.json").writeText(metaObj.toString())
+
             bitmapCache[index] = bitmap
 
             val calibrated = calibrator.calibrate(bitmap)
             calibratedMaskCache[index] = calibrated
 
-            logDiagnostic("AI_SCANNER", "Маска #$index успешно сохранена и калибрована (контур: ${calibrated.contour.size} точек, BBox: ${calibrated.boundingBox}).")
+            logDiagnostic("AI_SCANNER", "Маска #$index сохранена с метаданными экрана (${metrics.widthPixels}x${metrics.heightPixels}, ${metrics.densityDpi} DPI).")
             true
         } catch (e: Exception) {
             logError("AI_SCANNER", "Ошибка сохранения и калибровки маски $index", e)
@@ -1072,11 +1138,9 @@ class TemplateRepository(private val context: Context) {
     }
 
     fun loadTemplate(index: Int): Bitmap? {
-        if (bitmapCache.containsKey(index)) {
-            val cached = bitmapCache[index]
-            if (cached != null && !cached.isRecycled) {
-                return cached
-            }
+        val cached = bitmapCache[index]
+        if (cached != null && !cached.isRecycled) {
+            return cached
         }
         return try {
             val file = File(context.filesDir, "template_$index.png")
@@ -1084,14 +1148,36 @@ class TemplateRepository(private val context: Context) {
                 logDiagnostic("AI_SCANNER", "Маска $index не найдена на диске.")
                 return null
             }
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-            if (bitmap != null) {
-                bitmapCache[index] = bitmap
-                val calibrated = calibrator.calibrate(bitmap)
-                calibratedMaskCache[index] = calibrated
-                logDiagnostic("AI_SCANNER", "Маска $index загружена с диска и откалибрована.")
-            }
-            bitmap
+            val rawBitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+
+            // АВТО-РЕСАЙЗ ПО DPI И РАЗРЕШЕНИЮ ТЕКУЩЕГО ЭКРАНА ПРИ ИМПОРТЕ/ЗАГРУЗКЕ
+            val metrics = context.resources.displayMetrics
+            val metaFile = File(context.filesDir, "template_${index}_meta.json")
+
+            val finalBitmap = if (metaFile.exists()) {
+                try {
+                    val metaJson = JSONObject(metaFile.readText())
+                    val srcW = metaJson.optInt("sourceWidth", metrics.widthPixels)
+                    val srcH = metaJson.optInt("sourceHeight", metrics.heightPixels)
+
+                    val scaleX = metrics.widthPixels.toFloat() / srcW.coerceAtLeast(1)
+                    val scaleY = metrics.heightPixels.toFloat() / srcH.coerceAtLeast(1)
+                    val avgScale = (scaleX + scaleY) / 2f
+
+                    if (abs(avgScale - 1.0f) > 0.04f) {
+                        val targetW = (rawBitmap.width * avgScale).toInt().coerceAtLeast(4)
+                        val targetH = (rawBitmap.height * avgScale).toInt().coerceAtLeast(4)
+                        logDiagnostic("AI_SCANNER", "Авто-ресайз маски #$index под текущий экран: scale=${"%.2f".format(avgScale)} (${rawBitmap.width}x${rawBitmap.height} -> ${targetW}x${targetH}px)")
+                        Bitmap.createScaledBitmap(rawBitmap, targetW, targetH, true)
+                    } else rawBitmap
+                } catch (_: Exception) { rawBitmap }
+            } else rawBitmap
+
+            bitmapCache[index] = finalBitmap
+            val calibrated = calibrator.calibrate(finalBitmap)
+            calibratedMaskCache[index] = calibrated
+            logDiagnostic("AI_SCANNER", "Маска $index успешно загружена и калибрована.")
+            finalBitmap
         } catch (e: Exception) {
             logError("AI_SCANNER", "Ошибка загрузки маски $index", e)
             null
@@ -1099,11 +1185,9 @@ class TemplateRepository(private val context: Context) {
     }
 
     fun loadCalibratedMask(index: Int): CalibratedMask? {
-        if (calibratedMaskCache.containsKey(index)) {
-            val cached = calibratedMaskCache[index]
-            if (cached != null && !cached.original.isRecycled) {
-                return cached
-            }
+        val cached = calibratedMaskCache[index]
+        if (cached != null && !cached.original.isRecycled) {
+            return cached
         }
         val bitmap = loadTemplate(index) ?: return null
         val calibrated = calibrator.calibrate(bitmap)
@@ -1128,7 +1212,8 @@ class TemplateRepository(private val context: Context) {
                 val trashFile = File(trashDir, "template_$index.png")
                 file.renameTo(trashFile)
 
-                // Очистка памяти Bitmap для утилизации ОЗУ
+                File(context.filesDir, "template_${index}_meta.json").delete()
+
                 bitmapCache.remove(index)?.recycle()
                 calibratedMaskCache.remove(index)
 
@@ -1266,14 +1351,18 @@ package com.example.autotap.engine
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.PointF
+import android.os.Build
 import com.example.autotap.MyAutoClickService
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
 class GestureExecutor(private val service: MyAutoClickService) {
+
+    private var activeJoystickStroke: GestureDescription.StrokeDescription? = null
+    private var lastJoystickX = 0f
+    private var lastJoystickY = 0f
 
     fun performClick(x: Float, y: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
         if (service.isOverlayArea(x, y)) {
@@ -1283,10 +1372,14 @@ class GestureExecutor(private val service: MyAutoClickService) {
         }
 
         try {
+            val screenSize = service.getRealScreenSize()
+            val safeX = x.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
+            val safeY = y.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
+
             val path = Path()
-            path.moveTo(x, y)
-            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(10L))
-            service.dispatchGestureTask(stroke, "Click at ($x, $y)", callback)
+            path.moveTo(safeX, safeY)
+            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(10L, 60000L))
+            service.dispatchGestureTask(stroke, "Click at ($safeX, $safeY)", callback)
         } catch (e: Exception) {
             logError("GESTURE", "Ошибка выполнения клика ($x, $y)", e)
             callback?.invoke(false)
@@ -1294,82 +1387,124 @@ class GestureExecutor(private val service: MyAutoClickService) {
     }
 
     fun performClickSync(x: Float, y: Float, durationMs: Long): Boolean {
-        if (service.isOverlayArea(x, y)) {
-            logDiagnostic("GESTURE", "Пропуск клика Sync в ($x, $y): точка попадает в оверлей.")
-            return false
-        }
-        var successResult = false
-        val latch = CountDownLatch(1)
-        performClick(x, y, durationMs) { result ->
-            successResult = result
-            latch.countDown()
-        }
-        try {
-            latch.await(durationMs + 500L, TimeUnit.MILLISECONDS)
-        } catch (_: Exception) {}
-        return successResult
+        if (service.isOverlayArea(x, y)) return false
+        performClick(x, y, durationMs, null)
+        return true
     }
 
     fun performClickWithJitter(x: Float, y: Float, jitterRadius: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        val screenSize = service.getRealScreenSize()
         val offsetX = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
         val offsetY = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
-        val targetX = (x + offsetX).coerceAtLeast(0f)
-        val targetY = (y + offsetY).coerceAtLeast(0f)
 
-        logDiagnostic("GESTURE", "Клик с джиттером: база=($x, $y), итоговая=($targetX, $targetY)")
+        val targetX = (x + offsetX).coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
+        val targetY = (y + offsetY).coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
+
         performClick(targetX, targetY, durationMs, callback)
     }
 
     fun performSwipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
         try {
+            val screenSize = service.getRealScreenSize()
+            val safeStartX = startX.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
+            val safeStartY = startY.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
+            val safeEndX = endX.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
+            val safeEndY = endY.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
+
             val path = Path()
-            path.moveTo(startX, startY)
-            path.lineTo(endX, endY)
-            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(100L))
-            service.dispatchGestureTask(stroke, "Swipe ($startX, $startY) -> ($endX, $endY)", callback)
+            path.moveTo(safeStartX, safeStartY)
+            path.lineTo(safeEndX, safeEndY)
+            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(50L, 60000L))
+            service.dispatchGestureTask(stroke, "Swipe ($safeStartX, $safeStartY) -> ($safeEndX, $safeEndY)", callback)
         } catch (e: Exception) {
             logError("GESTURE", "Ошибка выполнения свайпа", e)
             callback?.invoke(false)
         }
     }
 
-    fun performJoystickRealtime(dx: Float, dy: Float, centerX: Float, centerY: Float, speedFactor: Float = 1.0f) {
-        try {
-            val targetX = (centerX + dx * speedFactor).coerceAtLeast(0f)
-            val targetY = (centerY + dy * speedFactor).coerceAtLeast(0f)
+    // =========================================================================
+    // НЕПРЕРЫВНЫЙ ПОТОКОВЫЙ ДЖОЙСТИК (continueStroke & willContinue = true)
+    // =========================================================================
+    fun startContinuousJoystick(centerX: Float, centerY: Float) {
+        val screenSize = service.getRealScreenSize()
+        val safeX = centerX.coerceIn(0f, (screenSize.x - 1).toFloat())
+        val safeY = centerY.coerceIn(0f, (screenSize.y - 1).toFloat())
+        lastJoystickX = safeX
+        lastJoystickY = safeY
 
-            val path = Path().apply {
-                moveTo(centerX, centerY)
-                lineTo(targetX, targetY)
-            }
+        val path = Path().apply {
+            moveTo(safeX, safeY)
+            lineTo(safeX, safeY)
+        }
 
-            val stroke = GestureDescription.StrokeDescription(path, 0L, 25L)
-            service.dispatchGestureTask(stroke, "JoystickRealtime dx=$dx dy=$dy", null)
-        } catch (e: Exception) {
-            logError("GESTURE", "Ошибка выполнения микро-жеста джойстика", e)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 100L, true)
+            activeJoystickStroke = stroke
+            service.dispatchGestureTask(stroke, "StartContinuousJoystick", null)
         }
     }
 
-    fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        performSwipe(startX, startY, endX, endY, durationMs, callback)
+    fun updateContinuousJoystick(targetX: Float, targetY: Float) {
+        val screenSize = service.getRealScreenSize()
+        val safeX = targetX.coerceIn(0f, (screenSize.x - 1).toFloat())
+        val safeY = targetY.coerceIn(0f, (screenSize.y - 1).toFloat())
+
+        val path = Path().apply {
+            moveTo(lastJoystickX, lastJoystickY)
+            lineTo(safeX, safeY)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activeJoystickStroke != null) {
+            try {
+                val stroke = activeJoystickStroke!!.continueStroke(path, 0L, 80L, true)
+                activeJoystickStroke = stroke
+                service.dispatchGestureTask(stroke, "UpdateJoystick", null)
+            } catch (e: Exception) {
+                activeJoystickStroke = null
+                startContinuousJoystick(safeX, safeY)
+            }
+        } else {
+            startContinuousJoystick(safeX, safeY)
+        }
+        lastJoystickX = safeX
+        lastJoystickY = safeY
+    }
+
+    fun stopContinuousJoystick() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activeJoystickStroke != null) {
+            val path = Path().apply {
+                moveTo(lastJoystickX, lastJoystickY)
+                lineTo(lastJoystickX, lastJoystickY)
+            }
+            try {
+                // willContinue = false ОТПРАВЛЯЕТ ФИНАЛЬНЫЙ ACTION_UP В ИГРУ
+                val stroke = activeJoystickStroke!!.continueStroke(path, 0L, 50L, false)
+                service.dispatchGestureTask(stroke, "StopJoystick", null)
+            } catch (_: Exception) {}
+            activeJoystickStroke = null
+        }
     }
 
     fun performLongPress(x: Float, y: Float, holdDurationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        logDiagnostic("GESTURE", "Долгое нажатие ($x, $y) длительность: ${holdDurationMs}мс")
         performClick(x, y, holdDurationMs.coerceAtLeast(500L), callback)
     }
 
     fun performJoystickPath(pathPoints: List<PointF>, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
         if (pathPoints.isEmpty()) {
-            logError("GESTURE", "Список точек для джойстика пуст", null)
             callback?.invoke(false)
             return
         }
         try {
+            val screenSize = service.getRealScreenSize()
             val path = Path()
-            path.moveTo(pathPoints[0].x, pathPoints[0].y)
+            val firstX = pathPoints[0].x.coerceIn(0f, (screenSize.x - 1).toFloat())
+            val firstY = pathPoints[0].y.coerceIn(0f, (screenSize.y - 1).toFloat())
+            path.moveTo(firstX, firstY)
+
             for (i in 1 until pathPoints.size) {
-                path.lineTo(pathPoints[i].x, pathPoints[i].y)
+                val px = pathPoints[i].x.coerceIn(0f, (screenSize.x - 1).toFloat())
+                val py = pathPoints[i].y.coerceIn(0f, (screenSize.y - 1).toFloat())
+                path.lineTo(px, py)
             }
             val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(200L))
             service.dispatchGestureTask(stroke, "JoystickPath (точек=${pathPoints.size})", callback)
@@ -1425,6 +1560,7 @@ import com.example.autotap.model.ActionType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
 
 class RecordingEngine(private val service: MyAutoClickService) {
 
@@ -1434,8 +1570,8 @@ class RecordingEngine(private val service: MyAutoClickService) {
     @Volatile var isJoystickRecording = false
         private set
 
-    val recordedActions = mutableListOf<ActionConfig>()
-    val joystickRecordedPath = mutableListOf<PointF>()
+    val recordedActions = CopyOnWriteArrayList<ActionConfig>()
+    val joystickRecordedPath = CopyOnWriteArrayList<PointF>()
 
     fun startRecording() {
         if (isRecording) return
@@ -1459,7 +1595,7 @@ class RecordingEngine(private val service: MyAutoClickService) {
         if (recordedActions.isNotEmpty()) {
             service.actionsList.clear()
             service.actionsList.addAll(recordedActions)
-            service.saveScriptByName(finalName, recordedActions)
+            service.saveScriptByName(finalName, ArrayList(recordedActions))
             return true
         }
         return false
@@ -1477,7 +1613,7 @@ class RecordingEngine(private val service: MyAutoClickService) {
             recordedActions.add(action)
             service.actionsList.add(action)
             val name = customName ?: "joystick_${SimpleDateFormat("MMdd_HHmm", Locale.US).format(Date())}"
-            service.saveScriptByName(name, service.actionsList)
+            service.saveScriptByName(name, ArrayList(service.actionsList))
             logDiagnostic("RECORDING", "Завершена отдельная запись джойстика '$name' (${action.joystickPath.size} точек).")
         }
     }
@@ -1536,7 +1672,8 @@ class ScenarioRunner(private val service: MyAutoClickService) {
 --- START OF FILE: app/src/main/java/com/example/autotap/engine/ScriptExecutor.kt ---
 package com.example.autotap.engine
 
-import android.graphics.PointF
+import android.os.Handler
+import android.os.Looper
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
@@ -1544,6 +1681,8 @@ import com.example.autotap.model.ActionConfig
 import com.example.autotap.model.ActionType
 
 class ScriptExecutor(private val service: MyAutoClickService) {
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     val gestureExecutor: GestureExecutor
         get() = service.gestureExecutor
@@ -1581,16 +1720,18 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         service.isPlaying = false
         currentStepIndex = 0
         currentLoopCount = 0
+        mainHandler.removeCallbacksAndMessages(null)
         service.hideFloatingStopButton()
         service.showControlPanel()
         logDiagnostic("SCRIPT", "Сценарий остановлен пользователем.")
     }
 
     fun jumpToStep(stepIndex: Int) {
-        if (stepIndex in 0 until service.actionsList.size) {
+        val actions = service.actionsList
+        if (stepIndex in 0 until actions.size) {
             currentStepIndex = stepIndex
             logDiagnostic("SCRIPT", "Переход на шаг $stepIndex")
-            executeNextStep()
+            mainHandler.post { executeNextStep() }
         } else {
             logError("SCRIPT", "Недопустимый шаг для перехода: $stepIndex", null)
             stop()
@@ -1610,7 +1751,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             if (isInfinite || currentLoopCount < maxLoops) {
                 currentStepIndex = 0
                 logDiagnostic("SCRIPT", "Повторный запуск цикла сценария (#$currentLoopCount)...")
-                executeNextStep()
+                mainHandler.post { executeNextStep() }
                 return
             } else {
                 logDiagnostic("SCRIPT", "Все $maxLoops циклов сценария успешно выполнены.")
@@ -1619,7 +1760,11 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             }
         }
 
-        val action = actions[currentStepIndex]
+        val action = actions.getOrNull(currentStepIndex) ?: run {
+            stop()
+            return
+        }
+
         logDiagnostic("SCRIPT", "Выполнение шага $currentStepIndex: тип=${action.type.name}")
 
         val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
@@ -1656,8 +1801,8 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                 executeMultiSearchLoop(action)
             }
             ActionType.WAIT -> {
-                Thread.sleep(action.delay.coerceAtLeast(10L))
-                onStepCompleted(true, action)
+                val waitDelay = action.delay.coerceAtLeast(10L)
+                mainHandler.postDelayed({ onStepCompleted(true, action) }, waitDelay)
             }
             ActionType.LOAD_SCRIPT -> {
                 val targetName = action.targetScriptToLoad
@@ -1665,7 +1810,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                     val loaded = service.loadScriptByName(targetName)
                     if (loaded) {
                         currentStepIndex = 0
-                        executeNextStep()
+                        mainHandler.post { executeNextStep() }
                         return
                     }
                 }
@@ -1688,9 +1833,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
 
                     if (action.loopUntilStopped) {
                         val delayMs = action.delay.coerceAtLeast(50L)
-                        logDiagnostic("SCRIPT", "Мультипоиск ИИ: задержка ${delayMs}мс перед запросом свежего кадра...")
-                        Thread.sleep(delayMs)
-                        executeMultiSearchLoop(action)
+                        mainHandler.postDelayed({ executeMultiSearchLoop(action) }, delayMs)
                     } else {
                         onStepCompleted(success, action)
                     }
@@ -1698,8 +1841,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             } else {
                 if (action.loopUntilStopped) {
                     val scanIntervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(100L)
-                    Thread.sleep(scanIntervalMs)
-                    executeMultiSearchLoop(action)
+                    mainHandler.postDelayed({ executeMultiSearchLoop(action) }, scanIntervalMs)
                 } else {
                     onStepCompleted(false, action)
                 }
@@ -1725,10 +1867,8 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         }
 
         currentStepIndex++
-        if (action.delay > 0) {
-            Thread.sleep(action.delay)
-        }
-        executeNextStep()
+        val stepDelay = action.delay.coerceAtLeast(0L)
+        mainHandler.postDelayed({ executeNextStep() }, stepDelay)
     }
 }
 
@@ -1878,18 +2018,30 @@ data class AiScanResult(
 --- START OF FILE: app/src/main/java/com/example/autotap/engine/ai/AutoTuningEngine.kt ---
 package com.example.autotap.engine.ai
 
+import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.model.ActionConfig
 
 class AutoTuningEngine {
 
-    fun autoTune(action: ActionConfig, candidates: List<MatchCandidate>): ActionConfig {
-        val tuned = action.copy()
-        if (candidates.size > 5) {
-            tuned.similarityPercent = (action.similarityPercent + 5).coerceAtMost(98)
-        } else if (candidates.isEmpty()) {
-            tuned.similarityPercent = (action.similarityPercent - 5).coerceAtLeast(50)
+    fun adaptivelyTuneThreshold(
+        action: ActionConfig,
+        candidates: List<MatchCandidate>,
+        scanFunction: (Float) -> List<MatchCandidate>
+    ): List<MatchCandidate> {
+        if (candidates.isNotEmpty()) return candidates
+        if (!action.autoTuningMode) return candidates
+
+        val currentThreshold = action.similarityPercent / 100f
+        val softThreshold = (currentThreshold - 0.10f).coerceAtLeast(0.50f)
+
+        logDiagnostic("AI_SCANNER", "AutoTuning: первая попытка не дала результатов. Адаптивное снижение порога до ${(softThreshold * 100).toInt()}%...")
+
+        val softCandidates = scanFunction(softThreshold)
+        if (softCandidates.isNotEmpty()) {
+            val best = softCandidates.maxByOrNull { it.score }
+            logDiagnostic("AI_SCANNER", "AutoTuning: цель успешно найдена адаптивно с уверенностью ${((best?.score ?: 0f) * 100).toInt()}%!")
         }
-        return tuned
+        return softCandidates
     }
 }
 
@@ -1952,38 +2104,29 @@ class ContourExtractor {
 package com.example.autotap.engine.ai
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 
 class HeatmapGenerator {
 
-    fun generate(frame: Bitmap, mask: Bitmap): Bitmap {
-        val width = frame.width
-        val height = frame.height
-        val heatmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    fun generateHeatmap(frame: Bitmap, candidates: List<MatchCandidate>): Bitmap {
+        val heatmap = Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(heatmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+        }
 
-        for (x in 0 until width step 8) {
-            for (y in 0 until height step 8) {
-                val score = 0.5f
-                val color = colorize(score)
-                for (dx in 0 until 8) {
-                    for (dy in 0 until 8) {
-                        if (x + dx < width && y + dy < height) {
-                            heatmap.setPixel(x + dx, y + dy, color)
-                        }
-                    }
-                }
+        for (c in candidates) {
+            val score = c.score
+            paint.color = when {
+                score >= 0.85f -> Color.argb(140, 0, 245, 212)
+                score >= 0.70f -> Color.argb(110, 255, 183, 3)
+                else -> Color.argb(80, 240, 68, 56)
             }
+            canvas.drawRect(c.boundingBox, paint)
         }
         return heatmap
-    }
-
-    private fun colorize(score: Float): Int {
-        return when {
-            score > 0.85f -> Color.argb(150, 255, 0, 0)
-            score > 0.65f -> Color.argb(120, 255, 165, 0)
-            score > 0.45f -> Color.argb(90, 255, 255, 0)
-            else -> Color.argb(40, 0, 0, 255)
-        }
     }
 }
 
@@ -2007,6 +2150,17 @@ class HybridCascadeMatcher {
         threshold: Float
     ): List<MatchCandidate> {
         val candidates = mutableListOf<MatchCandidate>()
+
+        if (frame.isRecycled || mask.isRecycled) return candidates
+        if (mask.width < 2 || mask.height < 2 || frame.width < 2 || frame.height < 2) return candidates
+
+        val safeSearchArea = Rect(
+            searchArea.left.coerceIn(0, frame.width),
+            searchArea.top.coerceIn(0, frame.height),
+            searchArea.right.coerceIn(0, frame.width),
+            searchArea.bottom.coerceIn(0, frame.height)
+        )
+
         val step = if (modes.hybridCascadeMode) {
             when (modes.profile) {
                 TemplateProfile.SMALL -> 2
@@ -2016,10 +2170,10 @@ class HybridCascadeMatcher {
             }
         } else 1
 
-        val startX = searchArea.left
-        val startY = searchArea.top
-        val endX = (searchArea.right - mask.width).coerceAtLeast(startX)
-        val endY = (searchArea.bottom - mask.height).coerceAtLeast(startY)
+        val startX = safeSearchArea.left
+        val startY = safeSearchArea.top
+        val endX = (safeSearchArea.right - mask.width).coerceAtLeast(startX)
+        val endY = (safeSearchArea.bottom - mask.height).coerceAtLeast(startY)
 
         if (endX <= startX || endY <= startY) return candidates
 
@@ -2027,6 +2181,8 @@ class HybridCascadeMatcher {
         while (x <= endX) {
             var y = startY
             while (y <= endY) {
+                if (frame.isRecycled || mask.isRecycled) break
+
                 val pixelScore = comparePixels(frame, mask, x, y)
                 val contourScore = if (modes.shapeOnlyMode || modes.profile == TemplateProfile.THIN_LINE) {
                     compareEdges(frame, mask, x, y)
@@ -2049,6 +2205,7 @@ class HybridCascadeMatcher {
     }
 
     private fun comparePixels(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+        if (frame.isRecycled || mask.isRecycled) return 0f
         var totalDiff = 0L
         var pixelCount = 0
 
@@ -2059,7 +2216,14 @@ class HybridCascadeMatcher {
         while (mx < mask.width) {
             var my = 0
             while (my < mask.height) {
-                val framePixel = frame.getPixel(x + mx, y + my)
+                val fx = x + mx
+                val fy = y + my
+                if (fx >= frame.width || fy >= frame.height) {
+                    my += stepY
+                    continue
+                }
+
+                val framePixel = frame.getPixel(fx, fy)
                 val maskPixel = mask.getPixel(mx, my)
 
                 val fr = (framePixel shr 16) and 0xFF
@@ -2085,6 +2249,7 @@ class HybridCascadeMatcher {
     }
 
     private fun compareEdges(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+        if (frame.isRecycled || mask.isRecycled) return 0f
         var edgeDiff = 0L
         var count = 0
         val stepX = (mask.width / 12).coerceAtLeast(1)
@@ -2094,8 +2259,15 @@ class HybridCascadeMatcher {
         while (mx < mask.width - 1) {
             var my = 1
             while (my < mask.height - 1) {
+                val fx = x + mx
+                val fy = y + my
+                if (fx <= 0 || fx >= frame.width - 1 || fy <= 0 || fy >= frame.height - 1) {
+                    my += stepY
+                    continue
+                }
+
                 val maskGrad = getGradient(mask, mx, my)
-                val frameGrad = getGradient(frame, x + mx, y + my)
+                val frameGrad = getGradient(frame, fx, fy)
 
                 edgeDiff += abs(maskGrad - frameGrad)
                 count++
@@ -2110,6 +2282,7 @@ class HybridCascadeMatcher {
     }
 
     private fun getGradient(bmp: Bitmap, x: Int, y: Int): Int {
+        if (bmp.isRecycled || x <= 0 || x >= bmp.width - 1 || y <= 0 || y >= bmp.height - 1) return 0
         val p1 = bmp.getPixel(x - 1, y) and 0xFF
         val p2 = bmp.getPixel(x + 1, y) and 0xFF
         val p3 = bmp.getPixel(x, y - 1) and 0xFF
@@ -2239,7 +2412,7 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         val mask = calibrated?.original ?: repository.loadTemplate(action.selectedTemplateIndex) ?: return emptyList()
         val profile = calibrated?.metadata?.profile ?: TemplateProfile.MEDIUM
 
-        val searchArea = buildProfileAwareSearchArea(action, frame, profile)
+        val searchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
         val searchModes = buildProfileAwareModes(action, profile)
 
         return cascadeMatcher.match(frame, mask, searchArea, searchModes, action.similarityPercent / 100f)
@@ -2259,7 +2432,7 @@ class TemplateMatcher(private val repository: TemplateRepository) {
             val mask = calibrated?.original ?: repository.loadTemplate(index) ?: continue
             val profile = calibrated?.metadata?.profile ?: TemplateProfile.MEDIUM
 
-            val searchArea = buildProfileAwareSearchArea(action, frame, profile)
+            val searchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
             val searchModes = buildProfileAwareModes(action, profile)
 
             val candidates = cascadeMatcher.match(frame, mask, searchArea, searchModes, action.similarityPercent / 100f)
@@ -2320,14 +2493,17 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         }
     }
 
-    private fun buildProfileAwareSearchArea(action: ActionConfig, frame: Bitmap, profile: TemplateProfile): Rect {
+    private fun buildProfileAwareSearchArea(action: ActionConfig, frame: Bitmap, profile: TemplateProfile, mask: Bitmap): Rect {
         if (action.customSearchArea) {
-            return Rect(
-                action.searchAreaX.coerceIn(0, frame.width),
-                action.searchAreaY.coerceIn(0, frame.height),
-                (action.searchAreaX + action.searchAreaW).coerceIn(0, frame.width),
-                (action.searchAreaY + action.searchAreaH).coerceIn(0, frame.height)
-            )
+            val safeX = action.searchAreaX.coerceIn(0, frame.width)
+            val safeY = action.searchAreaY.coerceIn(0, frame.height)
+            val safeW = action.searchAreaW.coerceAtLeast(mask.width)
+            val safeH = action.searchAreaH.coerceAtLeast(mask.height)
+
+            val safeRight = (safeX + safeW).coerceIn(safeX + 1, frame.width)
+            val safeBottom = (safeY + safeH).coerceIn(safeY + 1, frame.height)
+
+            return Rect(safeX, safeY, safeRight, safeBottom)
         }
 
         return Rect(0, 0, frame.width, frame.height)
@@ -2381,7 +2557,8 @@ object StructuredLogger {
     private var logFile: File? = null
 
     fun init(context: Context) {
-        val dir = context.getExternalFilesDir(null) ?: context.filesDir
+        // ГАРАНТИРОВАННЫЙ ВНУТРЕННИЙ ПУТЬ ДЛЯ FILE PROVIDER
+        val dir = context.filesDir
         logFile = File(dir, "error_log.txt")
         rotateLogIfNeeded()
     }
@@ -2415,11 +2592,15 @@ object StructuredLogger {
 
     private fun rotateLogIfNeeded() {
         val file = logFile ?: return
-        if (file.exists() && file.length() > MAX_LOG_SIZE) {
-            val content = file.readText()
-            val halfIndex = content.length / 2
-            val trimmedContent = "...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + content.substring(halfIndex)
-            file.writeText(trimmedContent)
+        try {
+            if (file.exists() && file.length() > MAX_LOG_SIZE) {
+                val content = file.readText()
+                val halfIndex = content.length / 2
+                val trimmedContent = "...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + content.substring(halfIndex)
+                file.writeText(trimmedContent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -2512,6 +2693,52 @@ data class TutorialStepConfig(
 )
 
 --- END OF FILE: app/src/main/java/com/example/autotap/model/TutorialStepConfig.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/service/QuickTileService.kt ---
+package com.example.autotap.service
+
+import android.content.Intent
+import android.os.Build
+import android.service.quicksettings.Tile
+import android.service.quicksettings.TileService
+import android.widget.Toast
+import androidx.annotation.RequiresApi
+import com.example.autotap.MainActivity
+import com.example.autotap.MyAutoClickService
+
+@RequiresApi(Build.VERSION_CODES.N)
+class QuickTileService : TileService() {
+
+    override fun onStartListening() {
+        super.onStartListening()
+        updateTileState()
+    }
+
+    override fun onClick() {
+        super.onClick()
+        val svc = MyAutoClickService.instance
+        if (svc != null) {
+            svc.showControlPanel()
+            Toast.makeText(this, "Панель AutoTap запущен!", Toast.LENGTH_SHORT).show()
+        } else {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivityAndCollapse(intent)
+        }
+        updateTileState()
+    }
+
+    private fun updateTileState() {
+        val tile = qsTile ?: return
+        val isActive = MyAutoClickService.instance != null
+        tile.state = if (isActive) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        tile.label = if (isActive) "AutoTap: ВКЛ" else "AutoTap: ВЫКЛ"
+        tile.updateTile()
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/service/QuickTileService.kt ---
 
 --- START OF FILE: app/src/main/java/com/example/autotap/ui/LogViewerActivity.kt ---
 package com.example.autotap.ui
@@ -2634,7 +2861,7 @@ abstract class OverlayBase(
     var layer: OverlayLayer = OverlayLayer.PANEL_LAYER,
     var priority: OverlayPriority = OverlayPriority.MEDIUM
 ) {
-    protected val windowManager: WindowManager =
+    val windowManager: WindowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     open val layoutResId: Int = 0
@@ -2650,10 +2877,10 @@ abstract class OverlayBase(
     var initialX: Int = 100
     var initialY: Int = 200
 
-    protected var overlayView: View? = null
-    protected var rootView: View? = null
-    protected var layoutParams: WindowManager.LayoutParams? = null
-    protected var params: WindowManager.LayoutParams? = null
+    var overlayView: View? = null
+    var rootView: View? = null
+    var layoutParams: WindowManager.LayoutParams? = null
+    var params: WindowManager.LayoutParams? = null
     var isShowing: Boolean = false
         protected set
 
@@ -2745,18 +2972,22 @@ abstract class OverlayBase(
             return
         }
         val screenSize = context.getRealScreenSize()
-        val maxX = (screenSize.x - 100).coerceAtLeast(10)
-        val maxY = (screenSize.y - 100).coerceAtLeast(10)
-        lp.x = lp.x.coerceIn(0, maxX)
-        lp.y = lp.y.coerceIn(0, maxY)
+        val maxX = screenSize.x.coerceAtLeast(10)
+        val maxY = screenSize.y.coerceAtLeast(10)
+        lp.x = lp.x.coerceIn(-100, maxX)
+        lp.y = lp.y.coerceIn(-100, maxY)
     }
 
-    fun updatePosition(x: Int, y: Int) {
+    open fun updatePosition(x: Int, y: Int) {
         val lp = layoutParams ?: params ?: return
         if (width != WindowManager.LayoutParams.MATCH_PARENT) {
             val screenSize = context.getRealScreenSize()
-            lp.x = x.coerceIn(0, (screenSize.x - 100).coerceAtLeast(10))
-            lp.y = y.coerceIn(0, (screenSize.y - 100).coerceAtLeast(10))
+            val viewW = overlayView?.width ?: 200
+            val viewH = overlayView?.height ?: 200
+            val maxX = (screenSize.x - viewW + 100).coerceAtLeast(0)
+            val maxY = (screenSize.y - viewH + 100).coerceAtLeast(0)
+            lp.x = x.coerceIn(-100, maxX)
+            lp.y = y.coerceIn(-100, maxY)
         } else {
             lp.x = 0
             lp.y = 0
@@ -2792,47 +3023,30 @@ abstract class OverlayBase(
     }
 
     protected fun setupDragAndDrop(handleView: View) {
-        var startX = 0
-        var startY = 0
-        var touchX = 0f
-        var touchY = 0f
-        var isDragging = false
+        var lastRawX = 0f
+        var lastRawY = 0f
 
-        handleView.setOnTouchListener { v, event ->
+        handleView.setOnTouchListener { _, event ->
             val lp = layoutParams ?: params ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startX = lp.x
-                    startY = lp.y
-                    touchX = event.rawX
-                    touchY = event.rawY
-                    isDragging = false
-                    false
+                    lastRawX = event.rawX
+                    lastRawY = event.rawY
+                    true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - touchX).toInt()
-                    val dy = (event.rawY - touchY).toInt()
+                    val dx = (event.rawX - lastRawX).toInt()
+                    val dy = (event.rawY - lastRawY).toInt()
 
-                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
-                        isDragging = true
+                    if (dx != 0 || dy != 0) {
+                        updatePosition(lp.x + dx, lp.y + dy)
+                        lastRawX = event.rawX
+                        lastRawY = event.rawY
                     }
-
-                    if (isDragging) {
-                        val newX = startX + dx
-                        val newY = startY + dy
-                        updatePosition(newX, newY)
-                        true
-                    } else {
-                        false
-                    }
+                    true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (isDragging) {
-                        isDragging = false
-                        true
-                    } else {
-                        false
-                    }
+                    true
                 }
                 else -> false
             }
@@ -2964,6 +3178,20 @@ class OverlayManager(val context: Context) {
     fun hideAll() {
         overlays.values.forEach { it.hide() }
     }
+
+    fun onConfigurationChanged() {
+        overlays.values.filter { it.isShowing }.forEach { overlay ->
+            val lp = overlay.layoutParams ?: overlay.params
+            val v = overlay.rootView ?: overlay.overlayView
+            if (lp != null && v != null) {
+                overlay.reboundToScreen(lp)
+                try {
+                    overlay.windowManager.updateViewLayout(v, lp)
+                } catch (_: Exception) {}
+            }
+        }
+        logDiagnostic("OVERLAY", "Автоматический пересчет позиций оверлеев при повороте экрана.")
+    }
 }
 
 --- END OF FILE: app/src/main/java/com/example/autotap/ui/base/OverlayManager.kt ---
@@ -2985,10 +3213,12 @@ enum class OverlayPriority(val zOrder: Int) {
 package com.example.autotap.ui.debug
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.R
@@ -3004,6 +3234,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
     private var statusText: TextView? = null
     private var tvCandidatePercentView: TextView? = null
     private var viewCandidateBorderView: View? = null
+    private var ivHeatmap: ImageView? = null
 
     init {
         width = 600
@@ -3024,6 +3255,15 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             }
             statusText = tv
             addView(tv)
+
+            val img = ImageView(context).apply {
+                visibility = View.GONE
+            }
+            ivHeatmap = img
+            addView(img, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                200
+            ))
         }
 
         val inflater = LayoutInflater.from(context)
@@ -3042,6 +3282,11 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         statusText?.text = "Кандидатов найдено: ${candidates.size} ($scorePercent)"
         tvCandidatePercentView?.text = scorePercent
         logAppEvent("AI_SCANNER", "Debugger: кандидатов ${candidates.size}")
+    }
+
+    fun showHeatmap(heatmap: Bitmap) {
+        ivHeatmap?.setImageBitmap(heatmap)
+        ivHeatmap?.visibility = View.VISIBLE
     }
 
     fun showNoMatch() {
@@ -3170,17 +3415,20 @@ package com.example.autotap.ui.overlays
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.PointF
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.dpToPx
 import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
 import com.example.autotap.model.ActionConfig
@@ -3201,8 +3449,13 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
     private var currentFrameWidthPx = 140.dpToPx(context)
     private var currentFrameHeightPx = 140.dpToPx(context)
 
+    private var captureSquare: FrameLayout? = null
+
     init {
-        gravity = Gravity.CENTER
+        gravity = Gravity.TOP or Gravity.START
+        val metrics = context.resources.displayMetrics
+        initialX = (metrics.widthPixels - currentFrameWidthPx) / 2
+        initialY = (metrics.heightPixels - currentFrameHeightPx) / 2
         width = WindowManager.LayoutParams.WRAP_CONTENT
         height = WindowManager.LayoutParams.WRAP_CONTENT
     }
@@ -3211,7 +3464,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(layoutResId, null)
 
-        val captureSquare = view.findViewByNames("captureSquare") as? FrameLayout
+        captureSquare = view.findViewByNames("captureSquare") as? FrameLayout
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
             logDiagnostic("OVERLAY", "Вырезание маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
@@ -3219,46 +3472,56 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
             val svc = MyAutoClickService.instance
             val lp = layoutParams ?: params
-            if (svc != null && lp != null) {
-                val metrics = context.resources.displayMetrics
-                val centerXNorm = (lp.x + currentFrameWidthPx / 2f) / metrics.widthPixels.toFloat()
-                val centerYNorm = (lp.y + currentFrameHeightPx / 2f) / metrics.heightPixels.toFloat()
+            val square = captureSquare
+            if (svc != null && lp != null && square != null) {
+                svc.captureScreenBitmapAsync { fullBitmap ->
+                    if (fullBitmap != null && fullBitmap.width > 20 && fullBitmap.height > 20) {
+                        val squareLeftOnScreen = lp.x + square.left
+                        val squareTopOnScreen = lp.y + square.top
 
-                val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
+                        val safeX = squareLeftOnScreen.coerceIn(0, (fullBitmap.width - 20).coerceAtLeast(0))
+                        val safeY = squareTopOnScreen.coerceIn(0, (fullBitmap.height - 20).coerceAtLeast(0))
+                        val maxAllowedW = fullBitmap.width - safeX
+                        val maxAllowedH = fullBitmap.height - safeY
+                        val safeW = currentFrameWidthPx.coerceIn(10, maxAllowedW)
+                        val safeH = currentFrameHeightPx.coerceIn(10, maxAllowedH)
 
-                val action = ActionConfig(
-                    type = ActionType.AI_SEARCH,
-                    xNorm = centerXNorm.coerceIn(0f, 1f),
-                    yNorm = centerYNorm.coerceIn(0f, 1f),
-                    selectedTemplateIndex = nextTemplateIndex
-                )
-                svc.actionsList.add(action)
+                        val metrics = context.resources.displayMetrics
+                        val centerXNorm = (safeX + safeW / 2f) / metrics.widthPixels.toFloat()
+                        val centerYNorm = (safeY + safeH / 2f) / metrics.heightPixels.toFloat()
 
-                val fullBitmap = svc.captureScreenBitmap()
-                if (fullBitmap != null && fullBitmap.width > 20 && fullBitmap.height > 20) {
-                    val safeX = lp.x.coerceIn(0, (fullBitmap.width - 20).coerceAtLeast(0))
-                    val safeY = lp.y.coerceIn(0, (fullBitmap.height - 20).coerceAtLeast(0))
-                    val safeW = currentFrameWidthPx.coerceIn(10, fullBitmap.width - safeX)
-                    val safeH = currentFrameHeightPx.coerceIn(10, fullBitmap.height - safeY)
+                        val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
 
-                    if (safeW > 10 && safeH > 10) {
-                        val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
-                        svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
-                        logDiagnostic("AI_SCANNER", "Безопасный кроп: шаблон #$nextTemplateIndex сохранен (${safeW}x${safeH}px).")
-                        
-                        // АВТО-ОТКРЫТИЕ ДЕБАГ-ОВЕРЛЕЯ КАЛИБРОВКИ СРАЗУ ПОСЛЕ ВЫРЕЗАНИЯ
-                        val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
-                        if (calibrated != null) {
-                            overlayManager.debuggerOverlay.show()
-                            overlayManager.debuggerOverlay.showCandidates(listOf(
-                                com.example.autotap.engine.ai.MatchCandidate(
-                                    point = android.graphics.PointF(safeX + safeW / 2f, safeY + safeH / 2f),
-                                    score = 1.0f,
-                                    boundingBox = calibrated.boundingBox,
-                                    scale = 1.0f,
-                                    templateIndex = nextTemplateIndex
-                                )
-                            ))
+                        val action = ActionConfig(
+                            type = ActionType.AI_SEARCH,
+                            xNorm = centerXNorm.coerceIn(0f, 1f),
+                            yNorm = centerYNorm.coerceIn(0f, 1f),
+                            selectedTemplateIndex = nextTemplateIndex
+                        )
+                        svc.actionsList.add(action)
+
+                        if (safeW > 10 && safeH > 10) {
+                            try {
+                                val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
+                                svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+                                logDiagnostic("AI_SCANNER", "Безопасный точный кроп: шаблон #$nextTemplateIndex сохранен (${safeW}x${safeH}px).")
+
+                                val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
+                                if (calibrated != null) {
+                                    overlayManager.debuggerOverlay.show()
+                                    overlayManager.debuggerOverlay.showCandidates(listOf(
+                                        com.example.autotap.engine.ai.MatchCandidate(
+                                            point = PointF(safeX + safeW / 2f, safeY + safeH / 2f),
+                                            score = 1.0f,
+                                            boundingBox = calibrated.boundingBox,
+                                            scale = 1.0f,
+                                            templateIndex = nextTemplateIndex
+                                        )
+                                    ))
+                                }
+                            } catch (e: Exception) {
+                                logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
+                            }
                         }
                     }
                 }
@@ -3281,9 +3544,10 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
         setupDragAndDrop(moveHandle)
 
+        val sq = captureSquare
         val resizeHandle = view.findViewByNames("handleResize")
-        if (resizeHandle != null && captureSquare != null) {
-            setupResizeHandler(resizeHandle, captureSquare)
+        if (resizeHandle != null && sq != null) {
+            setupResizeHandler(resizeHandle, sq)
         }
 
         return view
@@ -3402,7 +3666,6 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     private var btnRecordView: View? = null
     private var btnJoystickView: View? = null
 
-    // 3-Этапный циклический режим: 0 = Full, 1 = Single Bubble, 2 = Compact
     private var displayStage = 0
 
     init {
@@ -3519,6 +3782,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 if (lp != null && targetView != null) {
                     lp.width = WindowManager.LayoutParams.WRAP_CONTENT
                     lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+                    reboundToScreen(lp)
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
@@ -3530,6 +3794,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                     val bubbleSizePx = 56.dpToPx(context)
                     lp.width = bubbleSizePx
                     lp.height = bubbleSizePx
+                    reboundToScreen(lp)
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
@@ -3540,6 +3805,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 if (lp != null && targetView != null) {
                     lp.width = WindowManager.LayoutParams.WRAP_CONTENT
                     lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+                    reboundToScreen(lp)
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
@@ -3580,14 +3846,11 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.EditText
-import android.widget.ImageView
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
@@ -3604,8 +3867,10 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
     override val layoutResId: Int = R.layout.floating_edit_dialog
 
-    private var currentStepIdx = 0
-    private var tvStepIndexView: TextView? = null
+    private var etEditX: EditText? = null
+    private var etEditY: EditText? = null
+    private var etEditDelayMs: EditText? = null
+    private var etEditComment: EditText? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -3620,50 +3885,30 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(layoutResId, null)
 
-        tvStepIndexView = view.findViewByNames("tvTemplateIndex") as? TextView
+        etEditX = view.findViewByNames("etEditX") as? EditText
+        etEditY = view.findViewByNames("etEditY") as? EditText
+        etEditDelayMs = view.findViewByNames("etEditDelayMs") as? EditText
+        etEditComment = view.findViewByNames("etEditComment") as? EditText
 
-        view.bindClickByNames("btnNextStep") {
-            val listSize = MyAutoClickService.instance?.actionsList?.size ?: 0
-            if (currentStepIdx < listSize - 1) {
-                currentStepIdx++
-                updateStepDisplay()
-            }
+        view.bindClickByNames("btnEditApply", "btnSave") {
+            logDiagnostic("SCRIPT", "Изменения действия сохранены в EditActionDialog.")
+            hide()
         }
 
-        view.bindClickByNames("btnPrevStep") {
-            if (currentStepIdx > 0) {
-                currentStepIdx--
-                updateStepDisplay()
-            }
-        }
-
-        view.bindClickByNames("btnDeleteAction") {
+        view.bindClickByNames("btnEditDelete", "btnDeleteAction") {
             val list = MyAutoClickService.instance?.actionsList
-            if (list != null && list.isNotEmpty() && currentStepIdx in list.indices) {
-                list.removeAt(currentStepIdx)
-                if (currentStepIdx >= list.size) {
-                    currentStepIdx = (list.size - 1).coerceAtLeast(0)
-                }
-                updateStepDisplay()
+            if (list != null && list.isNotEmpty()) {
+                list.removeAt(list.size - 1)
+                logDiagnostic("SCRIPT", "Удалено последнее действие.")
             }
-        }
-
-        view.bindClickByNames("btnSave", "btnSaveHeader") {
-            logDiagnostic("SCRIPT", "Шаг сохранен в EditActionDialog.")
             hide()
         }
 
-        view.bindClickByNames("btnCancel", "btnCloseHeader") {
+        view.bindClickByNames("btnEditClose", "btnCancel") {
             hide()
         }
 
-        updateStepDisplay()
         return view
-    }
-
-    private fun updateStepDisplay() {
-        val listSize = MyAutoClickService.instance?.actionsList?.size ?: 0
-        tvStepIndexView?.text = "Шаг ${currentStepIdx + 1} из $listSize"
     }
 }
 
@@ -3673,24 +3918,34 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
-import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class ExportImportDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
-
-    private var pickerListLayout: View? = null
 
     init {
         gravity = Gravity.CENTER
@@ -3705,36 +3960,68 @@ class ExportImportDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.dialog_export_select, null)
 
-        try {
-            val pickerView = inflater.inflate(R.layout.dialog_select_script_for_export, null)
-            pickerListLayout = pickerView.findViewByNames("layoutPickerList")
-            pickerView.findViewByNames("tvPickerTitle")
-            pickerView.bindClickByNames("btnClosePicker") { hide() }
-
-            val itemScriptView = inflater.inflate(R.layout.item_script, null)
-            itemScriptView.findViewByNames("tvScriptName")
-            itemScriptView.bindClickByNames("btnCopyScriptFile", "btnExportScriptFile", "btnDeleteScriptFile") {
-                logDiagnostic("SCRIPT", "Действие с файлом сценария в item_script.")
-            }
-        } catch (_: Exception) {}
-
         view.bindClickByNames("btnCloseExpSelect") {
             hide()
         }
 
-        view.bindClickByNames("btnExpFullBackup") {
-            val svc = MyAutoClickService.instance
-            svc?.saveScriptByName("full_backup", svc.actionsList)
-            logDiagnostic("SCRIPT", "Создан полный бэкап через btnExpFullBackup.")
-            hide()
-        }
-
-        view.bindClickByNames("btnExpSingleScript", "btnExpChainScripts", "btnExpTemplatesOnly") {
-            logDiagnostic("SCRIPT", "Экспорт выбранного типа сценария.")
+        view.bindClickByNames("btnExpFullBackup", "btnExpSingleScript", "btnExpChainScripts", "btnExpTemplatesOnly") {
+            exportFullBackupZip()
             hide()
         }
 
         return view
+    }
+
+    private fun exportFullBackupZip() {
+        try {
+            val filesDir = context.filesDir
+            val timestamp = SimpleDateFormat("MMdd_HHmm", Locale.US).format(Date())
+            val zipFile = File(filesDir, "autotap_backup_$timestamp.zip")
+
+            val filesToZip = filesDir.listFiles { _, name ->
+                name.endsWith(".json") || (name.startsWith("template_") && name.endsWith(".png"))
+            } ?: emptyArray()
+
+            if (filesToZip.isEmpty()) {
+                Toast.makeText(context, "Нет сценариев или масок для экспорта!", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+                for (file in filesToZip) {
+                    FileInputStream(file).use { fis ->
+                        val entry = ZipEntry(file.name)
+                        zos.putNextEntry(entry)
+                        fis.copyTo(zos)
+                        zos.closeEntry()
+                    }
+                }
+            }
+
+            logDiagnostic("EXPORT", "Успешно создан ZIP-бэкап: ${zipFile.name} (${zipFile.length() / 1024} КБ)")
+
+            val uri: Uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                zipFile
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            val chooser = Intent.createChooser(shareIntent, "Поделиться бэкапом AutoTap").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+
+        } catch (e: Exception) {
+            logError("EXPORT", "Ошибка экспорта ZIP-бэкапа", e)
+            Toast.makeText(context, "Ошибка создания бэкапа: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 }
 
@@ -4033,12 +4320,26 @@ class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
         val knob = joystickKnobView ?: return
         val maxRadius = 40.dpToPx(context).toFloat()
 
+        var startTouchX = 0f
+        var startTouchY = 0f
+
         knob.setOnTouchListener { v, event ->
             val svc = MyAutoClickService.instance ?: return@setOnTouchListener false
+            val lp = layoutParams ?: params
+            val centerX = (lp?.x ?: 100) + v.width / 2f
+            val centerY = (lp?.y ?: 200) + v.height / 2f
+
             when (event.action) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    val rawDx = event.x - (knob.width / 2f)
-                    val rawDy = event.y - (knob.height / 2f)
+                MotionEvent.ACTION_DOWN -> {
+                    startTouchX = event.rawX
+                    startTouchY = event.rawY
+                    // СТАРТ НЕПРЕРЫВНОГО ЖЕСТА В ИГРЕ
+                    svc.gestureExecutor.startContinuousJoystick(centerX, centerY)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val rawDx = event.rawX - startTouchX
+                    val rawDy = event.rawY - startTouchY
                     val dist = sqrt(rawDx * rawDx + rawDy * rawDy)
 
                     val clampedDx = if (dist > maxRadius) (rawDx / dist) * maxRadius else rawDx
@@ -4048,15 +4349,16 @@ class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
                     knob.translationY = clampedDy
 
                     val now = System.currentTimeMillis()
-                    if (now - lastImpulseTime >= 25L) {
+                    if (now - lastImpulseTime >= 40L) {
                         lastImpulseTime = now
 
-                        val lp = layoutParams ?: params
-                        val centerX = (lp?.x ?: 100) + v.width / 2f
-                        val centerY = (lp?.y ?: 200) + v.height / 2f
+                        val targetX = centerX + clampedDx
+                        val targetY = centerY + clampedDy
 
-                        svc.gestureExecutor.performJoystickRealtime(clampedDx, clampedDy, centerX, centerY)
+                        // ОБНОВЛЕНИЕ НЕПРЕРЫВНОГО ЖЕСТА В ИГРЕ (willContinue = true)
+                        svc.gestureExecutor.updateContinuousJoystick(targetX, targetY)
 
+                        // ПАРАЛЛЕЛЬНАЯ ЗАПИСЬ ТРАЕКТОРИИ
                         if (svc.recordingEngine.isJoystickRecording) {
                             svc.recordingEngine.joystickRecordedPath.add(PointF(clampedDx, clampedDy))
                         }
@@ -4066,12 +4368,15 @@ class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     knob.animate().translationX(0f).translationY(0f).setDuration(150L).start()
 
+                    // ЗАВЕРШЕНИЕ ЖЕСТА В ИГРЕ (willContinue = false -> ACTION_UP)
+                    svc.gestureExecutor.stopContinuousJoystick()
+
                     if (svc.recordingEngine.isJoystickRecording) {
                         val pathCopy = ArrayList(svc.recordingEngine.joystickRecordedPath)
                         val action = ActionConfig(
                             type = ActionType.JOYSTICK_PATH,
                             joystickPath = pathCopy,
-                            holdDuration = (pathCopy.size * 25L).coerceAtLeast(200L)
+                            holdDuration = (pathCopy.size * 40L).coerceAtLeast(200L)
                         )
                         svc.recordingEngine.finishJoystickRecording(action)
                     }
@@ -4089,22 +4394,32 @@ class JoystickOverlay(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
+import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import java.io.File
 
 class MaskEditorDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
 
     override val layoutResId: Int = R.layout.dialog_mask_editor
+
+    private var targetIndex = 0
+    private var ivPreview: ImageView? = null
+    private var tvTitle: TextView? = null
 
     init {
         gravity = Gravity.CENTER
@@ -4113,16 +4428,38 @@ class MaskEditorDialog(context: Context, overlayManager: OverlayManager) :
         dimAmount = 0.6f
     }
 
+    fun setTargetTemplateIndex(index: Int) {
+        this.targetIndex = index
+    }
+
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(layoutResId, null)
 
-        view.bindClickByNames("btnSaveMaskEdits") {
-            MyAutoClickService.instance?.templateRepository?.recalibrateTemplate(0)
+        ivPreview = view.findViewByNames("ivMaskPreview") as? ImageView
+        tvTitle = view.findViewByNames("tvMaskEditorTitle") as? TextView
+
+        tvTitle?.text = "Редактор маски #$targetIndex"
+
+        val file = File(context.filesDir, "template_$targetIndex.png")
+        if (file.exists()) {
+            val bmp = BitmapFactory.decodeFile(file.absolutePath)
+            ivPreview?.setImageBitmap(bmp)
+        }
+
+        view.bindClickByNames("btnMaskSave", "btnSaveMaskEdits") {
+            MyAutoClickService.instance?.templateRepository?.recalibrateTemplate(targetIndex)
+            logDiagnostic("AI_SCANNER", "Маска #$targetIndex успешно перекалибрована.")
             hide()
         }
 
-        view.bindClickByNames("btnCancelMaskEdits", "btnCloseMaskEditor") {
+        view.bindClickByNames("btnMaskDelete") {
+            MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(targetIndex)
+            overlayManager.templatesManagerDialog.refreshTemplatesList()
+            hide()
+        }
+
+        view.bindClickByNames("btnMaskClose", "btnCancelMaskEdits", "btnCloseMaskEditor") {
             hide()
         }
 
@@ -4286,7 +4623,6 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Rect
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -4315,12 +4651,10 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     private var currentWidthPx = 200.dpToPx(context)
     private var currentHeightPx = 200.dpToPx(context)
 
-    private var layoutSearchAreaContainerView: View? = null
     private var viewSearchAreaFrameView: View? = null
-    private var layoutSearchBottomBarView: View? = null
 
     init {
-        gravity = Gravity.CENTER
+        gravity = Gravity.TOP or Gravity.START
         layer = OverlayLayer.CAPTURE_LAYER
         priority = OverlayPriority.HIGH
         width = currentWidthPx
@@ -4331,26 +4665,31 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.floating_search_area_frame, null)
 
-        layoutSearchAreaContainerView = view.findViewByNames("layoutSearchAreaContainer")
         viewSearchAreaFrameView = view.findViewByNames("viewSearchAreaFrame")
-        layoutSearchBottomBarView = view.findViewByNames("layoutSearchBottomBar")
 
         view.bindClickByNames("btnSaveSearchArea") {
             val svc = MyAutoClickService.instance
             val lp = layoutParams
-            if (svc != null && lp != null) {
+            val frame = viewSearchAreaFrameView
+            if (svc != null && lp != null && frame != null) {
                 val screenSize = context.getRealScreenSize()
-                val rectPx = Rect(lp.x, lp.y, lp.x + currentWidthPx, lp.y + currentHeightPx)
+
+                val exactX = lp.x + frame.left
+                val exactY = lp.y + frame.top
+                val exactW = frame.width.takeIf { it > 0 } ?: currentWidthPx
+                val exactH = frame.height.takeIf { it > 0 } ?: currentHeightPx
+
+                val rectPx = Rect(exactX, exactY, exactX + exactW, exactY + exactH)
                 val rectNorm = CoordConverter.toNormalizedRect(rectPx, screenSize.x, screenSize.y)
 
                 if (svc.actionsList.isNotEmpty()) {
                     val currentAction = svc.actionsList.last()
                     currentAction.customSearchArea = true
-                    currentAction.searchAreaX = lp.x
-                    currentAction.searchAreaY = lp.y
-                    currentAction.searchAreaW = currentWidthPx
-                    currentAction.searchAreaH = currentHeightPx
-                    logDiagnostic("AI_SCANNER", "Зона поиска сохранена в ActionConfig: (${lp.x}, ${lp.y}, ${currentWidthPx}x${currentHeightPx}px), norm=$rectNorm")
+                    currentAction.searchAreaX = exactX
+                    currentAction.searchAreaY = exactY
+                    currentAction.searchAreaW = exactW
+                    currentAction.searchAreaH = exactH
+                    logDiagnostic("AI_SCANNER", "Зона поиска сохранена с точным смещением рамки: ($exactX, $exactY, ${exactW}x${exactH}px), norm=$rectNorm")
                 }
             }
             context.vibrateFeedback()
@@ -4502,10 +4841,14 @@ class TargetMarkerOverlay(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
@@ -4515,11 +4858,12 @@ import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import java.io.File
 
 class TemplatesManagerDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
-    private var templatesListLayout: View? = null
+    private var templatesListLayout: LinearLayout? = null
 
     init {
         gravity = Gravity.CENTER
@@ -4534,30 +4878,75 @@ class TemplatesManagerDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.dialog_templates_manager, null)
 
-        templatesListLayout = view.findViewByNames("layoutTemplatesList")
-
-        try {
-            val itemTemplateView = inflater.inflate(R.layout.item_template, null)
-            itemTemplateView.findViewByNames("tvTemplateName", "ivTemplatePreview")
-            itemTemplateView.bindClickByNames("btnEditTemplateMask", "btnDeleteTemplateFile") {
-                logDiagnostic("AI_SCANNER", "Действие с шаблоном маски в item_template.")
-            }
-        } catch (_: Exception) {}
+        templatesListLayout = view.findViewByNames("layoutTemplatesList") as? LinearLayout
 
         view.bindClickByNames("btnOpenTrashBin") {
             val svc = MyAutoClickService.instance
             if (svc != null) {
                 svc.templateRepository.restoreTemplateFromTrash(0)
-                logDiagnostic("UI", "Просмотр и восстановление масок из корзины.")
+                refreshTemplatesList()
+                logDiagnostic("UI", "Восстановление масок из корзины.")
             }
         }
 
         view.bindClickByNames("btnCloseTemplatesManager") {
-            logDiagnostic("UI", "Закрыт Менеджер Шаблонов btnCloseTemplatesManager.")
             hide()
         }
 
+        refreshTemplatesList()
         return view
+    }
+
+    fun refreshTemplatesList() {
+        val container = templatesListLayout ?: return
+        container.removeAllViews()
+
+        val filesDir = context.filesDir
+        val templateFiles = filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") }
+            ?.sortedBy { file ->
+                file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull() ?: 0
+            } ?: emptyList()
+
+        if (templateFiles.isEmpty()) {
+            val emptyTv = TextView(context).apply {
+                text = "Шаблонов масок пока нет.\nСоздайте их через Прицел 📷"
+                setTextColor(android.graphics.Color.GRAY)
+                gravity = Gravity.CENTER
+                setPadding(16, 32, 16, 32)
+            }
+            container.addView(emptyTv)
+            return
+        }
+
+        val inflater = LayoutInflater.from(context)
+        for (file in templateFiles) {
+            val index = file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull() ?: continue
+            val itemView = try {
+                inflater.inflate(R.layout.item_template, container, false)
+            } catch (e: Exception) { continue }
+
+            val tvName = itemView.findViewByNames("tvTemplateName") as? TextView
+            val ivPreview = itemView.findViewByNames("ivTemplatePreview") as? ImageView
+
+            tvName?.text = "Маска #$index (${file.length() / 1024} КБ)"
+
+            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+            if (bitmap != null) {
+                ivPreview?.setImageBitmap(bitmap)
+            }
+
+            itemView.bindClickByNames("btnEditTemplateMask") {
+                overlayManager.maskEditorDialog.setTargetTemplateIndex(index)
+                overlayManager.maskEditorDialog.show()
+            }
+
+            itemView.bindClickByNames("btnDeleteTemplateFile") {
+                MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(index)
+                refreshTemplatesList()
+            }
+
+            container.addView(itemView)
+        }
     }
 }
 
@@ -4574,6 +4963,8 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -4698,6 +5089,23 @@ class TutorialOverlay(
     ) : View(context) {
 
         private var highlightArea: Rect? = null
+        private var pulseRadius = 0f
+        private var pulseIncreasing = true
+        private val handler = Handler(Looper.getMainLooper())
+
+        private val pulseRunnable = object : Runnable {
+            override fun run() {
+                if (pulseIncreasing) {
+                    pulseRadius += 1.5f
+                    if (pulseRadius >= 14f) pulseIncreasing = false
+                } else {
+                    pulseRadius -= 1.5f
+                    if (pulseRadius <= 0f) pulseIncreasing = true
+                }
+                invalidate()
+                handler.postDelayed(this, 30L)
+            }
+        }
 
         private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#B3000000")
@@ -4714,8 +5122,15 @@ class TutorialOverlay(
             strokeWidth = 6f
         }
 
+        private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#8000F5D4")
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+
         init {
             setLayerType(LAYER_TYPE_SOFTWARE, null)
+            handler.post(pulseRunnable)
         }
 
         fun setHighlightArea(rect: Rect?) {
@@ -4732,12 +5147,25 @@ class TutorialOverlay(
                 val rectF = RectF(rect)
                 canvas.drawRoundRect(rectF, 16f, 16f, clearPaint)
                 canvas.drawRoundRect(rectF, 16f, 16f, borderPaint)
+
+                val pulseRect = RectF(
+                    rect.left - pulseRadius,
+                    rect.top - pulseRadius,
+                    rect.right + pulseRadius,
+                    rect.bottom + pulseRadius
+                )
+                canvas.drawRoundRect(pulseRect, 20f, 20f, pulsePaint)
             }
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             val handled = onTouchEventCallback(event)
             return handled || super.onTouchEvent(event)
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            handler.removeCallbacks(pulseRunnable)
         }
     }
 }
@@ -5308,15 +5736,14 @@ class TutorialOverlay(
         android:paddingTop="24dp"
         android:paddingBottom="16dp">
 
-        <!-- Защищённый карточка-заголовок -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:gravity="center"
             android:background="@drawable/panel_background"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
+            android:paddingTop="18dp"
+            android:paddingBottom="18dp"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
             android:layout_marginBottom="16dp">
@@ -5327,7 +5754,7 @@ class TutorialOverlay(
                 android:layout_height="wrap_content"
                 android:text="AutoTap Premium"
                 android:textColor="#00F5D4"
-                android:textSize="22sp"
+                android:textSize="24sp"
                 android:textStyle="bold"
                 android:gravity="center"
                 android:singleLine="true"
@@ -5338,9 +5765,9 @@ class TutorialOverlay(
                 android:id="@+id/tvSubTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Полноэкранный ИИ-поиск и умная авто-инструкция"
+                android:text="Комплекс Автоматизации и ИИ Поиска"
                 android:textColor="@color/text_gray"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:gravity="center"
                 android:layout_marginTop="4dp" />
 
@@ -5348,101 +5775,101 @@ class TutorialOverlay(
                 android:id="@+id/tvVersion"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="v25.9.1 PRO"
+                android:text="v40.0.0-PRO"
                 android:textColor="@color/accent_blue"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:textStyle="bold"
                 android:gravity="center"
                 android:layout_marginTop="4dp" />
         </LinearLayout>
 
-        <!-- Секция 1: Настройки разрешений -->
+        <!-- Секция 1: Настройки системных разрешений -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
+            android:padding="16dp"
+            android:layout_marginBottom="14dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="⚙ Настройка разрешений"
+                android:text="⚙ Настройка системных разрешений"
                 android:textColor="#58A6FF"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
+                android:layout_marginBottom="12dp"/>
 
             <Button
                 android:id="@+id/btnAppDetails"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="1. Разрешить запрещенные настройки (MIUI/HyperOS)"
+                android:minHeight="50dp"
+                android:text="1. Ограниченные настройки (MIUI/HyperOS / Android 13+)"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:padding="8dp"
                 android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+                android:layout_marginBottom="10dp"/>
 
             <Button
                 android:id="@+id/btnAccessibility"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="2. Разрешить работу кликера"
+                android:minHeight="50dp"
+                android:text="2. Спец. возможности (Включить AutoTap)"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:padding="8dp"
                 android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+                android:layout_marginBottom="10dp"/>
 
             <Button
                 android:id="@+id/btnOverlay"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="46dp"
+                android:minHeight="50dp"
                 android:text="3. Поверх других приложений"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:padding="8dp"
                 android:gravity="center"/>
         </LinearLayout>
 
-        <!-- Секция 2: Управление шаблонами и данными -->
+        <!-- Секция 2: Управление данными -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
+            android:padding="16dp"
+            android:layout_marginBottom="14dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="📁 Управление шаблонами и данными"
                 android:textColor="#58A6FF"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
+                android:layout_marginBottom="12dp"/>
 
             <Button
                 android:id="@+id/btnManageTemplates"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="46dp"
+                android:minHeight="48dp"
                 android:text="Редактирование и менеджер ИИ-шаблонов"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:padding="8dp"
                 android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+                android:layout_marginBottom="10dp"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -5454,11 +5881,11 @@ class TutorialOverlay(
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="46dp"
+                    android:minHeight="48dp"
                     android:text="📤 Экспорт"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>
 
@@ -5471,11 +5898,11 @@ class TutorialOverlay(
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="46dp"
+                    android:minHeight="48dp"
                     android:text="📥 Импорт"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>
             </LinearLayout>
@@ -5487,25 +5914,25 @@ class TutorialOverlay(
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="16dp">
+            android:padding="16dp"
+            android:layout_marginBottom="18dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
+                android:layout_marginBottom="10dp">
 
                 <Button
                     android:id="@+id/btnPermissionsHelp"
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="44dp"
+                    android:minHeight="46dp"
                     android:text="О разрешениях"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>
 
@@ -5518,11 +5945,11 @@ class TutorialOverlay(
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="44dp"
-                    android:text="Справка v25.9.1 PRO"
+                    android:minHeight="46dp"
+                    android:text="Справка v40 PRO"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>
             </LinearLayout>
@@ -5531,30 +5958,30 @@ class TutorialOverlay(
                 android:id="@+id/btnShowLogs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="44dp"
+                android:minHeight="46dp"
                 android:text="Просмотр логов работы и ошибок"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:padding="4dp"
                 android:gravity="center"/>
         </LinearLayout>
 
-        <!-- Главная кнопка старта -->
         <Button
             android:id="@+id/btnStartPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="56dp"
+            android:minHeight="58dp"
             android:text="🚀 ЗАПУСТИТЬ ПАНЕЛЬ КЛИКЕРА"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/accent_blue"
-            android:textSize="14sp"
+            android:textSize="15sp"
             android:textStyle="bold"
             android:padding="10dp"
             android:gravity="center"/>
     </LinearLayout>
 </ScrollView>
+
 --- END OF FILE: app/src/main/res/layout/activity_main.xml ---
 
 --- START OF FILE: app/src/main/res/layout/candidate_selection_overlay.xml ---
@@ -6619,13 +7046,13 @@ class TutorialOverlay(
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center_horizontal"
-    android:background="@drawable/panel_background"
-    android:padding="8dp"
+    android:background="#00000000"
+    android:padding="4dp"
     android:elevation="18dp"
     android:clipChildren="false"
     android:clipToPadding="false">
 
-    <!-- 1. ВЕРХНЯЯ ПАНЕЛЬ (НАД ПРИЦЕЛОМ - НЕ ПЕРЕКРЫВАЕТ ЕГО) -->
+    <!-- 1. ВЕРХНЯЯ ПАНЕЛЬ КНОПОК -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
@@ -6634,7 +7061,7 @@ class TutorialOverlay(
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
         android:padding="4dp"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="6dp">
 
         <ImageButton
             android:id="@+id/btnDoCapture"
@@ -6684,16 +7111,16 @@ class TutorialOverlay(
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- 2. СРЕДНЯЯ ЗОНА: ЧИСТЫЙ ПРИЦЕЛЬНЫЙ КАДР -->
+    <!-- 2. ЧИСТЫЙ ПРИЦЕЛЬНЫЙ КВАДРАТ (БЕЗ ТЯЖЕЛОЙ РАМКИ ВОКРУГ) -->
     <FrameLayout
         android:id="@+id/captureSquare"
         android:layout_width="140dp"
         android:layout_height="140dp"
         android:layout_gravity="center_horizontal"
-        android:background="@drawable/border_capture"
-        android:layout_marginBottom="8dp" />
+        android:background="@drawable/border_capture_square"
+        android:layout_marginBottom="6dp" />
 
-    <!-- 3. НИЖНЯЯ ПАНЕЛЬ МАНИПУЛЯТОРОВ: ДВИГАТЬ ✥ И РАЗМЕР ⤢ (ПОД ПРИЦЕЛОМ) -->
+    <!-- 3. НИЖНЯЯ ПАНЕЛЬ МАНИПУЛЯТОРОВ -->
     <LinearLayout
         android:id="@+id/layoutBottomBar"
         android:layout_width="wrap_content"
@@ -6742,10 +7169,22 @@ class TutorialOverlay(
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:background="@drawable/panel_background"
-    android:padding="6dp"
-    android:elevation="14dp">
+    android:padding="8dp"
+    android:elevation="16dp">
 
-    <!-- Строка 1: Главная панель (ВСЕГДА ВИДИМА) -->
+    <!-- КНОПКА-БАББЛ ДЛЯ 3-ЭТАПНОГО РЕЖИМА (УДОБНЫЙ ТАЧ 56x56DP) -->
+    <ImageButton
+        android:id="@+id/btnSingleBubble"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:src="@drawable/ic_launcher_foreground"
+        android:scaleType="centerInside"
+        android:background="@drawable/handle_manipulator_bg"
+        android:padding="4dp"
+        android:visibility="gone"
+        android:contentDescription="Bubble Mode" />
+
+    <!-- Строка 1: Главная панель (Эргономичный размер 44x44dp) -->
     <LinearLayout
         android:id="@+id/layoutMainRow"
         android:layout_width="wrap_content"
@@ -6755,144 +7194,144 @@ class TutorialOverlay(
 
         <TextView
             android:id="@+id/handleDrag"
-            android:layout_width="22dp"
-            android:layout_height="38dp"
+            android:layout_width="26dp"
+            android:layout_height="44dp"
             android:gravity="center"
             android:text="⁝⁝"
             android:textColor="#58A6FF"
-            android:textSize="14sp"
+            android:textSize="16sp"
             android:textStyle="bold"
             android:background="@drawable/drag_handle_bg"
             android:layout_marginEnd="6dp"/>
 
         <ImageButton
             android:id="@+id/btnPlay"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_play"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_primary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Play"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnAdd"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_add"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Add"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnCapturePool"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_camera"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Capture"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnHelpTutorial"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_help"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Help"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnToggleMenu"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_menu"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Menu"/>
     </LinearLayout>
 
-    <!-- Строка 2: Доп. меню (Переключается по кнопке btnToggleMenu ≡) -->
+    <!-- Строка 2: Доп. меню -->
     <LinearLayout
         android:id="@+id/layoutSubMenu"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="6dp"
         android:visibility="gone">
 
         <ImageButton
             android:id="@+id/btnClearAll"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_trash"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Clear"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnRecord"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_record"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Record"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnToggleJoystick"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/circle_target_end"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Joystick"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnLoadScript"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_folder"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Scripts"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnHideNumbers"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_eye"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_secondary"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Hide"
-            android:layout_marginEnd="4dp"/>
+            android:layout_marginEnd="5dp"/>
 
         <ImageButton
             android:id="@+id/btnClose"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
-            android:padding="8dp"
+            android:padding="10dp"
             android:contentDescription="Close"/>
     </LinearLayout>
 </LinearLayout>
@@ -7043,13 +7482,14 @@ class TutorialOverlay(
             android:background="@drawable/circle_target_end" />
     </FrameLayout>
 
-    <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+    <!-- ВЕРХНЯЯ ПАНЕЛЬ С КНОПКАМИ -->
     <LinearLayout
         android:id="@+id/layoutJoystickTopBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
         android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:background="@drawable/panel_background"
         android:padding="4dp">
 
@@ -7072,7 +7512,29 @@ class TutorialOverlay(
             android:text="JOYSTICK: LIVE"
             android:textColor="@color/text_white"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:layout_marginEnd="6dp" />
+
+        <ImageButton
+            android:id="@+id/btnRecordJoystick"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_record"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_secondary"
+            android:padding="4dp"
+            android:contentDescription="Record Joystick"
+            android:layout_marginEnd="4dp" />
+
+        <ImageButton
+            android:id="@+id/btnCloseJoystick"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_close"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_record"
+            android:padding="4dp"
+            android:contentDescription="Close Joystick" />
     </LinearLayout>
 </FrameLayout>
 
@@ -7727,8 +8189,10 @@ class TutorialOverlay(
 --- START OF FILE: app/src/main/res/xml/file_paths.xml ---
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="external_files" path="." />
     <files-path name="internal_files" path="." />
+    <external-files-path name="external_app_files" path="." />
+    <external-path name="external_files" path="." />
+    <cache-path name="cache_files" path="." />
 </paths>
 
 --- END OF FILE: app/src/main/res/xml/file_paths.xml ---

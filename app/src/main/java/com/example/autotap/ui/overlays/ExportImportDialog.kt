@@ -1,24 +1,34 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
-import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class ExportImportDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
-
-    private var pickerListLayout: View? = null
 
     init {
         gravity = Gravity.CENTER
@@ -33,35 +43,67 @@ class ExportImportDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.dialog_export_select, null)
 
-        try {
-            val pickerView = inflater.inflate(R.layout.dialog_select_script_for_export, null)
-            pickerListLayout = pickerView.findViewByNames("layoutPickerList")
-            pickerView.findViewByNames("tvPickerTitle")
-            pickerView.bindClickByNames("btnClosePicker") { hide() }
-
-            val itemScriptView = inflater.inflate(R.layout.item_script, null)
-            itemScriptView.findViewByNames("tvScriptName")
-            itemScriptView.bindClickByNames("btnCopyScriptFile", "btnExportScriptFile", "btnDeleteScriptFile") {
-                logDiagnostic("SCRIPT", "Действие с файлом сценария в item_script.")
-            }
-        } catch (_: Exception) {}
-
         view.bindClickByNames("btnCloseExpSelect") {
             hide()
         }
 
-        view.bindClickByNames("btnExpFullBackup") {
-            val svc = MyAutoClickService.instance
-            svc?.saveScriptByName("full_backup", svc.actionsList)
-            logDiagnostic("SCRIPT", "Создан полный бэкап через btnExpFullBackup.")
-            hide()
-        }
-
-        view.bindClickByNames("btnExpSingleScript", "btnExpChainScripts", "btnExpTemplatesOnly") {
-            logDiagnostic("SCRIPT", "Экспорт выбранного типа сценария.")
+        view.bindClickByNames("btnExpFullBackup", "btnExpSingleScript", "btnExpChainScripts", "btnExpTemplatesOnly") {
+            exportFullBackupZip()
             hide()
         }
 
         return view
+    }
+
+    private fun exportFullBackupZip() {
+        try {
+            val filesDir = context.filesDir
+            val timestamp = SimpleDateFormat("MMdd_HHmm", Locale.US).format(Date())
+            val zipFile = File(filesDir, "autotap_backup_$timestamp.zip")
+
+            val filesToZip = filesDir.listFiles { _, name ->
+                name.endsWith(".json") || (name.startsWith("template_") && name.endsWith(".png"))
+            } ?: emptyArray()
+
+            if (filesToZip.isEmpty()) {
+                Toast.makeText(context, "Нет сценариев или масок для экспорта!", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+                for (file in filesToZip) {
+                    FileInputStream(file).use { fis ->
+                        val entry = ZipEntry(file.name)
+                        zos.putNextEntry(entry)
+                        fis.copyTo(zos)
+                        zos.closeEntry()
+                    }
+                }
+            }
+
+            logDiagnostic("EXPORT", "Успешно создан ZIP-бэкап: ${zipFile.name} (${zipFile.length() / 1024} КБ)")
+
+            val uri: Uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                zipFile
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            val chooser = Intent.createChooser(shareIntent, "Поделиться бэкапом AutoTap").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+
+        } catch (e: Exception) {
+            logError("EXPORT", "Ошибка экспорта ZIP-бэкапа", e)
+            Toast.makeText(context, "Ошибка создания бэкапа: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 }

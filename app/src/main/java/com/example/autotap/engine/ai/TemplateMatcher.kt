@@ -14,7 +14,7 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         val mask = calibrated?.original ?: repository.loadTemplate(action.selectedTemplateIndex) ?: return emptyList()
         val profile = calibrated?.metadata?.profile ?: TemplateProfile.MEDIUM
 
-        val searchArea = buildProfileAwareSearchArea(action, frame, profile)
+        val searchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
         val searchModes = buildProfileAwareModes(action, profile)
 
         return cascadeMatcher.match(frame, mask, searchArea, searchModes, action.similarityPercent / 100f)
@@ -34,7 +34,7 @@ class TemplateMatcher(private val repository: TemplateRepository) {
             val mask = calibrated?.original ?: repository.loadTemplate(index) ?: continue
             val profile = calibrated?.metadata?.profile ?: TemplateProfile.MEDIUM
 
-            val searchArea = buildProfileAwareSearchArea(action, frame, profile)
+            val searchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
             val searchModes = buildProfileAwareModes(action, profile)
 
             val candidates = cascadeMatcher.match(frame, mask, searchArea, searchModes, action.similarityPercent / 100f)
@@ -95,14 +95,17 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         }
     }
 
-    private fun buildProfileAwareSearchArea(action: ActionConfig, frame: Bitmap, profile: TemplateProfile): Rect {
+    private fun buildProfileAwareSearchArea(action: ActionConfig, frame: Bitmap, profile: TemplateProfile, mask: Bitmap): Rect {
         if (action.customSearchArea) {
-            return Rect(
-                action.searchAreaX.coerceIn(0, frame.width),
-                action.searchAreaY.coerceIn(0, frame.height),
-                (action.searchAreaX + action.searchAreaW).coerceIn(0, frame.width),
-                (action.searchAreaY + action.searchAreaH).coerceIn(0, frame.height)
-            )
+            val safeX = action.searchAreaX.coerceIn(0, frame.width)
+            val safeY = action.searchAreaY.coerceIn(0, frame.height)
+            val safeW = action.searchAreaW.coerceAtLeast(mask.width)
+            val safeH = action.searchAreaH.coerceAtLeast(mask.height)
+
+            val safeRight = (safeX + safeW).coerceIn(safeX + 1, frame.width)
+            val safeBottom = (safeY + safeH).coerceIn(safeY + 1, frame.height)
+
+            return Rect(safeX, safeY, safeRight, safeBottom)
         }
 
         return Rect(0, 0, frame.width, frame.height)

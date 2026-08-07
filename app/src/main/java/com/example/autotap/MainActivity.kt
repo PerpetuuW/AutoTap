@@ -1,10 +1,12 @@
 package com.example.autotap
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.View
@@ -51,6 +53,8 @@ class MainActivity : AppCompatActivity() {
         (root.findViewByNames("tvVersion") as? TextView)?.text = versionName
         (root.findViewByNames("tvSubTitle") as? TextView)?.text = "Комплекс Автоматизации и ИИ Поиска"
 
+        checkNotificationPermission()
+
         root.bindClickByNames("btnStartPanel") {
             val service = MyAutoClickService.instance
             if (service != null) {
@@ -88,7 +92,7 @@ class MainActivity : AppCompatActivity() {
                     logError("UI", "Ошибка запроса разрешения Поверх других приложений", e)
                 }
             } else {
-                Toast.makeText(this, "Разрешение 'Поверх других приложений' уже предоставлено!", Toast.LENGTH_SHORT).show()
+                checkBatteryOptimization()
             }
         }
 
@@ -127,6 +131,34 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateUIStatusIndicators()
+    }
+
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+    }
+
+    private fun checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    val intent = Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                    logDiagnostic("UI", "Запрос отключения оптимизации батареи.")
+                } catch (e: Exception) {
+                    logError("UI", "Ошибка запроса отключения оптимизации батареи", e)
+                }
+            } else {
+                Toast.makeText(this, "Оптимизация батареи уже отключена!", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun openRestrictedSettingsMenu() {

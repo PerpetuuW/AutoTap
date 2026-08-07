@@ -55,10 +55,11 @@ class ScriptExecutor(private val service: MyAutoClickService) {
     }
 
     fun jumpToStep(stepIndex: Int) {
-        if (stepIndex in 0 until service.actionsList.size) {
+        val actions = service.actionsList
+        if (stepIndex in 0 until actions.size) {
             currentStepIndex = stepIndex
             logDiagnostic("SCRIPT", "Переход на шаг $stepIndex")
-            executeNextStep()
+            mainHandler.post { executeNextStep() }
         } else {
             logError("SCRIPT", "Недопустимый шаг для перехода: $stepIndex", null)
             stop()
@@ -78,7 +79,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             if (isInfinite || currentLoopCount < maxLoops) {
                 currentStepIndex = 0
                 logDiagnostic("SCRIPT", "Повторный запуск цикла сценария (#$currentLoopCount)...")
-                executeNextStep()
+                mainHandler.post { executeNextStep() }
                 return
             } else {
                 logDiagnostic("SCRIPT", "Все $maxLoops циклов сценария успешно выполнены.")
@@ -87,7 +88,11 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             }
         }
 
-        val action = actions[currentStepIndex]
+        val action = actions.getOrNull(currentStepIndex) ?: run {
+            stop()
+            return
+        }
+
         logDiagnostic("SCRIPT", "Выполнение шага $currentStepIndex: тип=${action.type.name}")
 
         val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
@@ -133,7 +138,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                     val loaded = service.loadScriptByName(targetName)
                     if (loaded) {
                         currentStepIndex = 0
-                        executeNextStep()
+                        mainHandler.post { executeNextStep() }
                         return
                     }
                 }
@@ -191,10 +196,6 @@ class ScriptExecutor(private val service: MyAutoClickService) {
 
         currentStepIndex++
         val stepDelay = action.delay.coerceAtLeast(0L)
-        if (stepDelay > 0) {
-            mainHandler.postDelayed({ executeNextStep() }, stepDelay)
-        } else {
-            executeNextStep()
-        }
+        mainHandler.postDelayed({ executeNextStep() }, stepDelay)
     }
 }

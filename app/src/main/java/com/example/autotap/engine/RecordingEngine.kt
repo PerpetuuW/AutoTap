@@ -8,6 +8,7 @@ import com.example.autotap.model.ActionType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
 
 class RecordingEngine(private val service: MyAutoClickService) {
 
@@ -17,8 +18,8 @@ class RecordingEngine(private val service: MyAutoClickService) {
     @Volatile var isJoystickRecording = false
         private set
 
-    val recordedActions = mutableListOf<ActionConfig>()
-    val joystickRecordedPath = mutableListOf<PointF>()
+    val recordedActions = CopyOnWriteArrayList<ActionConfig>()
+    val joystickRecordedPath = CopyOnWriteArrayList<PointF>()
 
     fun startRecording() {
         if (isRecording) return
@@ -42,7 +43,7 @@ class RecordingEngine(private val service: MyAutoClickService) {
         if (recordedActions.isNotEmpty()) {
             service.actionsList.clear()
             service.actionsList.addAll(recordedActions)
-            service.saveScriptByName(finalName, recordedActions)
+            service.saveScriptByName(finalName, ArrayList(recordedActions))
             return true
         }
         return false
@@ -60,7 +61,7 @@ class RecordingEngine(private val service: MyAutoClickService) {
             recordedActions.add(action)
             service.actionsList.add(action)
             val name = customName ?: "joystick_${SimpleDateFormat("MMdd_HHmm", Locale.US).format(Date())}"
-            service.saveScriptByName(name, service.actionsList)
+            service.saveScriptByName(name, ArrayList(service.actionsList))
             logDiagnostic("RECORDING", "Завершена отдельная запись джойстика '$name' (${action.joystickPath.size} точек).")
         }
     }

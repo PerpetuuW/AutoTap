@@ -11,7 +11,8 @@ object StructuredLogger {
     private var logFile: File? = null
 
     fun init(context: Context) {
-        val dir = context.getExternalFilesDir(null) ?: context.filesDir
+        // ГАРАНТИРОВАННЫЙ ВНУТРЕННИЙ ПУТЬ ДЛЯ FILE PROVIDER
+        val dir = context.filesDir
         logFile = File(dir, "error_log.txt")
         rotateLogIfNeeded()
     }
@@ -45,11 +46,15 @@ object StructuredLogger {
 
     private fun rotateLogIfNeeded() {
         val file = logFile ?: return
-        if (file.exists() && file.length() > MAX_LOG_SIZE) {
-            val content = file.readText()
-            val halfIndex = content.length / 2
-            val trimmedContent = "...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + content.substring(halfIndex)
-            file.writeText(trimmedContent)
+        try {
+            if (file.exists() && file.length() > MAX_LOG_SIZE) {
+                val content = file.readText()
+                val halfIndex = content.length / 2
+                val trimmedContent = "...[АВТО-ОЧИСТКА СТАРЫХ ЛОГОВ]...\n" + content.substring(halfIndex)
+                file.writeText(trimmedContent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

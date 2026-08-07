@@ -21,8 +21,8 @@
             android:orientation="vertical"
             android:gravity="center"
             android:background="@drawable/panel_background"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
+            android:paddingTop="18dp"
+            android:paddingBottom="18dp"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
             android:layout_marginBottom="16dp">
@@ -33,7 +33,7 @@
                 android:layout_height="wrap_content"
                 android:text="AutoTap Premium"
                 android:textColor="#00F5D4"
-                android:textSize="22sp"
+                android:textSize="24sp"
                 android:textStyle="bold"
                 android:gravity="center"
                 android:singleLine="true"
@@ -46,7 +46,7 @@
                 android:layout_height="wrap_content"
                 android:text="Комплекс Автоматизации и ИИ Поиска"
                 android:textColor="@color/text_gray"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:gravity="center"
                 android:layout_marginTop="4dp" />
 
@@ -56,7 +56,7 @@
                 android:layout_height="wrap_content"
                 android:text="v40.0.0-PRO"
                 android:textColor="@color/accent_blue"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:textStyle="bold"
                 android:gravity="center"
                 android:layout_marginTop="4dp" />
@@ -68,53 +68,53 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
+            android:padding="16dp"
+            android:layout_marginBottom="14dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="⚙ Настройка системных разрешений"
                 android:textColor="#58A6FF"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
+                android:layout_marginBottom="12dp"/>
 
             <Button
                 android:id="@+id/btnAppDetails"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
+                android:minHeight="50dp"
                 android:text="1. Ограниченные настройки (MIUI/HyperOS / Android 13+)"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:padding="8dp"
                 android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+                android:layout_marginBottom="10dp"/>
 
             <Button
                 android:id="@+id/btnAccessibility"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
+                android:minHeight="50dp"
                 android:text="2. Спец. возможности (Включить AutoTap)"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="12sp"
+                android:textSize="13sp"
                 android:padding="8dp"
                 android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+                android:layout_marginBottom="10dp"/>
 
             <Button
                 android:id="@+id/btnOverlay"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
+                android:minHeight="50dp"
                 android:text="3. Поверх других приложений"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="12sp"
+                android:textSize="13sp"
                 android:padding="8dp"
                 android:gravity="center"/>
         </LinearLayout>
@@ -125,30 +125,30 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
+            android:padding="16dp"
+            android:layout_marginBottom="14dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="📁 Управление шаблонами и данными"
                 android:textColor="#58A6FF"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
+                android:layout_marginBottom="12dp"/>
 
             <Button
                 android:id="@+id/btnManageTemplates"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="46dp"
+                android:minHeight="48dp"
                 android:text="Редактирование и менеджер ИИ-шаблонов"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:padding="8dp"
                 android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+                android:layout_marginBottom="10dp"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -160,11 +160,11 @@
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="46dp"
+                    android:minHeight="48dp"
                     android:text="📤 Экспорт"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>
 
@@ -177,11 +177,11 @@
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="46dp"
+                    android:minHeight="48dp"
                     android:text="📥 Импорт"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>
             </LinearLayout>
@@ -193,25 +193,25 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="16dp">
+            android:padding="16dp"
+            android:layout_marginBottom="18dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
+                android:layout_marginBottom="10dp">
 
                 <Button
                     android:id="@+id/btnPermissionsHelp"
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="44dp"
+                    android:minHeight="46dp"
                     android:text="О разрешениях"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>
 
@@ -224,11 +224,11 @@
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="44dp"
+                    android:minHeight="46dp"
                     android:text="Справка v40 PRO"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>
             </LinearLayout>
@@ -237,11 +237,11 @@
                 android:id="@+id/btnShowLogs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="44dp"
+                android:minHeight="46dp"
                 android:text="Просмотр логов работы и ошибок"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:padding="4dp"
                 android:gravity="center"/>
         </LinearLayout>
@@ -250,11 +250,11 @@
             android:id="@+id/btnStartPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="56dp"
+            android:minHeight="58dp"
             android:text="🚀 ЗАПУСТИТЬ ПАНЕЛЬ КЛИКЕРА"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/accent_blue"
-            android:textSize="14sp"
+            android:textSize="15sp"
             android:textStyle="bold"
             android:padding="10dp"
             android:gravity="center"/>

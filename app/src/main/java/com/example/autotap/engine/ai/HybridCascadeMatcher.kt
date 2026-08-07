@@ -15,6 +15,17 @@ class HybridCascadeMatcher {
         threshold: Float
     ): List<MatchCandidate> {
         val candidates = mutableListOf<MatchCandidate>()
+
+        if (frame.isRecycled || mask.isRecycled) return candidates
+        if (mask.width < 2 || mask.height < 2 || frame.width < 2 || frame.height < 2) return candidates
+
+        val safeSearchArea = Rect(
+            searchArea.left.coerceIn(0, frame.width),
+            searchArea.top.coerceIn(0, frame.height),
+            searchArea.right.coerceIn(0, frame.width),
+            searchArea.bottom.coerceIn(0, frame.height)
+        )
+
         val step = if (modes.hybridCascadeMode) {
             when (modes.profile) {
                 TemplateProfile.SMALL -> 2
@@ -24,10 +35,10 @@ class HybridCascadeMatcher {
             }
         } else 1
 
-        val startX = searchArea.left
-        val startY = searchArea.top
-        val endX = (searchArea.right - mask.width).coerceAtLeast(startX)
-        val endY = (searchArea.bottom - mask.height).coerceAtLeast(startY)
+        val startX = safeSearchArea.left
+        val startY = safeSearchArea.top
+        val endX = (safeSearchArea.right - mask.width).coerceAtLeast(startX)
+        val endY = (safeSearchArea.bottom - mask.height).coerceAtLeast(startY)
 
         if (endX <= startX || endY <= startY) return candidates
 
@@ -35,6 +46,8 @@ class HybridCascadeMatcher {
         while (x <= endX) {
             var y = startY
             while (y <= endY) {
+                if (frame.isRecycled || mask.isRecycled) break
+
                 val pixelScore = comparePixels(frame, mask, x, y)
                 val contourScore = if (modes.shapeOnlyMode || modes.profile == TemplateProfile.THIN_LINE) {
                     compareEdges(frame, mask, x, y)
@@ -57,6 +70,7 @@ class HybridCascadeMatcher {
     }
 
     private fun comparePixels(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+        if (frame.isRecycled || mask.isRecycled) return 0f
         var totalDiff = 0L
         var pixelCount = 0
 
@@ -67,7 +81,14 @@ class HybridCascadeMatcher {
         while (mx < mask.width) {
             var my = 0
             while (my < mask.height) {
-                val framePixel = frame.getPixel(x + mx, y + my)
+                val fx = x + mx
+                val fy = y + my
+                if (fx >= frame.width || fy >= frame.height) {
+                    my += stepY
+                    continue
+                }
+
+                val framePixel = frame.getPixel(fx, fy)
                 val maskPixel = mask.getPixel(mx, my)
 
                 val fr = (framePixel shr 16) and 0xFF
@@ -93,6 +114,7 @@ class HybridCascadeMatcher {
     }
 
     private fun compareEdges(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+        if (frame.isRecycled || mask.isRecycled) return 0f
         var edgeDiff = 0L
         var count = 0
         val stepX = (mask.width / 12).coerceAtLeast(1)
@@ -102,8 +124,15 @@ class HybridCascadeMatcher {
         while (mx < mask.width - 1) {
             var my = 1
             while (my < mask.height - 1) {
+                val fx = x + mx
+                val fy = y + my
+                if (fx <= 0 || fx >= frame.width - 1 || fy <= 0 || fy >= frame.height - 1) {
+                    my += stepY
+                    continue
+                }
+
                 val maskGrad = getGradient(mask, mx, my)
-                val frameGrad = getGradient(frame, x + mx, y + my)
+                val frameGrad = getGradient(frame, fx, fy)
 
                 edgeDiff += abs(maskGrad - frameGrad)
                 count++
@@ -118,6 +147,7 @@ class HybridCascadeMatcher {
     }
 
     private fun getGradient(bmp: Bitmap, x: Int, y: Int): Int {
+        if (bmp.isRecycled || x <= 0 || x >= bmp.width - 1 || y <= 0 || y >= bmp.height - 1) return 0
         val p1 = bmp.getPixel(x - 1, y) and 0xFF
         val p2 = bmp.getPixel(x + 1, y) and 0xFF
         val p3 = bmp.getPixel(x, y - 1) and 0xFF
