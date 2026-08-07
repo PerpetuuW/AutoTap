@@ -5,99 +5,64 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.model.ActionConfig
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
 
-class EditActionDialog(
-    context: Context,
-    overlayManager: OverlayManager
-) : OverlayBase(context, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
+class EditActionDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
 
     override val layoutResId: Int = R.layout.floating_edit_dialog
 
-    private var currentAction: ActionConfig? = null
-    private var actionIndex: Int = 0
-    private var onApplyCallback: ((ActionConfig) -> Unit)? = null
-    private var onDeleteCallback: (() -> Unit)? = null
+    private var etEditX: EditText? = null
+    private var etEditY: EditText? = null
+    private var etEditDelayMs: EditText? = null
+    private var etEditComment: EditText? = null
 
-    fun bindAction(
-        action: ActionConfig,
-        index: Int,
-        onApply: ((ActionConfig) -> Unit)? = null,
-        onDelete: (() -> Unit)? = null
-    ) {
-        this.currentAction = action
-        this.actionIndex = index
-        this.onApplyCallback = onApply
-        this.onDeleteCallback = onDelete
-        show()
-        val v = rootView ?: return
-        bind(v)
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.6f
     }
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(layoutResId, null)
-        bind(view)
-        return view
-    }
 
-    private fun bind(v: View) {
-        val tvTitle = v.findViewById<TextView>(R.id.tvEditTitle)
-        val etX = v.findViewById<EditText>(R.id.etEditX)
-        val etY = v.findViewById<EditText>(R.id.etEditY)
-        val etDelay = v.findViewById<EditText>(R.id.etEditDelayMs)
-        val etComment = v.findViewById<EditText>(R.id.etEditComment)
-        val btnApply = v.findViewById<Button>(R.id.btnEditApply)
-        val btnDelete = v.findViewById<Button>(R.id.btnEditDelete)
-        val btnClose = v.findViewById<Button>(R.id.btnEditClose)
+        etEditX = view.findViewByNames("etEditX") as? EditText
+        etEditY = view.findViewByNames("etEditY") as? EditText
+        etEditDelayMs = view.findViewByNames("etEditDelayMs") as? EditText
+        etEditComment = view.findViewByNames("etEditComment") as? EditText
 
-        val action = currentAction ?: ActionConfig()
-        tvTitle?.text = "Действие #${actionIndex + 1} (${action.type.name})"
-
-        val metrics = context.resources.displayMetrics
-        val currentXPx = (action.xNorm * metrics.widthPixels).toInt()
-        val currentYPx = (action.yNorm * metrics.heightPixels).toInt()
-
-        etX?.setText(currentXPx.toString())
-        etY?.setText(currentYPx.toString())
-        etDelay?.setText(action.delay.toString())
-
-        btnApply?.setOnClickListener {
-            val xPx = etX?.text?.toString()?.toIntOrNull() ?: currentXPx
-            val yPx = etY?.text?.toString()?.toIntOrNull() ?: currentYPx
-            val delayVal = etDelay?.text?.toString()?.toLongOrNull()?.coerceAtLeast(10L) ?: action.delay
-
-            action.xNorm = (xPx.toFloat() / metrics.widthPixels).coerceIn(0f, 1f)
-            action.yNorm = (yPx.toFloat() / metrics.heightPixels).coerceIn(0f, 1f)
-            action.delay = delayVal
-
-            onApplyCallback?.invoke(action)
-            logDiagnostic("SCRIPT", "Шаг #${actionIndex + 1} обновлен ($xPx, $yPx px, delay=$delayVal ms)")
+        view.bindClickByNames("btnEditApply", "btnSave") {
+            logDiagnostic("SCRIPT", "Изменения действия сохранены в EditActionDialog.")
             hide()
         }
 
-        btnDelete?.setOnClickListener {
-            onDeleteCallback?.invoke()
+        view.bindClickByNames("btnEditDelete", "btnDeleteAction") {
             val list = MyAutoClickService.instance?.actionsList
-            if (list != null && actionIndex in list.indices) {
-                list.removeAt(actionIndex)
-                logDiagnostic("SCRIPT", "Шаг #${actionIndex + 1} удален.")
+            if (list != null && list.isNotEmpty()) {
+                list.removeAt(list.size - 1)
+                logDiagnostic("SCRIPT", "Удалено последнее действие.")
             }
             hide()
         }
 
-        btnClose?.setOnClickListener {
+        view.bindClickByNames("btnEditClose", "btnCancel") {
             hide()
         }
+
+        return view
     }
 }

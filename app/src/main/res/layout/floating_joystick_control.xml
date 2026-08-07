@@ -23,13 +23,14 @@
             android:background="@drawable/circle_target_end" />
     </FrameLayout>
 
-    <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+    <!-- ВЕРХНЯЯ ПАНЕЛЬ С КНОПКАМИ -->
     <LinearLayout
         android:id="@+id/layoutJoystickTopBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
         android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:background="@drawable/panel_background"
         android:padding="4dp">
 
@@ -52,6 +53,28 @@
             android:text="JOYSTICK: LIVE"
             android:textColor="@color/text_white"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:layout_marginEnd="6dp" />
+
+        <ImageButton
+            android:id="@+id/btnRecordJoystick"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_record"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_secondary"
+            android:padding="4dp"
+            android:contentDescription="Record Joystick"
+            android:layout_marginEnd="4dp" />
+
+        <ImageButton
+            android:id="@+id/btnCloseJoystick"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_close"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_record"
+            android:padding="4dp"
+            android:contentDescription="Close Joystick" />
     </LinearLayout>
 </FrameLayout>

@@ -15,7 +15,6 @@
         android:paddingTop="24dp"
         android:paddingBottom="16dp">
 
-        <!-- Защищённый карточка-заголовок -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -45,7 +44,7 @@
                 android:id="@+id/tvSubTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Полноэкранный ИИ-поиск и умная авто-инструкция"
+                android:text="Комплекс Автоматизации и ИИ Поиска"
                 android:textColor="@color/text_gray"
                 android:textSize="11sp"
                 android:gravity="center"
@@ -55,7 +54,7 @@
                 android:id="@+id/tvVersion"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="v25.9.1 PRO"
+                android:text="v40.0.0-PRO"
                 android:textColor="@color/accent_blue"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -63,7 +62,7 @@
                 android:layout_marginTop="4dp" />
         </LinearLayout>
 
-        <!-- Секция 1: Настройки разрешений -->
+        <!-- Секция 1: Настройки системных разрешений -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -75,34 +74,21 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="⚙ Настройка разрешений"
+                android:text="⚙ Настройка системных разрешений"
                 android:textColor="#58A6FF"
                 android:textSize="13sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="10dp"/>
 
             <Button
-                android:id="@+id/btnAppDetails"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="1. Разрешить запрещенные настройки (MIUI/HyperOS)"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
-
-            <Button
                 android:id="@+id/btnAccessibility"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="2. Разрешить работу кликера"
+                android:minHeight="48dp"
+                android:text="1. Спец. возможности (Включить AutoTap)"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:padding="8dp"
                 android:gravity="center"
                 android:layout_marginBottom="8dp"/>
@@ -111,8 +97,21 @@
                 android:id="@+id/btnOverlay"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="3. Поверх других приложений"
+                android:minHeight="48dp"
+                android:text="2. Поверх других приложений"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="12sp"
+                android:padding="8dp"
+                android:gravity="center"
+                android:layout_marginBottom="8dp"/>
+
+            <Button
+                android:id="@+id/btnAppDetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="3. Ограниченные настройки (в самом низу / 3 точки)"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
                 android:textSize="11sp"
@@ -120,7 +119,7 @@
                 android:gravity="center"/>
         </LinearLayout>
 
-        <!-- Секция 2: Управление шаблонами и данными -->
+        <!-- Секция 2: Управление данными -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -226,7 +225,7 @@
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:minHeight="44dp"
-                    android:text="Справка v25.9.1 PRO"
+                    android:text="Справка v40 PRO"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
                     android:textSize="11sp"
@@ -247,7 +246,6 @@
                 android:gravity="center"/>
         </LinearLayout>
 
-        <!-- Главная кнопка старта -->
         <Button
             android:id="@+id/btnStartPanel"
             android:layout_width="match_parent"

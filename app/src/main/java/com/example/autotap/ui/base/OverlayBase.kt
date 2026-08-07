@@ -21,7 +21,9 @@ import kotlin.math.abs
 
 abstract class OverlayBase(
     protected val context: Context,
-    val overlayManager: OverlayManager
+    val overlayManager: OverlayManager,
+    var layer: OverlayLayer = OverlayLayer.PANEL_LAYER,
+    var priority: OverlayPriority = OverlayPriority.MEDIUM
 ) {
     protected val windowManager: WindowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -38,9 +40,6 @@ abstract class OverlayBase(
 
     var initialX: Int = 100
     var initialY: Int = 200
-
-    var layer: OverlayLayer = OverlayLayer.PANEL_LAYER
-    var priority: OverlayPriority = OverlayPriority.MEDIUM
 
     protected var overlayView: View? = null
     protected var rootView: View? = null
@@ -64,13 +63,16 @@ abstract class OverlayBase(
         rootView = view
         overlayView = view
 
+        val targetX = if (width == WindowManager.LayoutParams.MATCH_PARENT) 0 else initialX
+        val targetY = if (height == WindowManager.LayoutParams.MATCH_PARENT) 0 else initialY
+
         val lp = createOverlayParams(
             width = width,
             height = height,
             gravity = gravity,
             flags = flags,
-            x = initialX,
-            y = initialY
+            x = targetX,
+            y = targetY
         ).apply {
             if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
                 this.dimAmount = this@OverlayBase.dimAmount
@@ -89,9 +91,10 @@ abstract class OverlayBase(
     }
 
     open fun show() {
-        if (isShowing && overlayView != null) {
+        val currentView = overlayView
+        if (isShowing && currentView != null) {
             try {
-                windowManager.safeRemoveView(overlayView!!)
+                windowManager.safeRemoveView(currentView)
             } catch (_: Exception) {}
             isShowing = false
         }
@@ -127,6 +130,11 @@ abstract class OverlayBase(
     }
 
     fun reboundToScreen(lp: WindowManager.LayoutParams) {
+        if (width == WindowManager.LayoutParams.MATCH_PARENT && height == WindowManager.LayoutParams.MATCH_PARENT) {
+            lp.x = 0
+            lp.y = 0
+            return
+        }
         val screenSize = context.getRealScreenSize()
         val maxX = (screenSize.x - 100).coerceAtLeast(10)
         val maxY = (screenSize.y - 100).coerceAtLeast(10)
@@ -136,9 +144,14 @@ abstract class OverlayBase(
 
     fun updatePosition(x: Int, y: Int) {
         val lp = layoutParams ?: params ?: return
-        val screenSize = context.getRealScreenSize()
-        lp.x = x.coerceIn(0, (screenSize.x - 100).coerceAtLeast(10))
-        lp.y = y.coerceIn(0, (screenSize.y - 100).coerceAtLeast(10))
+        if (width != WindowManager.LayoutParams.MATCH_PARENT) {
+            val screenSize = context.getRealScreenSize()
+            lp.x = x.coerceIn(0, (screenSize.x - 100).coerceAtLeast(10))
+            lp.y = y.coerceIn(0, (screenSize.y - 100).coerceAtLeast(10))
+        } else {
+            lp.x = 0
+            lp.y = 0
+        }
         val v = overlayView ?: rootView ?: return
         try {
             windowManager.updateViewLayout(v, lp)

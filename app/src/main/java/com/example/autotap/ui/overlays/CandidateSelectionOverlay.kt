@@ -13,21 +13,19 @@ import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
 
 class CandidateSelectionOverlay(context: Context, overlayManager: OverlayManager) :
-    OverlayBase(context, overlayManager) {
+    OverlayBase(context, overlayManager, OverlayLayer.CANDIDATE_LAYER, OverlayPriority.HIGH) {
 
     private var candidatesContainer: LinearLayout? = null
     private var onCandidateSelected: ((MatchCandidate) -> Unit)? = null
 
-    init {
-        gravity = Gravity.CENTER
-        layer = OverlayLayer.CANDIDATE_LAYER
-    }
+    override val layoutResId: Int = R.layout.candidate_selection_overlay
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(R.layout.candidate_selection_overlay, null)
+        val view = inflater.inflate(layoutResId, null)
 
         candidatesContainer = view.findViewByNames("candidateContainer") as? LinearLayout
         return view

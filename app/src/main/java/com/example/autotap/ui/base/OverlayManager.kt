@@ -2,7 +2,6 @@ package com.example.autotap.ui.base
 
 import android.content.Context
 import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
 import com.example.autotap.ui.debug.ScenarioDebuggerOverlay
 import com.example.autotap.ui.overlays.AddActionDialog
 import com.example.autotap.ui.overlays.CandidateSelectionOverlay
@@ -31,7 +30,7 @@ class OverlayManager(val context: Context) {
     val controlPanel by lazy { ControlPanelOverlay(context, this) }
     val debuggerOverlay by lazy { ScenarioDebuggerOverlay(context, this) }
     val candidateOverlay by lazy { CandidateSelectionOverlay(context, this) }
-    val joystickOverlay by lazy { JoystickOverlay(context) }
+    val joystickOverlay by lazy { JoystickOverlay(context, this) }
     val editActionDialog by lazy { EditActionDialog(context, this) }
     val captureFrameOverlay by lazy { CaptureFrameOverlay(context, this) }
     val scriptsDialog by lazy { ScriptsDialog(context, this) }
@@ -46,8 +45,8 @@ class OverlayManager(val context: Context) {
     val exportImportDialog by lazy { ExportImportDialog(context, this) }
     val permissionsDialog by lazy { PermissionsDialog(context, this) }
     val saveRecordingDialog by lazy { SaveRecordingDialog(context, this) }
-    val searchAreaOverlay by lazy { SearchAreaOverlay(context) }
-    val targetMarkerOverlay by lazy { TargetMarkerOverlay(context) }
+    val searchAreaOverlay by lazy { SearchAreaOverlay(context, this) }
+    val targetMarkerOverlay by lazy { TargetMarkerOverlay(context, this) }
 
     init {
         register(OverlayLayer.PANEL_LAYER, controlPanel)
@@ -59,12 +58,11 @@ class OverlayManager(val context: Context) {
         register(OverlayLayer.SEARCH_AREA_LAYER, searchAreaOverlay)
         register(OverlayLayer.TARGET_LAYER, targetMarkerOverlay)
         register(OverlayLayer.STOP_BUTTON_LAYER, floatingStopButton)
-        logDiagnostic("OVERLAY", "OverlayManager v40 полностью скомпонован.")
+        logDiagnostic("OVERLAY", "OverlayManager полностью инициализирован.")
     }
 
     fun register(layer: OverlayLayer, overlay: OverlayBase) {
         overlays[layer] = overlay
-        logDiagnostic("OVERLAY", "Зарегистрирован слой $layer")
     }
 
     fun show(layer: OverlayLayer) {
@@ -73,10 +71,6 @@ class OverlayManager(val context: Context) {
 
     fun hide(layer: OverlayLayer) {
         overlays[layer]?.hide()
-    }
-
-    fun getOverlay(layer: OverlayLayer): OverlayBase? {
-        return overlays[layer]
     }
 
     fun showControlPanel() {

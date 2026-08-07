@@ -21,12 +21,12 @@ import com.example.autotap.vibrateFeedback
 class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
-    override val layoutResId: Int = R.layout.floating_control_panel
-
     private var btnPlayView: View? = null
     private var btnRecordView: View? = null
     private var btnJoystickView: View? = null
-    private var panelState = 0
+
+    // 3-Этапный циклический режим: 0 = Full, 1 = Single Bubble, 2 = Compact
+    private var displayStage = 0
 
     init {
         layer = OverlayLayer.PANEL_LAYER
@@ -35,14 +35,18 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(layoutResId, null)
+        val view = inflater.inflate(R.layout.floating_control_panel, null)
 
         btnPlayView = view.findViewByNames("btnPlay")
         btnRecordView = view.findViewByNames("btnRecord")
         btnJoystickView = view.findViewByNames("btnToggleJoystick")
 
-        view.bindClickByNames("btnToggleMenu", "btnSingleBubble") {
-            cyclePanelState(view)
+        view.bindClickByNames("btnToggleMenu") {
+            cycleDisplayStage(view)
+        }
+
+        view.bindClickByNames("btnSingleBubble") {
+            cycleDisplayStage(view)
         }
 
         view.bindClickByNames("btnCapturePool") {
@@ -110,7 +114,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         }
 
         view.bindClickByNames("btnClose") {
-            logDiagnostic("OVERLAY", "Кнопка btnClose нажата.")
+            logDiagnostic("OVERLAY", "Кнопка КРЕСТИК нажата. Скрытие панели управления.")
             MyAutoClickService.instance?.scriptExecutor?.stop()
             hide()
         }
@@ -121,52 +125,50 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         return view
     }
 
-    private fun cyclePanelState(root: View) {
-        panelState = (panelState + 1) % 3
+    private fun cycleDisplayStage(root: View) {
+        displayStage = (displayStage + 1) % 3
         val mainRow = root.findViewByNames("layoutMainRow")
         val subMenu = root.findViewByNames("layoutSubMenu")
-        val mainCard = root.findViewByNames("layoutMainCard")
         val singleBubble = root.findViewByNames("btnSingleBubble")
 
-        val lp = layoutParams ?: params ?: return
+        val lp = layoutParams ?: params
+        val targetView = overlayView ?: rootView
 
-        when (panelState) {
-            0 -> {
-                lp.width = WindowManager.LayoutParams.WRAP_CONTENT
-                lp.height = WindowManager.LayoutParams.WRAP_CONTENT
-                mainCard?.visibility = View.VISIBLE
+        when (displayStage) {
+            0 -> { // Full Stage
+                singleBubble?.visibility = View.GONE
                 mainRow?.visibility = View.VISIBLE
                 subMenu?.visibility = View.VISIBLE
-                singleBubble?.visibility = View.GONE
-                logDiagnostic("OVERLAY", "Панель: Режим 2 строки (Full)")
+                if (lp != null && targetView != null) {
+                    lp.width = WindowManager.LayoutParams.WRAP_CONTENT
+                    lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+                    try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
+                }
             }
-            1 -> {
-                val bubbleSizePx = 56.dpToPx(context)
-                lp.width = bubbleSizePx
-                lp.height = bubbleSizePx
-                mainCard?.visibility = View.GONE
+            1 -> { // Single Bubble Stage
                 mainRow?.visibility = View.GONE
                 subMenu?.visibility = View.GONE
                 singleBubble?.visibility = View.VISIBLE
-                logDiagnostic("OVERLAY", "Панель: Режим Одиночный Шарик (Bubble ${bubbleSizePx}px)")
+                if (lp != null && targetView != null) {
+                    val bubbleSizePx = 56.dpToPx(context)
+                    lp.width = bubbleSizePx
+                    lp.height = bubbleSizePx
+                    try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
+                }
             }
-            2 -> {
-                lp.width = WindowManager.LayoutParams.WRAP_CONTENT
-                lp.height = WindowManager.LayoutParams.WRAP_CONTENT
-                mainCard?.visibility = View.VISIBLE
+            2 -> { // Compact Stage
+                singleBubble?.visibility = View.GONE
                 mainRow?.visibility = View.VISIBLE
                 subMenu?.visibility = View.GONE
-                singleBubble?.visibility = View.GONE
-                logDiagnostic("OVERLAY", "Панель: Режим 1 строка (Compact)")
+                if (lp != null && targetView != null) {
+                    lp.width = WindowManager.LayoutParams.WRAP_CONTENT
+                    lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+                    try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
+                }
             }
         }
-
-        try {
-            windowManager.updateViewLayout(overlayView ?: rootView, lp)
-        } catch (e: Exception) {
-            logDiagnostic("OVERLAY", "Ошибка обновления размера окна при сворачивании.")
-        }
         context.vibrateFeedback()
+        logDiagnostic("OVERLAY", "3-Этапный циклический режим панели: этап $displayStage")
     }
 
     fun updateToggleStates() {

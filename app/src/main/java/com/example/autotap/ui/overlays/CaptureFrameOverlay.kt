@@ -2,12 +2,12 @@ package com.example.autotap.ui.overlays
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
@@ -25,25 +25,25 @@ import com.example.autotap.vibrateFeedback
 import kotlin.math.max
 
 class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
-    OverlayBase(context, overlayManager) {
+    OverlayBase(context, overlayManager, OverlayLayer.CAPTURE_LAYER, OverlayPriority.HIGH) {
 
     override val layoutResId: Int = R.layout.floating_capture_frame
 
     private val minSizePx = 24.dpToPx(context)
-    private var currentFrameWidthPx = 240.dpToPx(context)
-    private var currentFrameHeightPx = 240.dpToPx(context)
+    private var currentFrameWidthPx = 140.dpToPx(context)
+    private var currentFrameHeightPx = 140.dpToPx(context)
 
     init {
         gravity = Gravity.CENTER
-        layer = OverlayLayer.CAPTURE_LAYER
-        priority = OverlayPriority.HIGH
-        width = currentFrameWidthPx
-        height = currentFrameHeightPx
+        width = WindowManager.LayoutParams.WRAP_CONTENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
     }
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(layoutResId, null)
+
+        val captureSquare = view.findViewByNames("captureSquare") as? FrameLayout
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
             logDiagnostic("OVERLAY", "Вырезание маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
@@ -77,6 +77,21 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                         val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
                         svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
                         logDiagnostic("AI_SCANNER", "Безопасный кроп: шаблон #$nextTemplateIndex сохранен (${safeW}x${safeH}px).")
+                        
+                        // АВТО-ОТКРЫТИЕ ДЕБАГ-ОВЕРЛЕЯ КАЛИБРОВКИ СРАЗУ ПОСЛЕ ВЫРЕЗАНИЯ
+                        val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
+                        if (calibrated != null) {
+                            overlayManager.debuggerOverlay.show()
+                            overlayManager.debuggerOverlay.showCandidates(listOf(
+                                com.example.autotap.engine.ai.MatchCandidate(
+                                    point = android.graphics.PointF(safeX + safeW / 2f, safeY + safeH / 2f),
+                                    score = 1.0f,
+                                    boundingBox = calibrated.boundingBox,
+                                    scale = 1.0f,
+                                    templateIndex = nextTemplateIndex
+                                )
+                            ))
+                        }
                     }
                 }
             }
@@ -95,18 +110,18 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        val moveHandle = view.findViewByNames("handleMoveFrame", "layoutTopBar", "layoutCaptureContainer") ?: view
+        val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
         setupDragAndDrop(moveHandle)
 
         val resizeHandle = view.findViewByNames("handleResize")
-        if (resizeHandle != null) {
-            setupResizeHandler(resizeHandle)
+        if (resizeHandle != null && captureSquare != null) {
+            setupResizeHandler(resizeHandle, captureSquare)
         }
 
         return view
     }
 
-    private fun setupResizeHandler(resizeView: View) {
+    private fun setupResizeHandler(resizeView: View, captureSquare: FrameLayout) {
         var startW = 0
         var startH = 0
         var touchX = 0f
@@ -116,8 +131,8 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             val lp = layoutParams ?: params ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = lp.width.takeIf { it > 0 } ?: currentFrameWidthPx
-                    startH = lp.height.takeIf { it > 0 } ?: currentFrameHeightPx
+                    startW = captureSquare.width.takeIf { it > 0 } ?: currentFrameWidthPx
+                    startH = captureSquare.height.takeIf { it > 0 } ?: currentFrameHeightPx
                     touchX = event.rawX
                     touchY = event.rawY
                     true
@@ -129,10 +144,12 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     currentFrameWidthPx = max(minSizePx, startW + dx)
                     currentFrameHeightPx = max(minSizePx, startH + dy)
 
-                    lp.width = currentFrameWidthPx
-                    lp.height = currentFrameHeightPx
-                    width = currentFrameWidthPx
-                    height = currentFrameHeightPx
+                    val sqLp = captureSquare.layoutParams
+                    if (sqLp != null) {
+                        sqLp.width = currentFrameWidthPx
+                        sqLp.height = currentFrameHeightPx
+                        captureSquare.layoutParams = sqLp
+                    }
 
                     try {
                         windowManager.updateViewLayout(overlayView ?: rootView, lp)

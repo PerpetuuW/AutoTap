@@ -1,6 +1,7 @@
 package com.example.autotap.engine
 
-import android.graphics.PointF
+import android.os.Handler
+import android.os.Looper
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
@@ -8,6 +9,8 @@ import com.example.autotap.model.ActionConfig
 import com.example.autotap.model.ActionType
 
 class ScriptExecutor(private val service: MyAutoClickService) {
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     val gestureExecutor: GestureExecutor
         get() = service.gestureExecutor
@@ -45,6 +48,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         service.isPlaying = false
         currentStepIndex = 0
         currentLoopCount = 0
+        mainHandler.removeCallbacksAndMessages(null)
         service.hideFloatingStopButton()
         service.showControlPanel()
         logDiagnostic("SCRIPT", "Сценарий остановлен пользователем.")
@@ -120,8 +124,8 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                 executeMultiSearchLoop(action)
             }
             ActionType.WAIT -> {
-                Thread.sleep(action.delay.coerceAtLeast(10L))
-                onStepCompleted(true, action)
+                val waitDelay = action.delay.coerceAtLeast(10L)
+                mainHandler.postDelayed({ onStepCompleted(true, action) }, waitDelay)
             }
             ActionType.LOAD_SCRIPT -> {
                 val targetName = action.targetScriptToLoad
@@ -152,9 +156,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
 
                     if (action.loopUntilStopped) {
                         val delayMs = action.delay.coerceAtLeast(50L)
-                        logDiagnostic("SCRIPT", "Мультипоиск ИИ: задержка ${delayMs}мс перед запросом свежего кадра...")
-                        Thread.sleep(delayMs)
-                        executeMultiSearchLoop(action)
+                        mainHandler.postDelayed({ executeMultiSearchLoop(action) }, delayMs)
                     } else {
                         onStepCompleted(success, action)
                     }
@@ -162,8 +164,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             } else {
                 if (action.loopUntilStopped) {
                     val scanIntervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(100L)
-                    Thread.sleep(scanIntervalMs)
-                    executeMultiSearchLoop(action)
+                    mainHandler.postDelayed({ executeMultiSearchLoop(action) }, scanIntervalMs)
                 } else {
                     onStepCompleted(false, action)
                 }
@@ -189,9 +190,11 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         }
 
         currentStepIndex++
-        if (action.delay > 0) {
-            Thread.sleep(action.delay)
+        val stepDelay = action.delay.coerceAtLeast(0L)
+        if (stepDelay > 0) {
+            mainHandler.postDelayed({ executeNextStep() }, stepDelay)
+        } else {
+            executeNextStep()
         }
-        executeNextStep()
     }
 }

@@ -57,7 +57,7 @@ class MainActivity : AppCompatActivity() {
                 service.showControlPanel()
                 logDiagnostic("UI", "Запуск панели оверлеев.")
             } else {
-                Toast.makeText(this, "Сначала включите Accessibility Service!", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Сначала включите Раздел 'Спец. возможности'!", Toast.LENGTH_LONG).show()
                 logError("UI", "MyAutoClickService не запущен!", null)
             }
         }
@@ -65,9 +65,9 @@ class MainActivity : AppCompatActivity() {
         root.bindClickByNames("btnAccessibility") {
             try {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                logDiagnostic("UI", "Переход в настройки Accessibility.")
+                logDiagnostic("UI", "Переход в системное меню Спец. возможности.")
             } catch (e: Exception) {
-                logError("UI", "Ошибка перехода в настройки Accessibility", e)
+                logError("UI", "Ошибка перехода в Спец. возможности", e)
             }
         }
 
@@ -79,12 +79,12 @@ class MainActivity : AppCompatActivity() {
                         Uri.parse("package:$packageName")
                     )
                     startActivity(intent)
-                    logDiagnostic("UI", "Запрос разрешения оверлея.")
+                    logDiagnostic("UI", "Запрос разрешения Поверх других приложений.")
                 } catch (e: Exception) {
-                    logError("UI", "Ошибка запроса разрешения оверлея", e)
+                    logError("UI", "Ошибка запроса разрешения Поверх других приложений", e)
                 }
             } else {
-                Toast.makeText(this, "Разрешение оверлея уже предоставлено!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Разрешение 'Поверх других приложений' уже предоставлено!", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -138,7 +138,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
             Toast.makeText(
                 this,
-                "Нажмите 3 точки в правом верхнем углу и выберите 'Разрешить ограниченные настройки'",
+                "Найдите в самом низу экрана (или в меню 3 точек вверху) пункт 'Разрешить ограниченные настройки' и включите его",
                 Toast.LENGTH_LONG
             ).show()
             logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
@@ -153,21 +153,21 @@ class MainActivity : AppCompatActivity() {
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
 
         (root.findViewByNames("btnAccessibility") as? Button)?.apply {
-            text = if (isServiceActive) "1. Accessibility: [ ВКЛ ]" else "1. Accessibility: [ ВЫКЛ ]"
+            text = if (isServiceActive) "1. Спец. возможности: [ ВКЛ ]" else "1. Спец. возможности: [ ВЫКЛ ]"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
         }
 
         (root.findViewByNames("btnOverlay") as? Button)?.apply {
-            text = if (hasOverlay) "2. Оверлеи: [ ВКЛ ]" else "2. Оверлеи: [ ВЫКЛ ]"
+            text = if (hasOverlay) "2. Поверх других приложений: [ ВКЛ ]" else "2. Поверх других приложений: [ ВЫКЛ ]"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
         }
 
         (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
-            text = "3. Снятие ограничений"
+            text = "3. Ограниченные настройки (в самом низу)"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
