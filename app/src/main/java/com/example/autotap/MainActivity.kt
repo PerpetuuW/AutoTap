@@ -62,6 +62,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        root.bindClickByNames("btnAppDetails", "btnPermissionsHelp") {
+            openRestrictedSettingsMenu()
+        }
+
         root.bindClickByNames("btnAccessibility") {
             try {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -86,10 +90,6 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(this, "Разрешение 'Поверх других приложений' уже предоставлено!", Toast.LENGTH_SHORT).show()
             }
-        }
-
-        root.bindClickByNames("btnAppDetails", "btnPermissionsHelp") {
-            openRestrictedSettingsMenu()
         }
 
         root.bindClickByNames("btnShowLogs") {
@@ -138,7 +138,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
             Toast.makeText(
                 this,
-                "Найдите в самом низу экрана (или в меню 3 точек вверху) пункт 'Разрешить ограниченные настройки' и включите его",
+                "Прокрутите В САМЫЙ НИЗ экрана (или 3 точки вверху) -> нажмите 'Разрешить ограниченные настройки'",
                 Toast.LENGTH_LONG
             ).show()
             logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
@@ -152,24 +152,24 @@ class MainActivity : AppCompatActivity() {
         val isServiceActive = MyAutoClickService.instance != null
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
 
+        (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
+            text = "1. Ограниченные настройки (в самом низу)"
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+
         (root.findViewByNames("btnAccessibility") as? Button)?.apply {
-            text = if (isServiceActive) "1. Спец. возможности: [ ВКЛ ]" else "1. Спец. возможности: [ ВЫКЛ ]"
+            text = if (isServiceActive) "2. Спец. возможности: [ ВКЛ ]" else "2. Спец. возможности: [ ВЫКЛ ]"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
         }
 
         (root.findViewByNames("btnOverlay") as? Button)?.apply {
-            text = if (hasOverlay) "2. Поверх других приложений: [ ВКЛ ]" else "2. Поверх других приложений: [ ВЫКЛ ]"
+            text = if (hasOverlay) "3. Поверх других приложений: [ ВКЛ ]" else "3. Поверх других приложений: [ ВЫКЛ ]"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
-        }
-
-        (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
-            text = "3. Ограниченные настройки (в самом низу)"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
         }
     }
 

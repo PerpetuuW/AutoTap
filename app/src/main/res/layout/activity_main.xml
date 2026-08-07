@@ -81,11 +81,24 @@
                 android:layout_marginBottom="10dp"/>
 
             <Button
+                android:id="@+id/btnAppDetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="1. Ограниченные настройки (MIUI/HyperOS / Android 13+)"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="11sp"
+                android:padding="8dp"
+                android:gravity="center"
+                android:layout_marginBottom="8dp"/>
+
+            <Button
                 android:id="@+id/btnAccessibility"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:minHeight="48dp"
-                android:text="1. Спец. возможности (Включить AutoTap)"
+                android:text="2. Спец. возможности (Включить AutoTap)"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
                 android:textSize="12sp"
@@ -98,23 +111,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:minHeight="48dp"
-                android:text="2. Поверх других приложений"
+                android:text="3. Поверх других приложений"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
                 android:textSize="12sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
-
-            <Button
-                android:id="@+id/btnAppDetails"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:text="3. Ограниченные настройки (в самом низу / 3 точки)"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
                 android:padding="8dp"
                 android:gravity="center"/>
         </LinearLayout>

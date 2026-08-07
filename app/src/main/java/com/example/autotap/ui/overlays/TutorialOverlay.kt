@@ -8,6 +8,8 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -132,6 +134,23 @@ class TutorialOverlay(
     ) : View(context) {
 
         private var highlightArea: Rect? = null
+        private var pulseRadius = 0f
+        private var pulseIncreasing = true
+        private val handler = Handler(Looper.getMainLooper())
+
+        private val pulseRunnable = object : Runnable {
+            override fun run() {
+                if (pulseIncreasing) {
+                    pulseRadius += 1.5f
+                    if (pulseRadius >= 14f) pulseIncreasing = false
+                } else {
+                    pulseRadius -= 1.5f
+                    if (pulseRadius <= 0f) pulseIncreasing = true
+                }
+                invalidate()
+                handler.postDelayed(this, 30L)
+            }
+        }
 
         private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#B3000000")
@@ -148,8 +167,15 @@ class TutorialOverlay(
             strokeWidth = 6f
         }
 
+        private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#8000F5D4")
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+
         init {
             setLayerType(LAYER_TYPE_SOFTWARE, null)
+            handler.post(pulseRunnable)
         }
 
         fun setHighlightArea(rect: Rect?) {
@@ -166,12 +192,25 @@ class TutorialOverlay(
                 val rectF = RectF(rect)
                 canvas.drawRoundRect(rectF, 16f, 16f, clearPaint)
                 canvas.drawRoundRect(rectF, 16f, 16f, borderPaint)
+
+                val pulseRect = RectF(
+                    rect.left - pulseRadius,
+                    rect.top - pulseRadius,
+                    rect.right + pulseRadius,
+                    rect.bottom + pulseRadius
+                )
+                canvas.drawRoundRect(pulseRect, 20f, 20f, pulsePaint)
             }
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             val handled = onTouchEventCallback(event)
             return handled || super.onTouchEvent(event)
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            handler.removeCallbacks(pulseRunnable)
         }
     }
 }

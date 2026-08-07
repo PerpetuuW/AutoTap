@@ -136,18 +136,22 @@ abstract class OverlayBase(
             return
         }
         val screenSize = context.getRealScreenSize()
-        val maxX = (screenSize.x - 100).coerceAtLeast(10)
-        val maxY = (screenSize.y - 100).coerceAtLeast(10)
-        lp.x = lp.x.coerceIn(0, maxX)
-        lp.y = lp.y.coerceIn(0, maxY)
+        val maxX = screenSize.x.coerceAtLeast(10)
+        val maxY = screenSize.y.coerceAtLeast(10)
+        lp.x = lp.x.coerceIn(-100, maxX)
+        lp.y = lp.y.coerceIn(-100, maxY)
     }
 
-    fun updatePosition(x: Int, y: Int) {
+    open fun updatePosition(x: Int, y: Int) {
         val lp = layoutParams ?: params ?: return
         if (width != WindowManager.LayoutParams.MATCH_PARENT) {
             val screenSize = context.getRealScreenSize()
-            lp.x = x.coerceIn(0, (screenSize.x - 100).coerceAtLeast(10))
-            lp.y = y.coerceIn(0, (screenSize.y - 100).coerceAtLeast(10))
+            val viewW = overlayView?.width ?: 200
+            val viewH = overlayView?.height ?: 200
+            val maxX = (screenSize.x - viewW + 100).coerceAtLeast(0)
+            val maxY = (screenSize.y - viewH + 100).coerceAtLeast(0)
+            lp.x = x.coerceIn(-100, maxX)
+            lp.y = y.coerceIn(-100, maxY)
         } else {
             lp.x = 0
             lp.y = 0
@@ -189,7 +193,7 @@ abstract class OverlayBase(
         var touchY = 0f
         var isDragging = false
 
-        handleView.setOnTouchListener { v, event ->
+        handleView.setOnTouchListener { _, event ->
             val lp = layoutParams ?: params ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -198,7 +202,7 @@ abstract class OverlayBase(
                     touchX = event.rawX
                     touchY = event.rawY
                     isDragging = false
-                    false
+                    true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - touchX).toInt()
@@ -212,18 +216,16 @@ abstract class OverlayBase(
                         val newX = startX + dx
                         val newY = startY + dy
                         updatePosition(newX, newY)
-                        true
-                    } else {
-                        false
                     }
+                    true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (isDragging) {
-                        isDragging = false
-                        true
-                    } else {
-                        false
+                    val wasDragging = isDragging
+                    isDragging = false
+                    if (!wasDragging) {
+                        handleView.performClick()
                     }
+                    true
                 }
                 else -> false
             }

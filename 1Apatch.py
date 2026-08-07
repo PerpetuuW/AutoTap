@@ -7,8 +7,7 @@ import re
 
 class PrecisionPatcher:
     """
-    Движок точечного патчинга v40: проверяет баланс скобок
-    и атомарно обновляет файлы проекта.
+    Движок патчинга v40 Precision Architecture.
     """
     def __init__(self, file_path, content=None):
         self.file_path = os.path.abspath(file_path)
@@ -51,470 +50,496 @@ class PrecisionPatcher:
 
 
 # ==============================================================================
-# 1. MAIN ACTIVITY С ПОДКАЗКОЙ ПРО "В САМОМ НИЗУ ЭКРАНА"
+# 1. OVERLAY BASE (ПОЛНОЭКРАННЫЕ ГРАНИЦЫ И БЕЗЛИМИТНОЕ ПЕРЕМЕЩЕНИЕ)
 # ==============================================================================
-MAIN_ACTIVITY_CONTENT = """package com.example.autotap
+OVERLAY_BASE_CONTENT = """package com.example.autotap.ui.base
 
-import android.content.Intent
-import android.graphics.Color
-import android.net.Uri
+import android.content.Context
+import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
-import android.os.Bundle
-import android.provider.Settings
-import android.text.TextUtils
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
-import android.widget.Button
-import android.widget.TextView
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import com.example.autotap.data.ScriptRepository
-import com.example.autotap.data.TemplateRepository
-import com.example.autotap.engine.ActionEditorEngine
-import com.example.autotap.logger.StructuredLogger
+import android.view.ViewConfiguration
+import android.view.WindowManager
+import androidx.core.view.ViewCompat
+import com.example.autotap.createOverlayParams
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
-import com.example.autotap.ui.LogViewerActivity
+import com.example.autotap.safeAddView
+import com.example.autotap.safeRemoveView
+import kotlin.math.abs
 
-class MainActivity : AppCompatActivity() {
+abstract class OverlayBase(
+    protected val context: Context,
+    val overlayManager: OverlayManager,
+    var layer: OverlayLayer = OverlayLayer.PANEL_LAYER,
+    var priority: OverlayPriority = OverlayPriority.MEDIUM
+) {
+    protected val windowManager: WindowManager =
+        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-    lateinit var templateRepository: TemplateRepository
-    lateinit var scriptRepository: ScriptRepository
-    lateinit var actionEditorEngine: ActionEditorEngine
+    open val layoutResId: Int = 0
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        StructuredLogger.init(this)
+    var width: Int = WindowManager.LayoutParams.WRAP_CONTENT
+    var height: Int = WindowManager.LayoutParams.WRAP_CONTENT
+    var gravity: Int = Gravity.TOP or Gravity.START
+    var flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+    var dimAmount: Float = 0.5f
 
-        initRepositories()
-        initEngines()
+    var initialX: Int = 100
+    var initialY: Int = 200
+
+    protected var overlayView: View? = null
+    protected var rootView: View? = null
+    protected var layoutParams: WindowManager.LayoutParams? = null
+    protected var params: WindowManager.LayoutParams? = null
+    var isShowing: Boolean = false
+        protected set
+
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
+    open fun createView(): View {
+        if (layoutResId != 0) {
+            return LayoutInflater.from(context).inflate(layoutResId, null)
+        }
+        throw UnsupportedOperationException("Оверлей должен переопределить layoutResId или createView()")
+    }
+
+    open fun inflate() {
+        if (rootView != null) return
+        val view = createView()
+        rootView = view
+        overlayView = view
+
+        val targetX = if (width == WindowManager.LayoutParams.MATCH_PARENT) 0 else initialX
+        val targetY = if (height == WindowManager.LayoutParams.MATCH_PARENT) 0 else initialY
+
+        val lp = createOverlayParams(
+            width = width,
+            height = height,
+            gravity = gravity,
+            flags = flags,
+            x = targetX,
+            y = targetY
+        ).apply {
+            if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
+                this.dimAmount = this@OverlayBase.dimAmount
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                this.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+
+        this.layoutParams = lp
+        this.params = lp
+        ViewCompat.setImportantForAccessibility(
+            view,
+            ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_NO
+        )
+    }
+
+    open fun show() {
+        val currentView = overlayView
+        if (isShowing && currentView != null) {
+            try {
+                windowManager.safeRemoveView(currentView)
+            } catch (_: Exception) {}
+            isShowing = false
+        }
 
         try {
-            setContentView(R.layout.activity_main)
-            logDiagnostic("UI", "Главное меню успешно надуло activity_main.xml")
+            inflate()
+            val view = overlayView ?: rootView ?: return
+            val lp = layoutParams ?: params ?: return
+            reboundToScreen(lp)
+            val added = windowManager.safeAddView(view, lp)
+            if (added) {
+                isShowing = true
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) принудительно отображен.")
+            }
         } catch (e: Exception) {
-            logError("UI", "Ошибка установки setContentView(R.layout.activity_main)", e)
+            logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
         }
+    }
 
-        val root = window.decorView.findViewById<View>(android.R.id.content)
-
-        val versionName = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: getString(R.string.app_version)
-        } catch (_: Exception) {
-            getString(R.string.app_version)
-        }
-
-        (root.findViewByNames("tvVersion") as? TextView)?.text = versionName
-        (root.findViewByNames("tvSubTitle") as? TextView)?.text = "Комплекс Автоматизации и ИИ Поиска"
-
-        root.bindClickByNames("btnStartPanel") {
-            val service = MyAutoClickService.instance
-            if (service != null) {
-                service.showControlPanel()
-                logDiagnostic("UI", "Запуск панели оверлеев.")
-            } else {
-                Toast.makeText(this, "Сначала включите Раздел 'Спец. возможности'!", Toast.LENGTH_LONG).show()
-                logError("UI", "MyAutoClickService не запущен!", null)
-            }
-        }
-
-        root.bindClickByNames("btnAccessibility") {
+    open fun hide() {
+        val view = overlayView ?: rootView ?: return
+        if (isShowing) {
             try {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                logDiagnostic("UI", "Переход в системное меню Спец. возможности.")
+                windowManager.safeRemoveView(view)
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} скрыт.")
             } catch (e: Exception) {
-                logError("UI", "Ошибка перехода в Спец. возможности", e)
+                logError("OVERLAY", "Ошибка при скрытии ${javaClass.simpleName}", e)
             }
+            overlayView = null
+            rootView = null
+            isShowing = false
         }
+    }
 
-        root.bindClickByNames("btnOverlay") {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
-                try {
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                    startActivity(intent)
-                    logDiagnostic("UI", "Запрос разрешения Поверх других приложений.")
-                } catch (e: Exception) {
-                    logError("UI", "Ошибка запроса разрешения Поверх других приложений", e)
+    fun reboundToScreen(lp: WindowManager.LayoutParams) {
+        if (width == WindowManager.LayoutParams.MATCH_PARENT && height == WindowManager.LayoutParams.MATCH_PARENT) {
+            lp.x = 0
+            lp.y = 0
+            return
+        }
+        val screenSize = context.getRealScreenSize()
+        val maxX = screenSize.x.coerceAtLeast(10)
+        val maxY = screenSize.y.coerceAtLeast(10)
+        lp.x = lp.x.coerceIn(-100, maxX)
+        lp.y = lp.y.coerceIn(-100, maxY)
+    }
+
+    open fun updatePosition(x: Int, y: Int) {
+        val lp = layoutParams ?: params ?: return
+        if (width != WindowManager.LayoutParams.MATCH_PARENT) {
+            val screenSize = context.getRealScreenSize()
+            val viewW = overlayView?.width ?: 200
+            val viewH = overlayView?.height ?: 200
+            val maxX = (screenSize.x - viewW + 100).coerceAtLeast(0)
+            val maxY = (screenSize.y - viewH + 100).coerceAtLeast(0)
+            lp.x = x.coerceIn(-100, maxX)
+            lp.y = y.coerceIn(-100, maxY)
+        } else {
+            lp.x = 0
+            lp.y = 0
+        }
+        val v = overlayView ?: rootView ?: return
+        try {
+            windowManager.updateViewLayout(v, lp)
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка обновления позиции $layer", e)
+        }
+    }
+
+    fun setTouchable(touchable: Boolean) {
+        val lp = layoutParams ?: params ?: return
+        val view = overlayView ?: rootView ?: return
+        if (touchable) {
+            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        try {
+            windowManager.updateViewLayout(view, lp)
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка обновления флага touchable", e)
+        }
+    }
+
+    fun getBounds(): Rect {
+        val lp = layoutParams ?: params ?: return Rect(0, 0, 0, 0)
+        val w = if (width > 0) width else 200
+        val h = if (height > 0) height else 200
+        return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
+    }
+
+    protected fun setupDragAndDrop(handleView: View) {
+        var startX = 0
+        var startY = 0
+        var touchX = 0f
+        var touchY = 0f
+        var isDragging = false
+
+        handleView.setOnTouchListener { _, event ->
+            val lp = layoutParams ?: params ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = lp.x
+                    startY = lp.y
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    isDragging = false
+                    true
                 }
-            } else {
-                Toast.makeText(this, "Разрешение 'Поверх других приложений' уже предоставлено!", Toast.LENGTH_SHORT).show()
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+
+                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        isDragging = true
+                    }
+
+                    if (isDragging) {
+                        val newX = startX + dx
+                        val newY = startY + dy
+                        updatePosition(newX, newY)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val wasDragging = isDragging
+                    isDragging = false
+                    if (!wasDragging) {
+                        handleView.performClick()
+                    }
+                    true
+                }
+                else -> false
             }
         }
-
-        root.bindClickByNames("btnAppDetails", "btnPermissionsHelp") {
-            openRestrictedSettingsMenu()
-        }
-
-        root.bindClickByNames("btnShowLogs") {
-            try {
-                startActivity(Intent(this@MainActivity, LogViewerActivity::class.java))
-            } catch (e: Exception) {
-                logError("UI", "Ошибка открытия LogViewerActivity", e)
-            }
-        }
-
-        root.bindClickByNames("btnInfoHelp") {
-            val service = MyAutoClickService.instance
-            if (service != null) {
-                service.overlayManager.infoHelpDialog.show()
-            }
-        }
-
-        root.bindClickByNames("btnManageTemplates") {
-            val service = MyAutoClickService.instance
-            if (service != null) {
-                service.overlayManager.templatesManagerDialog.show()
-            }
-        }
-
-        root.bindClickByNames("btnExport", "btnImport") {
-            val service = MyAutoClickService.instance
-            if (service != null) {
-                service.overlayManager.exportImportDialog.show()
-            }
-        }
-
-        updateUIStatusIndicators()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        updateUIStatusIndicators()
-    }
-
-    private fun openRestrictedSettingsMenu() {
-        try {
-            val intent = Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:$packageName")
-            )
-            startActivity(intent)
-            Toast.makeText(
-                this,
-                "Найдите в самом низу экрана (или в меню 3 точек вверху) пункт 'Разрешить ограниченные настройки' и включите его",
-                Toast.LENGTH_LONG
-            ).show()
-            logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
-        } catch (e: Exception) {
-            logError("UI", "Ошибка открытия настроек приложения", e)
-        }
-    }
-
-    private fun updateUIStatusIndicators() {
-        val root = window.decorView.findViewById<View>(android.R.id.content)
-        val isServiceActive = MyAutoClickService.instance != null
-        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
-
-        (root.findViewByNames("btnAccessibility") as? Button)?.apply {
-            text = if (isServiceActive) "1. Спец. возможности: [ ВКЛ ]" else "1. Спец. возможности: [ ВЫКЛ ]"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
-        }
-
-        (root.findViewByNames("btnOverlay") as? Button)?.apply {
-            text = if (hasOverlay) "2. Поверх других приложений: [ ВКЛ ]" else "2. Поверх других приложений: [ ВЫКЛ ]"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
-        }
-
-        (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
-            text = "3. Ограниченные настройки (в самом низу)"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        }
-    }
-
-    private fun initRepositories() {
-        templateRepository = TemplateRepository(this)
-        scriptRepository = ScriptRepository(this)
-    }
-
-    private fun initEngines() {
-        actionEditorEngine = ActionEditorEngine()
     }
 }
 """
 
 
 # ==============================================================================
-# 2. ACTIVITY MAIN XML С ТЕКСТОМ "В САМОМ НИЗУ"
+# 2. CAPTURE FRAME OVERLAY (УМНОЕ ПОЗИЦИОНИРОВАНИЕ И 100% КРАЕВОЙ КРОП)
 # ==============================================================================
-ACTIVITY_MAIN_XML_CONTENT = """<?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/bg_dark_blue"
-    android:fitsSystemWindows="true"
-    android:fillViewport="true">
+CAPTURE_FRAME_OVERLAY_CONTENT = """package com.example.autotap.ui.overlays
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="24dp"
-        android:paddingBottom="16dp">
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.PointF
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.dpToPx
+import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+import kotlin.math.max
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/panel_background"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:layout_marginBottom="16dp">
+class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager, OverlayLayer.CAPTURE_LAYER, OverlayPriority.HIGH) {
 
-            <TextView
-                android:id="@+id/tvTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="AutoTap Premium"
-                android:textColor="#00F5D4"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:singleLine="true"
-                android:maxLines="1"
-                android:ellipsize="end" />
+    override val layoutResId: Int = R.layout.floating_capture_frame
 
-            <TextView
-                android:id="@+id/tvSubTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Комплекс Автоматизации и ИИ Поиска"
-                android:textColor="@color/text_gray"
-                android:textSize="11sp"
-                android:gravity="center"
-                android:layout_marginTop="4dp" />
+    private val minSizePx = 24.dpToPx(context)
+    private var currentFrameWidthPx = 140.dpToPx(context)
+    private var currentFrameHeightPx = 140.dpToPx(context)
 
-            <TextView
-                android:id="@+id/tvVersion"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="v40.0.0-PRO"
-                android:textColor="@color/accent_blue"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:layout_marginTop="4dp" />
-        </LinearLayout>
+    private var layoutCaptureContainer: LinearLayout? = null
+    private var layoutTopBar: View? = null
+    private var layoutBottomBar: View? = null
+    private var captureSquare: FrameLayout? = null
 
-        <!-- Секция 1: Настройки системных разрешений -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
+    init {
+        gravity = Gravity.TOP or Gravity.START
+        val metrics = context.resources.displayMetrics
+        initialX = (metrics.widthPixels - currentFrameWidthPx) / 2
+        initialY = (metrics.heightPixels - currentFrameHeightPx) / 2
+        width = WindowManager.LayoutParams.WRAP_CONTENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+    }
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚙ Настройка системных разрешений"
-                android:textColor="#58A6FF"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(layoutResId, null)
 
-            <Button
-                android:id="@+id/btnAccessibility"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:text="1. Спец. возможности (Включить AutoTap)"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="12sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+        layoutCaptureContainer = view.findViewByNames("layoutCaptureContainer") as? LinearLayout
+        layoutTopBar = view.findViewByNames("layoutTopBar")
+        layoutBottomBar = view.findViewByNames("layoutBottomBar")
+        captureSquare = view.findViewByNames("captureSquare") as? FrameLayout
 
-            <Button
-                android:id="@+id/btnOverlay"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:text="2. Поверх других приложений"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="12sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+        view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
+            logDiagnostic("OVERLAY", "Вырезание маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
+            context.vibrateFeedback()
 
-            <Button
-                android:id="@+id/btnAppDetails"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:text="3. Ограниченные настройки (в самом низу / 3 точки)"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="8dp"
-                android:gravity="center"/>
-        </LinearLayout>
+            val svc = MyAutoClickService.instance
+            val lp = layoutParams ?: params
+            val square = captureSquare
+            if (svc != null && lp != null && square != null) {
+                val fullBitmap = svc.captureScreenBitmap()
+                if (fullBitmap != null && fullBitmap.width > 20 && fullBitmap.height > 20) {
+                    // АБСОЛЮТНЫЙ РАСЧЕТ КООРДИНАТ КВАДРАТА ПРИЦЕЛА НА ЭКРАНЕ
+                    val squareLeftOnScreen = lp.x + square.left
+                    val squareTopOnScreen = lp.y + square.top
 
-        <!-- Секция 2: Управление данными -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
+                    val safeX = squareLeftOnScreen.coerceIn(0, (fullBitmap.width - 20).coerceAtLeast(0))
+                    val safeY = squareTopOnScreen.coerceIn(0, (fullBitmap.height - 20).coerceAtLeast(0))
+                    val safeW = currentFrameWidthPx.coerceIn(10, fullBitmap.width - safeX)
+                    val safeH = currentFrameHeightPx.coerceIn(10, fullBitmap.height - safeY)
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📁 Управление шаблонами и данными"
-                android:textColor="#58A6FF"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
+                    val metrics = context.resources.displayMetrics
+                    val centerXNorm = (safeX + safeW / 2f) / metrics.widthPixels.toFloat()
+                    val centerYNorm = (safeY + safeH / 2f) / metrics.heightPixels.toFloat()
 
-            <Button
-                android:id="@+id/btnManageTemplates"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="46dp"
-                android:text="Редактирование и менеджер ИИ-шаблонов"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+                    val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                    val action = ActionConfig(
+                        type = ActionType.AI_SEARCH,
+                        xNorm = centerXNorm.coerceIn(0f, 1f),
+                        yNorm = centerYNorm.coerceIn(0f, 1f),
+                        selectedTemplateIndex = nextTemplateIndex
+                    )
+                    svc.actionsList.add(action)
 
-                <Button
-                    android:id="@+id/btnExport"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="46dp"
-                    android:text="📤 Экспорт"
-                    android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
-                    android:textSize="11sp"
-                    android:padding="4dp"
-                    android:gravity="center"/>
+                    if (safeW > 10 && safeH > 10) {
+                        val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
+                        svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+                        logDiagnostic("AI_SCANNER", "Безопасный точный кроп: шаблон #$nextTemplateIndex сохранен (${safeW}x${safeH}px).")
 
-                <View
-                    android:layout_width="8dp"
-                    android:layout_height="match_parent"/>
+                        val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
+                        if (calibrated != null) {
+                            overlayManager.debuggerOverlay.show()
+                            overlayManager.debuggerOverlay.showCandidates(listOf(
+                                com.example.autotap.engine.ai.MatchCandidate(
+                                    point = PointF(safeX + safeW / 2f, safeY + safeH / 2f),
+                                    score = 1.0f,
+                                    boundingBox = calibrated.boundingBox,
+                                    scale = 1.0f,
+                                    templateIndex = nextTemplateIndex
+                                )
+                            ))
+                        }
+                    }
+                }
+            }
+            hide()
+            overlayManager.showControlPanel()
+        }
 
-                <Button
-                    android:id="@+id/btnImport"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="46dp"
-                    android:text="📥 Импорт"
-                    android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
-                    android:textSize="11sp"
-                    android:padding="4dp"
-                    android:gravity="center"/>
-            </LinearLayout>
-        </LinearLayout>
+        view.bindClickByNames("btnCancelCapture", "btn_cancel_capture", "btn_close") {
+            hide()
+            overlayManager.showControlPanel()
+        }
 
-        <!-- Секция 3: Инфо и Логи -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/panel_background"
-            android:padding="14dp"
-            android:layout_marginBottom="16dp">
+        view.bindClickByNames("btnCaptureSearchArea") {
+            logDiagnostic("OVERLAY", "Переход к настройке области поиска.")
+            overlayManager.searchAreaOverlay.show()
+            hide()
+        }
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
+        val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
+        setupDragAndDrop(moveHandle)
 
-                <Button
-                    android:id="@+id/btnPermissionsHelp"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="44dp"
-                    android:text="О разрешениях"
-                    android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
-                    android:textSize="11sp"
-                    android:padding="4dp"
-                    android:gravity="center"/>
+        val sq = captureSquare
+        val resizeHandle = view.findViewByNames("handleResize")
+        if (resizeHandle != null && sq != null) {
+            setupResizeHandler(resizeHandle, sq)
+        }
 
-                <View
-                    android:layout_width="8dp"
-                    android:layout_height="match_parent"/>
+        return view
+    }
 
-                <Button
-                    android:id="@+id/btnInfoHelp"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:minHeight="44dp"
-                    android:text="Справка v40 PRO"
-                    android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
-                    android:textSize="11sp"
-                    android:padding="4dp"
-                    android:gravity="center"/>
-            </LinearLayout>
+    override fun updatePosition(x: Int, y: Int) {
+        val lp = layoutParams ?: params ?: return
+        val screenSize = context.getRealScreenSize()
+        val squareW = currentFrameWidthPx
+        val squareH = currentFrameHeightPx
 
-            <Button
-                android:id="@+id/btnShowLogs"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="Просмотр логов работы и ошибок"
-                android:textColor="@color/text_white"
-                android:backgroundTint="#21262D"
-                android:textSize="11sp"
-                android:padding="4dp"
-                android:gravity="center"/>
-        </LinearLayout>
+        // Разрешаем прицелу подходить вплотную к 0-границе экрана
+        val topOffset = layoutTopBar?.height ?: 120
+        val minX = -50
+        val minY = -topOffset
+        val maxX = screenSize.x - 50
+        val maxY = screenSize.y - 50
 
-        <Button
-            android:id="@+id/btnStartPanel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="56dp"
-            android:text="🚀 ЗАПУСТИТЬ ПАНЕЛЬ КЛИКЕРА"
-            android:textColor="@color/text_white"
-            android:backgroundTint="@color/accent_blue"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:padding="10dp"
-            android:gravity="center"/>
-    </LinearLayout>
-</ScrollView>
+        lp.x = x.coerceIn(minX, maxX)
+        lp.y = y.coerceIn(minY, maxY)
+
+        // УМНОЕ АВТО-ПОЗИЦИОНИРОВАНИЕ ПАНЕЛЕЙ КНОПОК ПРИ ПРИБЛИЖЕНИИ К КРАЯМ
+        applySmartPanelFlipping(lp.y, screenSize.y)
+
+        val v = overlayView ?: rootView ?: return
+        try {
+            windowManager.updateViewLayout(v, lp)
+        } catch (e: Exception) {
+            logError("OVERLAY", "Ошибка обновления позиции прицела", e)
+        }
+    }
+
+    private fun applySmartPanelFlipping(currentY: Int, screenHeight: Int) {
+        val container = layoutCaptureContainer ?: return
+        val topBar = layoutTopBar ?: return
+        val bottomBar = layoutBottomBar ?: return
+        val square = captureSquare ?: return
+
+        container.removeAllViews()
+
+        if (currentY < 120) {
+            // ВЕРХНИЙ КРАЙ: Верхняя панель переворачивается И ПОДСТАВЛЯЕТСЯ ПОД ПРИЦЕЛ
+            container.addView(square)
+            container.addView(topBar)
+            container.addView(bottomBar)
+        } else if (currentY > screenHeight - (currentFrameHeightPx + 200)) {
+            // НИЖНИЙ КРАЙ: Нижняя панель поднимается НАД ПРИЦЕЛОМ
+            container.addView(topBar)
+            container.addView(bottomBar)
+            container.addView(square)
+        } else {
+            // О Б Ы Ч Н Ы Й   Р Е Ж И М
+            container.addView(topBar)
+            container.addView(square)
+            container.addView(bottomBar)
+        }
+    }
+
+    private fun setupResizeHandler(resizeView: View, captureSquare: FrameLayout) {
+        var startW = 0
+        var startH = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        resizeView.setOnTouchListener { _, event ->
+            val lp = layoutParams ?: params ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startW = captureSquare.width.takeIf { it > 0 } ?: currentFrameWidthPx
+                    startH = captureSquare.height.takeIf { it > 0 } ?: currentFrameHeightPx
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+
+                    currentFrameWidthPx = max(minSizePx, startW + dx)
+                    currentFrameHeightPx = max(minSizePx, startH + dy)
+
+                    val sqLp = captureSquare.layoutParams
+                    if (sqLp != null) {
+                        sqLp.width = currentFrameWidthPx
+                        sqLp.height = currentFrameHeightPx
+                        captureSquare.layoutParams = sqLp
+                    }
+
+                    try {
+                        windowManager.updateViewLayout(overlayView ?: rootView, lp)
+                    } catch (e: Exception) {
+                        logError("OVERLAY", "Ошибка ресайза прицела", e)
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+}
 """
 
 
 def main():
     base_dir = os.getcwd()
-    print("=== ОБНОВЛЕНИЕ ИНСТРУКЦИИ ОГРАНИЧЕННЫХ НАСТРОЕК (В САМОМ НИЗУ ЭКРАНА) ===")
+    print("=== ЗАПУСК ПАТЧИНГА V40 (Умное позиционирование и 100% краевой прицел) ===")
 
     files_map = {
-        "app/src/main/java/com/example/autotap/MainActivity.kt": MAIN_ACTIVITY_CONTENT,
-        "app/src/main/res/layout/activity_main.xml": ACTIVITY_MAIN_XML_CONTENT,
+        "app/src/main/java/com/example/autotap/ui/base/OverlayBase.kt": OVERLAY_BASE_CONTENT,
+        "app/src/main/java/com/example/autotap/ui/overlays/CaptureFrameOverlay.kt": CAPTURE_FRAME_OVERLAY_CONTENT,
     }
 
     try:
@@ -523,7 +548,7 @@ def main():
             patcher = PrecisionPatcher(full_path, content)
             patcher.apply()
 
-        print("🟢 ВЁРСТКА И ТЕКСТ ПОДСКАЗОК УСПЕШНО ОБНОВЛЕНЫ!")
+        print("🟢 ВСЕ КРАЕВОЙ И УМНЫЙ ФУНКЦИОНАЛ ПРИЦЕЛА УСПЕШНО ПРИМЕНЕН!")
     except Exception as e:
         print(f"❌ ОШИБКА ПАТЧИНГА: {e}")
         sys.exit(1)
