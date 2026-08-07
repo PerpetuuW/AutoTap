@@ -184,18 +184,34 @@ class MyAutoClickService : AccessibilityService() {
 
     fun addNewActionAtPosition(xNorm: Float, yNorm: Float) {
         actionsList.add(ActionConfig(xNorm = xNorm, yNorm = yNorm))
-        if (recordingEngine.isRecording) {
+        if (::recordingEngine.isInitialized && recordingEngine.isRecording) {
             recordingEngine.recordClick(xNorm, yNorm)
         }
         logDiagnostic("SCRIPT", "Добавлено новое действие на позиции ($xNorm, $yNorm)")
     }
 
+    fun getSafeScriptRepository(): ScriptRepository {
+        return if (::scriptRepository.isInitialized) {
+            scriptRepository
+        } else {
+            ScriptRepository(this).also { scriptRepository = it }
+        }
+    }
+
+    fun getSafeTemplateRepository(): TemplateRepository {
+        return if (::templateRepository.isInitialized) {
+            templateRepository
+        } else {
+            TemplateRepository(this).also { templateRepository = it }
+        }
+    }
+
     fun saveScriptByName(name: String, actions: List<ActionConfig>) {
-        scriptRepository.saveScript(name, actions)
+        getSafeScriptRepository().saveScript(name, actions)
     }
 
     fun loadScriptByName(name: String): Boolean {
-        val loaded = scriptRepository.loadScript(name)
+        val loaded = getSafeScriptRepository().loadScript(name)
         if (loaded.isNotEmpty()) {
             actionsList.clear()
             actionsList.addAll(loaded)

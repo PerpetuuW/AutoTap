@@ -60,14 +60,22 @@ class MainActivity : AppCompatActivity() {
             if (service != null) {
                 service.showControlPanel()
                 logDiagnostic("UI", "Запуск панели оверлеев.")
+                moveTaskToBack(true)
             } else {
                 Toast.makeText(this, "Сначала включите Раздел 'Спец. возможности'!", Toast.LENGTH_LONG).show()
                 logError("UI", "MyAutoClickService не запущен!", null)
             }
         }
 
-        root.bindClickByNames("btnAppDetails", "btnPermissionsHelp") {
+        root.bindClickByNames("btnAppDetails") {
             openRestrictedSettingsMenu()
+        }
+
+        root.bindClickByNames("btnPermissionsHelp") {
+            val service = MyAutoClickService.instance
+            if (service != null) {
+                service.overlayManager.permissionsDialog.show()
+            }
         }
 
         root.bindClickByNames("btnAccessibility") {
@@ -184,7 +192,7 @@ class MainActivity : AppCompatActivity() {
         val isServiceActive = MyAutoClickService.instance != null
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
 
-        (root.findViewByNames("btnPermissionsHelp", "btnAppDetails") as? Button)?.apply {
+        (root.findViewByNames("btnAppDetails") as? Button)?.apply {
             text = "1. Ограниченные настройки (в самом низу)"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -202,6 +210,10 @@ class MainActivity : AppCompatActivity() {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+        }
+
+        (root.findViewByNames("btnPermissionsHelp") as? Button)?.apply {
+            text = "О разрешениях"
         }
     }
 

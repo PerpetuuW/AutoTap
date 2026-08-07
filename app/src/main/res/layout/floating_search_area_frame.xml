@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/rootSearchArea"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:background="@drawable/panel_background"
-    android:padding="4dp"
-    android:elevation="16dp">
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:background="#00000000"
+    android:padding="6dp"
+    android:elevation="18dp"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
-    <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+    <!-- 1. ВЕРХНЯЯ ПАНЕЛЬ С КНОПКАМИ -->
     <LinearLayout
         android:id="@+id/layoutSearchTopBar"
         android:layout_width="wrap_content"
@@ -15,12 +19,13 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
-        android:padding="4dp">
+        android:padding="4dp"
+        android:layout_marginBottom="8dp">
 
         <TextView
             android:id="@+id/handleMoveSearchArea"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:gravity="center"
             android:text="✥"
             android:textColor="@color/gold_accent"
@@ -32,84 +37,87 @@
         <Button
             android:id="@+id/btnSaveSearchArea"
             android:layout_width="wrap_content"
-            android:layout_height="32dp"
+            android:layout_height="36dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:text="✅ Задать"
+            android:text="✅ Задать зону"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/accent_blue"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
             android:layout_marginEnd="4dp" />
 
         <Button
             android:id="@+id/btnResetSearchArea"
             android:layout_width="wrap_content"
-            android:layout_height="32dp"
+            android:layout_height="36dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:text="🌐 Сброс"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/bg_dark_blue"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:layout_marginEnd="4dp" />
 
         <ImageButton
             android:id="@+id/btnCancelSearchArea"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
-            android:padding="5dp"
+            android:padding="6dp"
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- ЖЁЛТАЯ РАМКА ЗОНЫ ПОИСКА -->
+    <!-- 2. ЖЁЛТАЯ РАМКА ЗОНЫ ПОИСКА -->
     <FrameLayout
         android:id="@+id/viewSearchAreaFrame"
-        android:layout_width="160dp"
-        android:layout_height="160dp"
-        android:layout_marginTop="40dp"
-        android:background="@drawable/border_yellow_search_area">
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:layout_gravity="center_horizontal"
+        android:background="@drawable/border_yellow_search_area"
+        android:layout_marginBottom="8dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:background="#E60D1117"
-            android:padding="4dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
             android:text="📐 Зона поиска ИИ"
             android:textColor="@color/gold_accent"
-            android:textSize="11sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
     </FrameLayout>
 
-    <!-- НИЖНЯЯ ПАНЕЛЬ РЕСАЙЗА -->
+    <!-- 3. НИЖНЯЯ ПАНЕЛЬ РЕСАЙЗА -->
     <LinearLayout
         android:id="@+id/layoutSearchBottomBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
-        android:padding="4dp"
-        android:layout_marginTop="4dp">
+        android:padding="4dp">
 
         <TextView
             android:id="@+id/handleResizeSearchArea"
-            android:layout_width="32dp"
+            android:layout_width="wrap_content"
             android:layout_height="32dp"
             android:gravity="center"
-            android:text="⤢"
+            android:text=" ⤢ РАСТЯНУТЬ ЗОНУ "
             android:textColor="@color/electric_cyan"
-            android:textSize="16sp"
+            android:textSize="11sp"
             android:textStyle="bold"
-            android:background="@drawable/handle_manipulator_bg" />
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
     </LinearLayout>
-</FrameLayout>
+</LinearLayout>

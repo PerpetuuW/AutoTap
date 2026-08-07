@@ -3,6 +3,7 @@ package com.example.autotap.engine
 import android.os.Handler
 import android.os.Looper
 import com.example.autotap.MyAutoClickService
+import com.example.autotap.engine.ai.MatchCandidate
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
 import com.example.autotap.model.ActionConfig
@@ -153,27 +154,48 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
             if (!isRunning) return@scanAsync
 
-            if (foundPoint != null) {
-                logDiagnostic("SCRIPT", "Совпадение ИИ найдено в $foundPoint. Выполнение клика...")
-                service.showClickVisualizer(foundPoint.x, foundPoint.y)
-                gestureExecutor.performClick(foundPoint.x, foundPoint.y, service.globalClickDurationMs) { success ->
-                    if (!isRunning) return@performClick
+            val scanResult = aiScannerEngine.lastScanResult
+            val candidates = scanResult?.candidates ?: emptyList()
 
-                    if (action.loopUntilStopped) {
-                        val delayMs = action.delay.coerceAtLeast(50L)
-                        mainHandler.postDelayed({ executeMultiSearchLoop(action) }, delayMs)
-                    } else {
-                        onStepCompleted(success, action)
-                    }
-                }
+            if (candidates.isNotEmpty()) {
+                service.overlayManager.debuggerOverlay.showCandidates(candidates)
+
+                // ПРОКЛИКИВАЕМ ВСЕ НАЙДЕННЫЕ ЦЕЛИ НА ЭКРАНЕ ПОСЛЕДОВАТЕЛЬНО
+                clickCandidateSequence(candidates, 0, action)
             } else {
-                if (action.loopUntilStopped) {
+                service.overlayManager.debuggerOverlay.showNoMatch()
+                if (action.loopUntilStopped && isRunning) {
                     val scanIntervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(100L)
                     mainHandler.postDelayed({ executeMultiSearchLoop(action) }, scanIntervalMs)
                 } else {
                     onStepCompleted(false, action)
                 }
             }
+        }
+    }
+
+    private fun clickCandidateSequence(candidates: List<MatchCandidate>, index: Int, action: ActionConfig) {
+        if (!isRunning) return
+        if (index >= candidates.size) {
+            if (action.loopUntilStopped && isRunning) {
+                val delayMs = action.delay.coerceAtLeast(100L)
+                mainHandler.postDelayed({ executeMultiSearchLoop(action) }, delayMs)
+            } else {
+                onStepCompleted(true, action)
+            }
+            return
+        }
+
+        val candidate = candidates[index]
+        val pt = candidate.point
+        service.showClickVisualizer(pt.x, pt.y)
+
+        gestureExecutor.performClick(pt.x, pt.y, service.globalClickDurationMs) { success ->
+            if (!isRunning) return@performClick
+            val interClickDelay = 50L
+            mainHandler.postDelayed({
+                clickCandidateSequence(candidates, index + 1, action)
+            }, interClickDelay)
         }
     }
 

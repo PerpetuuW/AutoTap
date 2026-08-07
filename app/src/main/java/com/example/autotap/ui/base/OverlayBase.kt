@@ -90,6 +90,19 @@ abstract class OverlayBase(
         )
     }
 
+    fun setFocusable(focusable: Boolean) {
+        val lp = layoutParams ?: params ?: return
+        val view = overlayView ?: rootView ?: return
+        if (focusable) {
+            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+        } else {
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        }
+        try {
+            windowManager.updateViewLayout(view, lp)
+        } catch (_: Exception) {}
+    }
+
     open fun show() {
         val currentView = overlayView
         if (isShowing && currentView != null) {
@@ -136,22 +149,41 @@ abstract class OverlayBase(
             return
         }
         val screenSize = context.getRealScreenSize()
-        val maxX = screenSize.x.coerceAtLeast(10)
-        val maxY = screenSize.y.coerceAtLeast(10)
-        lp.x = lp.x.coerceIn(-100, maxX)
-        lp.y = lp.y.coerceIn(-100, maxY)
+        val v = overlayView ?: rootView
+        if (v != null && (v.width == 0 || v.height == 0)) {
+            v.measure(
+                View.MeasureSpec.makeMeasureSpec(screenSize.x, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(screenSize.y, View.MeasureSpec.AT_MOST)
+            )
+        }
+        val viewW = v?.measuredWidth?.takeIf { it > 0 } ?: v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
+        val viewH = v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
+
+        val maxX = (screenSize.x - viewW).coerceAtLeast(0)
+        val maxY = (screenSize.y - viewH).coerceAtLeast(0)
+        lp.x = lp.x.coerceIn(0, maxX)
+        lp.y = lp.y.coerceIn(0, maxY)
     }
 
     open fun updatePosition(x: Int, y: Int) {
         val lp = layoutParams ?: params ?: return
         if (width != WindowManager.LayoutParams.MATCH_PARENT) {
             val screenSize = context.getRealScreenSize()
-            val viewW = overlayView?.width ?: 200
-            val viewH = overlayView?.height ?: 200
-            val maxX = (screenSize.x - viewW + 100).coerceAtLeast(0)
-            val maxY = (screenSize.y - viewH + 100).coerceAtLeast(0)
-            lp.x = x.coerceIn(-100, maxX)
-            lp.y = y.coerceIn(-100, maxY)
+            val v = overlayView ?: rootView
+            if (v != null && (v.width == 0 || v.height == 0)) {
+            v.measure(
+                View.MeasureSpec.makeMeasureSpec(screenSize.x, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(screenSize.y, View.MeasureSpec.AT_MOST)
+            )
+        }
+        val viewW = v?.measuredWidth?.takeIf { it > 0 } ?: v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
+            val viewH = v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
+
+            val maxX = (screenSize.x - viewW).coerceAtLeast(0)
+            val maxY = (screenSize.y - viewH).coerceAtLeast(0)
+
+            lp.x = x.coerceIn(0, maxX)
+            lp.y = y.coerceIn(0, maxY)
         } else {
             lp.x = 0
             lp.y = 0
@@ -187,30 +219,38 @@ abstract class OverlayBase(
     }
 
     protected fun setupDragAndDrop(handleView: View) {
-        var lastRawX = 0f
-        var lastRawY = 0f
+        var startX = 0f
+        var startY = 0f
+        var isDragging = false
 
         handleView.setOnTouchListener { _, event ->
             val lp = layoutParams ?: params ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    lastRawX = event.rawX
-                    lastRawY = event.rawY
-                    true
+                    startX = event.rawX
+                    startY = event.rawY
+                    isDragging = false
+                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - lastRawX).toInt()
-                    val dy = (event.rawY - lastRawY).toInt()
+                    val dx = (event.rawX - startX).toInt()
+                    val dy = (event.rawY - startY).toInt()
 
-                    if (dx != 0 || dy != 0) {
-                        updatePosition(lp.x + dx, lp.y + dy)
-                        lastRawX = event.rawX
-                        lastRawY = event.rawY
+                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        isDragging = true
                     }
-                    true
+
+                    if (isDragging) {
+                        updatePosition(lp.x + dx, lp.y + dy)
+                        startX = event.rawX
+                        startY = event.rawY
+                    }
+                    isDragging
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    true
+                    val wasDragging = isDragging
+                    isDragging = false
+                    wasDragging
                 }
                 else -> false
             }

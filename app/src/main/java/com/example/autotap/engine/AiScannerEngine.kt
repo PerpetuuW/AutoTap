@@ -14,6 +14,8 @@ class AiScannerEngine(private val service: MyAutoClickService) {
 
     private val templateMatcher by lazy { TemplateMatcher(service.templateRepository) }
     @Volatile private var isScanning = false
+    @Volatile var lastScanResult: AiScanResult? = null
+        private set
 
     fun scanAsync(frameProvider: () -> Bitmap?, action: ActionConfig, callback: (PointF?) -> Unit) {
         if (isScanning) {
@@ -25,6 +27,7 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         Thread {
             try {
                 val result = scan(frameProvider, action)
+                lastScanResult = result
                 callback(result.point)
             } catch (e: Exception) {
                 logError("AI_SCANNER", "Ошибка в scanAsync", e)
@@ -54,7 +57,7 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         }
 
         val bestCandidate = candidates.first()
-        logDiagnostic("AI_SCANNER", "ИИ Нашел шаблон #${bestCandidate.templateIndex} (score=${"%.2f".format(bestCandidate.score)}) в точке ${bestCandidate.point}")
+        logDiagnostic("AI_SCANNER", "ИИ нашел целей: ${candidates.size}. Высший шаблон #${bestCandidate.templateIndex} (score=${"%.2f".format(bestCandidate.score)}) в $bestCandidate")
         return AiScanResult(bestCandidate.point, candidates)
     }
 }

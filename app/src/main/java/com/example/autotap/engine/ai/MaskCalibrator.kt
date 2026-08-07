@@ -14,13 +14,15 @@ class MaskCalibrator {
         val contour = contourExtractor.extract(mask)
 
         val profile = detectProfile(width, height)
+        val recommendedScore = getRecommendedSimilarityForProfile(profile)
 
         val metadata = TemplateMetadata(
             boundingBox = bbox,
             contour = contour,
             calibratedRect = bbox,
             profile = profile,
-            layoutHints = getLayoutHintForProfile(profile)
+            layoutHints = getLayoutHintForProfile(profile),
+            recommendedSimilarity = recommendedScore
         )
 
         return CalibratedMask(
@@ -50,6 +52,16 @@ class MaskCalibrator {
         }
 
         return TemplateProfile.MEDIUM
+    }
+
+    private fun getRecommendedSimilarityForProfile(profile: TemplateProfile): Int {
+        return when (profile) {
+            TemplateProfile.THIN_LINE -> 88
+            TemplateProfile.SMALL -> 85
+            TemplateProfile.MEDIUM -> 82
+            TemplateProfile.LARGE -> 80
+            TemplateProfile.MIXED -> 85
+        }
     }
 
     private fun getLayoutHintForProfile(profile: TemplateProfile): String {

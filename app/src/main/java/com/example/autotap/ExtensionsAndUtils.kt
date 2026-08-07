@@ -6,6 +6,8 @@ import android.graphics.Point
 import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -110,25 +112,25 @@ fun View.bindClickToFirstClickableChild(onClick: (View) -> Unit) {
 }
 
 fun createOverlayParams(
-width: Int = WindowManager.LayoutParams.WRAP_CONTENT,
-height: Int = WindowManager.LayoutParams.WRAP_CONTENT,
-gravity: Int = Gravity.TOP or Gravity.START,
-flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-x: Int = 100,
-y: Int = 200
+    width: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+    height: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+    gravity: Int = Gravity.TOP or Gravity.START,
+    flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+    x: Int = 100,
+    y: Int = 200
 ): WindowManager.LayoutParams {
-val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-} else {
-@Suppress("DEPRECATION")
-WindowManager.LayoutParams.TYPE_PHONE
-}
+    val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+    } else {
+        @Suppress("DEPRECATION")
+        WindowManager.LayoutParams.TYPE_PHONE
+    }
 
-return WindowManager.LayoutParams(
-width, height,
-windowType,
+    return WindowManager.LayoutParams(
+        width, height,
+        windowType,
         flags,
         PixelFormat.TRANSLUCENT
     ).apply {
@@ -172,6 +174,20 @@ fun Context.vibrateFeedback() {
         } else {
             @Suppress("DEPRECATION")
             vibrator.vibrate(30L)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
+fun Context.playNotificationAlert(mode: Int) {
+    try {
+        if (mode == 1 || mode == 3) { // VIBRO
+            vibrateFeedback()
+        }
+        if (mode == 2 || mode == 3) { // SOUND
+            val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
+            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 200)
         }
     } catch (e: Exception) {
         e.printStackTrace()

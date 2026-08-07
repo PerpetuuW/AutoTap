@@ -37,5 +37,6 @@ data class ActionConfig(
     var swipePath: List<PointF> = emptyList(),
     var longPressDuration: Long = 500L,
     var clickOffsetX: Int = 0,
-    var clickOffsetY: Int = 0
+    var clickOffsetY: Int = 0,
+    var notificationMode: Int = 0 // 0 = OFF, 1 = VIBRO, 2 = SOUND, 3 = BOTH
 )

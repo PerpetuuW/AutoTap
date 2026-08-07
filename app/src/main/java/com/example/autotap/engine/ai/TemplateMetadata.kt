@@ -10,5 +10,6 @@ data class TemplateMetadata(
     val contour: List<PointF> = emptyList(),
     val calibratedRect: Rect = Rect(),
     val profile: TemplateProfile = TemplateProfile.MEDIUM,
-    val layoutHints: String = "ANY"
+    val layoutHints: String = "ANY",
+    val recommendedSimilarity: Int = 85
 )

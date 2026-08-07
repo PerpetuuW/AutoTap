@@ -3,6 +3,7 @@ package com.example.autotap.engine.ai
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.example.autotap.data.TemplateRepository
+import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.model.ActionConfig
 
 class TemplateMatcher(private val repository: TemplateRepository) {
@@ -14,10 +15,22 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         val mask = calibrated?.original ?: repository.loadTemplate(action.selectedTemplateIndex) ?: return emptyList()
         val profile = calibrated?.metadata?.profile ?: TemplateProfile.MEDIUM
 
-        val searchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
         val searchModes = buildProfileAwareModes(action, profile)
+        val threshold = action.similarityPercent / 100f
 
-        return cascadeMatcher.match(frame, mask, searchArea, searchModes, action.similarityPercent / 100f)
+        // ПРОХОД 1: СВЕРХБЫСТРЫЙ ПОИСК В ЛОКАЛЬНОЙ ЗОНЕ ЯКОРЯ (±15% ВОКРУГ ТОЧКИ СЪЕМКИ)
+        if (!action.customSearchArea) {
+            val hotspotArea = buildAnchorHotspotArea(action, frame, mask)
+            val hotspotCandidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, threshold)
+            if (hotspotCandidates.isNotEmpty()) {
+                logDiagnostic("AI_SCANNER", "Умный локальный якорь: цель найдена за 2мс в исходной зоне!")
+                return hotspotCandidates
+            }
+        }
+
+        // ПРОХОД 2: ПОЛНОЭКРАННЫЙ ПОИСК (FALLBACK ЕСЛИ ОБЪЕКТ СМЕСТИЛСЯ)
+        val fullSearchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+        return cascadeMatcher.match(frame, mask, fullSearchArea, searchModes, threshold)
     }
 
     fun matchMultiTemplate(frame: Bitmap, action: ActionConfig): List<MatchCandidate> {
@@ -34,10 +47,24 @@ class TemplateMatcher(private val repository: TemplateRepository) {
             val mask = calibrated?.original ?: repository.loadTemplate(index) ?: continue
             val profile = calibrated?.metadata?.profile ?: TemplateProfile.MEDIUM
 
-            val searchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
             val searchModes = buildProfileAwareModes(action, profile)
+            val threshold = action.similarityPercent / 100f
 
-            val candidates = cascadeMatcher.match(frame, mask, searchArea, searchModes, action.similarityPercent / 100f)
+            // ПРОХОД 1 ПО ЛОКАЛЬНОМУ ЯКОРЮ
+            if (!action.customSearchArea) {
+                val hotspotArea = buildAnchorHotspotArea(action, frame, mask)
+                val hotspotCandidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, threshold)
+                if (hotspotCandidates.isNotEmpty()) {
+                    for (c in hotspotCandidates) {
+                        allCandidates.add(c.copy(templateIndex = index))
+                    }
+                    continue
+                }
+            }
+
+            // ПРОХОД 2 ПО ВСЕМУ ЭКРАНУ
+            val fullSearchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+            val candidates = cascadeMatcher.match(frame, mask, fullSearchArea, searchModes, threshold)
             for (c in candidates) {
                 allCandidates.add(c.copy(templateIndex = index))
             }
@@ -48,6 +75,21 @@ class TemplateMatcher(private val repository: TemplateRepository) {
 
     fun rankCandidates(candidates: List<MatchCandidate>): List<MatchCandidate> {
         return candidates.sortedByDescending { it.score }
+    }
+
+    private fun buildAnchorHotspotArea(action: ActionConfig, frame: Bitmap, mask: Bitmap): Rect {
+        val anchorX = (action.xNorm * frame.width).toInt()
+        val anchorY = (action.yNorm * frame.height).toInt()
+
+        val paddingX = (frame.width * 0.15f).toInt().coerceAtLeast(mask.width * 2)
+        val paddingY = (frame.height * 0.15f).toInt().coerceAtLeast(mask.height * 2)
+
+        return Rect(
+            (anchorX - paddingX).coerceIn(0, frame.width),
+            (anchorY - paddingY).coerceIn(0, frame.height),
+            (anchorX + paddingX).coerceIn(0, frame.width),
+            (anchorY + paddingY).coerceIn(0, frame.height)
+        )
     }
 
     private fun buildProfileAwareModes(action: ActionConfig, profile: TemplateProfile): SearchModes {

@@ -9,6 +9,8 @@ import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
@@ -36,9 +38,30 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        view.bindClickByNames("btnAddTrigger", "btnAddAi", "btnAddSwipe") {
-            logDiagnostic("OVERLAY", "Открытие прицела захвата маски из AddActionDialog.")
-            overlayManager.captureFrameOverlay.show()
+        view.bindClickByNames("btnAddSwipe") {
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.actionsList.add(ActionConfig(type = ActionType.SWIPE, xNorm = 0.3f, yNorm = 0.5f, endXNorm = 0.7f, endYNorm = 0.5f))
+                logDiagnostic("SCRIPT", "Добавлено действие СВАЙП.")
+            }
+            hide()
+        }
+
+        // СОЗДАНИЕ ИИ-ШАГА ИСПОЛЬЗУЕТ УЖЕ СУЩЕСТВУЮЩИЕ ШАБЛОНЫ
+        view.bindClickByNames("btnAddTrigger", "btnAddAi") {
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                val action = ActionConfig(
+                    type = ActionType.AI_SEARCH,
+                    selectedTemplateIndex = 0,
+                    similarityPercent = 85,
+                    loopUntilStopped = true
+                )
+                svc.actionsList.add(action)
+                logDiagnostic("SCRIPT", "Добавлено действие ИИ-Поиска (выбор существующей маски).")
+                overlayManager.editActionDialog.setTargetStepIndex(svc.actionsList.size - 1)
+                overlayManager.editActionDialog.show()
+            }
             hide()
         }
 
