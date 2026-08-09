@@ -120,7 +120,7 @@ abstract class OverlayBase(
             val added = windowManager.safeAddView(view, lp)
             if (added) {
                 isShowing = true
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) принудительно отображен.")
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен.")
             }
         } catch (e: Exception) {
             logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
@@ -150,14 +150,16 @@ abstract class OverlayBase(
         }
         val screenSize = context.getRealScreenSize()
         val v = overlayView ?: rootView
+        
         if (v != null && (v.width == 0 || v.height == 0)) {
             v.measure(
                 View.MeasureSpec.makeMeasureSpec(screenSize.x, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(screenSize.y, View.MeasureSpec.AT_MOST)
             )
         }
+
         val viewW = v?.measuredWidth?.takeIf { it > 0 } ?: v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
-        val viewH = v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
+        val viewH = v?.measuredHeight?.takeIf { it > 0 } ?: v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
 
         val maxX = (screenSize.x - viewW).coerceAtLeast(0)
         val maxY = (screenSize.y - viewH).coerceAtLeast(0)
@@ -170,13 +172,7 @@ abstract class OverlayBase(
         if (width != WindowManager.LayoutParams.MATCH_PARENT) {
             val screenSize = context.getRealScreenSize()
             val v = overlayView ?: rootView
-            if (v != null && (v.width == 0 || v.height == 0)) {
-            v.measure(
-                View.MeasureSpec.makeMeasureSpec(screenSize.x, View.MeasureSpec.AT_MOST),
-                View.MeasureSpec.makeMeasureSpec(screenSize.y, View.MeasureSpec.AT_MOST)
-            )
-        }
-        val viewW = v?.measuredWidth?.takeIf { it > 0 } ?: v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
+            val viewW = v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
             val viewH = v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
 
             val maxX = (screenSize.x - viewW).coerceAtLeast(0)
@@ -213,8 +209,9 @@ abstract class OverlayBase(
 
     fun getBounds(): Rect {
         val lp = layoutParams ?: params ?: return Rect(0, 0, 0, 0)
-        val w = if (width > 0) width else 200
-        val h = if (height > 0) height else 200
+        val v = overlayView ?: rootView
+        val w = v?.width?.takeIf { it > 0 } ?: if (width > 0) width else 200
+        val h = v?.height?.takeIf { it > 0 } ?: if (height > 0) height else 200
         return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
     }
 
@@ -230,7 +227,7 @@ abstract class OverlayBase(
                     startX = event.rawX
                     startY = event.rawY
                     isDragging = false
-                    false
+                    true // ВОЗВРАЩАЕМ TRUE, ЧТОБЫ ОС ПЕРЕДАВАЛА ACTION_MOVE
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - startX).toInt()
@@ -245,12 +242,12 @@ abstract class OverlayBase(
                         startX = event.rawX
                         startY = event.rawY
                     }
-                    isDragging
+                    true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     val wasDragging = isDragging
                     isDragging = false
-                    wasDragging
+                    true
                 }
                 else -> false
             }

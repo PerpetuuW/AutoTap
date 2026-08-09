@@ -2,13 +2,14 @@ package com.example.autotap.ui.overlays
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.PointF
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
+import android.widget.LinearLayout
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
@@ -29,21 +30,12 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override val layoutResId: Int = R.layout.floating_capture_frame
 
-    private val minSizePx = 24.dpToPx(context)
+    private val minSizePx = 20.dpToPx(context)
     private var currentFrameWidthPx = 140.dpToPx(context)
     private var currentFrameHeightPx = 140.dpToPx(context)
 
-    private var currentWidthPx: Int
-        get() = currentFrameWidthPx
-        set(value) { currentFrameWidthPx = value }
-
-    private var currentHeightPx: Int
-        get() = currentFrameHeightPx
-        set(value) { currentFrameHeightPx = value }
-
-    private var captureSquare: FrameLayout? = null
-    private var layoutTopBarView: View? = null
-    private var layoutBottomBarView: View? = null
+    private var captureSquareView: View? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         gravity = Gravity.TOP or Gravity.START
@@ -58,129 +50,130 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(layoutResId, null)
 
-        captureSquare = view.findViewByNames("captureSquare") as? FrameLayout
-        layoutTopBarView = view.findViewByNames("layoutTopBar")
-        layoutBottomBarView = view.findViewByNames("layoutBottomBar")
+        captureSquareView = view.findViewByNames("captureSquare")
 
-        view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
-            logDiagnostic("OVERLAY", "Вырезание маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
+        view.bindClickByNames("btnDoCapture", "btn_do_capture") {
+            logDiagnostic("OVERLAY", "Вырезание маски (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
             context.vibrateFeedback()
 
             val svc = MyAutoClickService.instance
-            val lp = layoutParams ?: params
-            if (svc != null && lp != null) {
-                svc.captureScreenBitmapAsync { fullBitmap ->
-                    if (fullBitmap != null && fullBitmap.width > 20 && fullBitmap.height > 20) {
-                        val safeX = lp.x.coerceIn(0, (fullBitmap.width - 20).coerceAtLeast(0))
-                        val safeY = lp.y.coerceIn(0, (fullBitmap.height - 20).coerceAtLeast(0))
-                        val maxAllowedW = fullBitmap.width - safeX
-                        val maxAllowedH = fullBitmap.height - safeY
-                        val safeW = currentFrameWidthPx.coerceIn(10, maxAllowedW)
-                        val safeH = currentFrameHeightPx.coerceIn(10, maxAllowedH)
+            val square = captureSquareView
+            val root = rootView
 
-                        val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
+            if (svc != null && square != null && root != null) {
+                // Скрываем оверлей перед скриншотом для исключения серой заставки
+                root.visibility = View.INVISIBLE
 
-                        if (safeW > 10 && safeH > 10) {
-                            try {
-                                val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
-                                svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+                mainHandler.postDelayed({
+                    svc.captureScreenBitmapAsync { fullBitmap ->
+                        root.visibility = View.VISIBLE
+                        if (fullBitmap != null && fullBitmap.width > 10 && fullBitmap.height > 10) {
+                            val location = IntArray(2)
+                            square.getLocationOnScreen(location)
+                            val safeX = location[0].coerceIn(0, (fullBitmap.width - 10).coerceAtLeast(0))
+                            val safeY = location[1].coerceIn(0, (fullBitmap.height - 10).coerceAtLeast(0))
 
-                                val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
-                                if (calibrated != null) {
-                                    // ОТОБРАЖЕНИЕ ОБЪЕКТА КАЛИБРОВКИ С ПРЕВЬЮ КАРТИНКИ И ПАРАМЕТРАМИ
-                                    overlayManager.debuggerOverlay.showCalibratedTemplate(
-                                        croppedMask,
-                                        nextTemplateIndex,
-                                        calibrated.metadata.profile.name,
-                                        safeW,
-                                        safeH
-                                    )
+                            val maxAllowedW = fullBitmap.width - safeX
+                            val maxAllowedH = fullBitmap.height - safeY
+                            val safeW = square.width.coerceIn(5, maxAllowedW)
+                            val safeH = square.height.coerceIn(5, maxAllowedH)
+
+                            val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
+
+                            if (safeW > 5 && safeH > 5) {
+                                try {
+                                    val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
+                                    svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+
+                                    val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
+                                    if (calibrated != null) {
+                                        overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                            croppedMask,
+                                            nextTemplateIndex,
+                                            calibrated.metadata.profile.name,
+                                            safeW,
+                                            safeH
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
                                 }
-                            } catch (e: Exception) {
-                                logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
                             }
                         }
                     }
-                }
+                    hide()
+                    overlayManager.showControlPanel()
+                }, 120L)
             }
-            hide()
-            overlayManager.showControlPanel()
         }
 
-        view.bindClickByNames("btnCancelCapture", "btn_cancel_capture", "btn_close") {
+        view.bindClickByNames("btnCancelCapture") {
             hide()
             overlayManager.showControlPanel()
         }
 
         view.bindClickByNames("btnCaptureSearchArea") {
-            logDiagnostic("OVERLAY", "Переход к настройке области поиска.")
             overlayManager.searchAreaOverlay.show()
             hide()
         }
 
-        val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
-        setupDragAndDrop(moveHandle)
+        // Перетаскивание за ЛЮБУЮ ЧАСТЬ кадра
+        val topBar = view.findViewByNames("layoutTopBar") ?: view
+        val bottomBar = view.findViewByNames("layoutBottomBar") ?: view
+        val square = captureSquareView ?: view
 
-        val sq = captureSquare
+        setupDragAndDrop(topBar)
+        setupDragAndDrop(bottomBar)
+        setupDragAndDrop(square)
+
         val resizeHandle = view.findViewByNames("handleResize")
-        if (resizeHandle != null && sq != null) {
-            setupResizeHandler(resizeHandle, sq)
+        if (resizeHandle != null && captureSquareView != null) {
+            setupCornerResizeHandler(resizeHandle, captureSquareView!!)
         }
 
         return view
     }
 
     override fun updatePosition(x: Int, y: Int) {
-        val lp = layoutParams ?: params ?: return
+        super.updatePosition(x, y)
+        applyEdgeSnappingAlignment(x)
+    }
+
+    private fun applyEdgeSnappingAlignment(currentX: Int) {
+        val square = captureSquareView ?: return
         val screenSize = context.getRealScreenSize()
+        val lp = square.layoutParams as? LinearLayout.LayoutParams ?: return
 
-        val maxX = (screenSize.x - currentFrameWidthPx).coerceAtLeast(0)
-        val maxY = (screenSize.y - currentFrameHeightPx).coerceAtLeast(0)
+        val leftThreshold = 60.dpToPx(context)
+        val rightThreshold = screenSize.x - 140.dpToPx(context)
 
-        lp.x = x.coerceIn(0, maxX)
-        lp.y = y.coerceIn(0, maxY)
+        val newGravity = when {
+            currentX <= leftThreshold -> Gravity.START
+            currentX >= rightThreshold -> Gravity.END
+            else -> Gravity.CENTER_HORIZONTAL
+        }
 
-        applySmartPanelFlipping(lp.x, lp.y, screenSize.x, screenSize.y)
-
-        val v = overlayView ?: rootView ?: return
-        try {
-            windowManager.updateViewLayout(v, lp)
-        } catch (e: Exception) {
-            logError("OVERLAY", "Ошибка обновления позиции прицела", e)
+        if (lp.gravity != newGravity) {
+            lp.gravity = newGravity
+            square.layoutParams = lp
+            square.requestLayout()
         }
     }
 
-    private fun applySmartPanelFlipping(currentX: Int, currentY: Int, screenWidth: Int, screenHeight: Int) {
-        val topBar = layoutTopBarView ?: return
-        val bottomBar = layoutBottomBarView ?: return
-
-        val topBarH = 44.dpToPx(context).toFloat()
-        val bottomBarH = 44.dpToPx(context).toFloat()
-
-        if (currentY < 120) {
-            topBar.translationY = currentFrameHeightPx.toFloat() + 8f
-            bottomBar.translationY = currentFrameHeightPx.toFloat() + topBarH + 16f
-        } else if (currentY > screenHeight - (currentFrameHeightPx + 150)) {
-            topBar.translationY = -(topBarH + bottomBarH + 16f)
-            bottomBar.translationY = -bottomBarH - 8f
-        } else {
-            topBar.translationY = -topBarH - 8f
-            bottomBar.translationY = currentFrameHeightPx.toFloat() + 8f
-        }
-    }
-
-    private fun setupResizeHandler(resizeView: View, captureSquare: FrameLayout) {
+    private fun setupCornerResizeHandler(resizeView: View, targetSquare: View) {
         var startW = 0
         var startH = 0
         var touchX = 0f
         var touchY = 0f
 
         resizeView.setOnTouchListener { _, event ->
-            val lp = layoutParams ?: params ?: return@setOnTouchListener false
+            val root = rootView ?: return@setOnTouchListener false
+            val screenSize = context.getRealScreenSize()
+
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = currentFrameWidthPx
-                    startH = currentFrameHeightPx
+                    startW = targetSquare.width
+                    startH = targetSquare.height
                     touchX = event.rawX
                     touchY = event.rawY
                     true
@@ -189,25 +182,23 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     val dx = (event.rawX - touchX).toInt()
                     val dy = (event.rawY - touchY).toInt()
 
-                    currentFrameWidthPx = max(minSizePx, startW + dx)
-                    currentFrameHeightPx = max(minSizePx, startH + dy)
+                    val location = IntArray(2)
+                    root.getLocationOnScreen(location)
+                    val windowX = location[0]
+                    val windowY = location[1]
 
-                    lp.width = currentFrameWidthPx
-                    lp.height = currentFrameHeightPx
-                    width = currentFrameWidthPx
-                    height = currentFrameHeightPx
+                    val maxW = (screenSize.x - windowX - 8.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - windowY - 80.dpToPx(context)).coerceAtLeast(minSizePx)
 
-                    val sqLp = captureSquare.layoutParams
-                    if (sqLp != null) {
-                        sqLp.width = currentFrameWidthPx
-                        sqLp.height = currentFrameHeightPx
-                        captureSquare.layoutParams = sqLp
-                    }
+                    currentFrameWidthPx = (startW + dx).coerceIn(minSizePx, maxW)
+                    currentFrameHeightPx = (startH + dy).coerceIn(minSizePx, maxH)
 
-                    try {
-                        windowManager.updateViewLayout(overlayView ?: rootView, lp)
-                    } catch (e: Exception) {
-                        logError("OVERLAY", "Ошибка ресайза прицела", e)
+                    val lp = targetSquare.layoutParams
+                    if (lp != null) {
+                        lp.width = currentFrameWidthPx
+                        lp.height = currentFrameHeightPx
+                        targetSquare.layoutParams = lp
+                        targetSquare.requestLayout()
                     }
                     true
                 }

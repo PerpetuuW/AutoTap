@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#CC000000"
-    android:padding="16dp">
+    android:padding="12dp">
 
     <LinearLayout
         android:id="@+id/layoutEditCard"
@@ -19,28 +19,16 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="✏️ Настройка шага сценария"
-            android:textColor="@color/text_white"
+            android:textColor="#00F5D4"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="12dp" />
 
-        <!-- 🖼 ПРЕВЬЮ КАРТИНКИ ИИ-МАСКИ -->
-        <ImageView
-            android:id="@+id/ivStepTemplatePreview"
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:layout_gravity="center_horizontal"
-            android:scaleType="fitCenter"
-            android:background="@drawable/border_capture_square"
-            android:padding="4dp"
-            android:layout_marginBottom="12dp"
-            android:visibility="gone" />
-
-        <!-- 📌 Позиция -->
+        <!-- 1. ПОДПИСЬ: Координаты X и Y -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="📌 Координаты и задержка"
+            android:text="📌 Экранные координаты клика (X и Y в пикселях):"
             android:textColor="#58A6FF"
             android:textSize="12sp"
             android:textStyle="bold"
@@ -50,42 +38,74 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
+            android:layout_marginBottom="10dp">
 
-            <EditText
-                android:id="@+id/etEditX"
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="44dp"
-                android:hint="X (px)"
-                android:inputType="number"
-                android:textColor="@color/text_white"
-                android:textColorHint="@color/text_gray"
-                android:background="@drawable/drag_handle_bg"
-                android:padding="8dp" />
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Координата X (px)"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etEditX"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:hint="X (px)"
+                    android:inputType="number"
+                    android:textColor="@color/text_white"
+                    android:textColorHint="@color/text_gray"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
 
             <View
                 android:layout_width="8dp"
                 android:layout_height="match_parent"/>
 
-            <EditText
-                android:id="@+id/etEditY"
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="44dp"
-                android:hint="Y (px)"
-                android:inputType="number"
-                android:textColor="@color/text_white"
-                android:textColorHint="@color/text_gray"
-                android:background="@drawable/drag_handle_bg"
-                android:padding="8dp" />
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Координата Y (px)"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etEditY"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:hint="Y (px)"
+                    android:inputType="number"
+                    android:textColor="@color/text_white"
+                    android:textColorHint="@color/text_gray"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
         </LinearLayout>
+
+        <!-- 2. ПОДПИСЬ: Пауза / Задержка -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⏱ Пауза перед кликом (миллисекунды):"
+            android:textColor="#58A6FF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="2dp"/>
 
         <EditText
             android:id="@+id/etEditDelayMs"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:hint="Задержка перед шагом (мс)"
+            android:layout_height="42dp"
+            android:hint="Задержка (мс)"
             android:inputType="number"
             android:textColor="@color/text_white"
             android:textColorHint="@color/text_gray"
@@ -93,47 +113,88 @@
             android:padding="8dp"
             android:layout_marginBottom="12dp" />
 
-        <!-- 🎯 Настройки ИИ-Маски -->
+        <!-- 3. ВИЗУАЛЬНЫЙ ВЫБОР МАСОК ДЛЯ МУЛЬТИПОИСКА -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🎯 Параметры ИИ-Поиска"
+            android:text="🖼 Выбор ИИ-масок для поиска (отметьте галочками):"
             android:textColor="#58A6FF"
             android:textSize="12sp"
             android:textStyle="bold"
-            android:layout_marginBottom="4dp"/>
+            android:layout_marginBottom="6dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
+            android:layout_marginBottom="6dp">
 
-            <EditText
-                android:id="@+id/etEditTemplateIndex"
+            <Button
+                android:id="@+id/btnSelectAllTemplates"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="44dp"
-                android:hint="Номер маски (#0)"
-                android:inputType="number"
+                android:layout_height="36dp"
+                android:minHeight="0dp"
+                android:text="☑️ Выделить все"
                 android:textColor="@color/text_white"
-                android:textColorHint="@color/text_gray"
-                android:background="@drawable/drag_handle_bg"
-                android:padding="8dp" />
+                android:backgroundTint="@color/accent_blue"
+                android:textSize="11sp"
+                android:padding="0dp" />
 
             <View
                 android:layout_width="8dp"
                 android:layout_height="match_parent"/>
 
-            <EditText
-                android:id="@+id/etEditSimilarity"
+            <Button
+                android:id="@+id/btnUnselectAllTemplates"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="44dp"
-                android:hint="Порог % (85)"
+                android:layout_height="36dp"
+                android:minHeight="0dp"
+                android:text="☐ Снять все"
+                android:textColor="@color/text_white"
+                android:backgroundTint="@color/bg_dark_blue"
+                android:textSize="11sp"
+                android:padding="0dp" />
+        </LinearLayout>
+
+        <!-- Контейнер карточек масок с превью -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="140dp"
+            android:background="@color/bg_dark_blue"
+            android:padding="4dp"
+            android:layout_marginBottom="10dp">
+
+            <LinearLayout
+                android:id="@+id/layoutTemplatesPickerContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Точность совпадения %:"
+                android:textColor="@color/text_gray"
+                android:textSize="11sp"
+                android:layout_marginEnd="8dp"/>
+
+            <EditText
+                android:id="@+id/etEditSimilarity"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:hint="85"
                 android:inputType="number"
                 android:textColor="@color/text_white"
-                android:textColorHint="@color/text_gray"
                 android:background="@drawable/drag_handle_bg"
                 android:padding="8dp" />
         </LinearLayout>
@@ -147,30 +208,20 @@
             android:textSize="12sp"
             android:layout_marginBottom="12dp" />
 
-        <!-- 🔔 Сигналы и Оповещения -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔔 Звуки и Вибро"
-            android:textColor="#58A6FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp"/>
-
         <Button
             android:id="@+id/btnToggleNotificationMode"
             android:layout_width="match_parent"
-            android:layout_height="46dp"
+            android:layout_height="42dp"
             android:text="🔔 Оповещение: [ ВЫКЛ ]"
             android:textColor="@color/text_white"
             android:backgroundTint="#21262D"
             android:textSize="12sp"
-            android:layout_marginBottom="12dp" />
+            android:layout_marginBottom="10dp" />
 
         <EditText
             android:id="@+id/etEditComment"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
+            android:layout_height="42dp"
             android:hint="Заметка к шагу"
             android:inputType="text"
             android:textColor="@color/text_white"
@@ -189,7 +240,7 @@
                 android:id="@+id/btnEditApply"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="48dp"
+                android:layout_height="46dp"
                 android:text="✅ Сохранить"
                 android:textColor="@color/text_white"
                 android:backgroundTint="@color/accent_blue"
@@ -203,7 +254,7 @@
                 android:id="@+id/btnEditDelete"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="48dp"
+                android:layout_height="46dp"
                 android:text="🗑 Удалить"
                 android:textColor="@color/text_white"
                 android:backgroundTint="@color/red_close"
@@ -213,7 +264,7 @@
         <Button
             android:id="@+id/btnEditClose"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
+            android:layout_height="42dp"
             android:text="Отмена"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/bg_dark_blue"
