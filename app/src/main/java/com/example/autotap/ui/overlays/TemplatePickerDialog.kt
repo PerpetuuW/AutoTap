@@ -126,8 +126,7 @@ class TemplatePickerDialog(context: Context, overlayManager: OverlayManager) :
             }
 
             val tv = TextView(context).apply {
-                text = "ИИ-Маска #$index
-Размер: ${file.length() / 1024} КБ"
+                text = "ИИ-Маска #$index | Размер: ${file.length() / 1024} КБ"
                 setTextColor(Color.WHITE)
                 textSize = 13f
             }

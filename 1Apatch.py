@@ -3,7 +3,7 @@
 
 """
 ===============================================================================
-AUTOTAP PRO v53 - ACCURATE CROP, SHIFTING TOOLBARS & TEMPLATE PICKER DIALOG
+AUTOTAP PRO v55 - RAW-STRING KOTLIN ESCAPING & VARIABLE ORDER FIX
 ===============================================================================
 """
 
@@ -33,9 +33,9 @@ def write_file(rel_path, content):
 
 
 # =============================================================================
-# 1. NEW DIALOG LAYOUT: dialog_template_picker.xml
+# 1. TEMPLATE PICKER DIALOG LAYOUT
 # =============================================================================
-TEMPLATE_PICKER_DIALOG_XML = '''<?xml version="1.0" encoding="utf-8"?>
+TEMPLATE_PICKER_DIALOG_XML = r'''<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="320dp"
     android:layout_height="wrap_content"
@@ -133,9 +133,9 @@ TEMPLATE_PICKER_DIALOG_XML = '''<?xml version="1.0" encoding="utf-8"?>
 
 
 # =============================================================================
-# 2. NEW KOTLIN DIALOG CLASS: TemplatePickerDialog.kt
+# 2. TEMPLATE PICKER KOTLIN CLASS
 # =============================================================================
-TEMPLATE_PICKER_DIALOG_KT = '''package com.example.autotap.ui.overlays
+TEMPLATE_PICKER_DIALOG_KT = r'''package com.example.autotap.ui.overlays
 
 import android.content.Context
 import android.graphics.BitmapFactory
@@ -263,7 +263,7 @@ class TemplatePickerDialog(context: Context, overlayManager: OverlayManager) :
             }
 
             val tv = TextView(context).apply {
-                text = "ИИ-Маска #$index\nРазмер: ${file.length() / 1024} КБ"
+                text = "ИИ-Маска #$index | Размер: ${file.length() / 1024} КБ"
                 setTextColor(Color.WHITE)
                 textSize = 13f
             }
@@ -301,178 +301,9 @@ class TemplatePickerDialog(context: Context, overlayManager: OverlayManager) :
 
 
 # =============================================================================
-# 3. EditActionDialog.kt (ВЫЗОВ ОКНА ВЫБОРА МАСОК)
+# 3. EDIT DIALOG LAYOUT
 # =============================================================================
-EDIT_ACTION_DIALOG_KT = '''package com.example.autotap.ui.overlays
-
-import android.content.Context
-import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.view.Gravity
-import android.view.LayoutInflater
-import android.view.View
-import android.view.WindowManager
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.ImageView
-import android.widget.TextView
-import com.example.autotap.MyAutoClickService
-import com.example.autotap.R
-import com.example.autotap.bindClickByNames
-import com.example.autotap.findViewByNames
-import com.example.autotap.getRealScreenSize
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.model.ActionConfig
-import com.example.autotap.model.ActionType
-import com.example.autotap.playNotificationAlert
-import com.example.autotap.ui.base.OverlayBase
-import com.example.autotap.ui.base.OverlayLayer
-import com.example.autotap.ui.base.OverlayManager
-import com.example.autotap.ui.base.OverlayPriority
-import java.io.File
-
-class EditActionDialog(context: Context, overlayManager: OverlayManager) :
-    OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
-
-    override val layoutResId: Int = R.layout.floating_edit_dialog
-
-    private var targetStepIndex: Int = -1
-    private var etEditX: EditText? = null
-    private var etEditY: EditText? = null
-    private var etEditDelayMs: EditText? = null
-    private var etEditSimilarity: EditText? = null
-    private var btnToggleNotificationMode: Button? = null
-    private var cbLoopUntilStopped: CheckBox? = null
-    private var tvSelectedTemplatesSummary: TextView? = null
-
-    init {
-        width = WindowManager.LayoutParams.MATCH_PARENT
-        height = WindowManager.LayoutParams.WRAP_CONTENT
-        gravity = Gravity.CENTER
-        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        dimAmount = 0.6f
-    }
-
-    fun setTargetStepIndex(index: Int) {
-        this.targetStepIndex = index
-    }
-
-    override fun createView(): View {
-        val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(layoutResId, null)
-
-        etEditX = view.findViewByNames("etEditX") as? EditText
-        etEditY = view.findViewByNames("etEditY") as? EditText
-        etEditDelayMs = view.findViewByNames("etEditDelayMs") as? EditText
-        etEditSimilarity = view.findViewByNames("etEditSimilarity") as? EditText
-        btnToggleNotificationMode = view.findViewByNames("btnToggleNotificationMode") as? Button
-        cbLoopUntilStopped = view.findViewByNames("cbLoopUntilStopped") as? CheckBox
-        tvSelectedTemplatesSummary = view.findViewByNames("tvSelectedTemplatesSummary") as? TextView
-
-        val actions = MyAutoClickService.instance?.actionsList ?: emptyList()
-        val stepAction = if (targetStepIndex in actions.indices) {
-            actions[targetStepIndex]
-        } else actions.lastOrNull()
-
-        if (stepAction != null) {
-            bindActionToUI(stepAction)
-        }
-
-        view.bindClickByNames("btnOpenTemplatePicker") {
-            val currentList = if (stepAction?.multiTemplateIndices?.isNotEmpty() == true) {
-                stepAction.multiTemplateIndices
-            } else listOf(stepAction?.selectedTemplateIndex ?: 0)
-
-            overlayManager.templatePickerDialog.showPicker(currentList) { selected ->
-                if (selected.isNotEmpty() && stepAction != null) {
-                    stepAction.multiTemplateIndices = selected
-                    stepAction.selectedTemplateIndex = selected[0]
-                    updateSummaryText(selected)
-                }
-            }
-        }
-
-        view.bindClickByNames("btnToggleNotificationMode") {
-            val action = stepAction ?: return@bindClickByNames
-            action.notificationMode = (action.notificationMode + 1) % 4
-            updateNotificationButtonText(action.notificationMode)
-            context.playNotificationAlert(action.notificationMode)
-        }
-
-        view.bindClickByNames("btnEditApply", "btnSave") {
-            val action = stepAction
-            val screenSize = context.getRealScreenSize()
-            if (action != null) {
-                val inputX = etEditX?.text?.toString()?.toFloatOrNull()
-                val inputY = etEditY?.text?.toString()?.toFloatOrNull()
-
-                if (inputX != null) {
-                    action.xNorm = if (inputX > 1.0f) (inputX / screenSize.x).coerceIn(0f, 1f) else inputX.coerceIn(0f, 1f)
-                }
-                if (inputY != null) {
-                    action.yNorm = if (inputY > 1.0f) (inputY / screenSize.y).coerceIn(0f, 1f) else inputY.coerceIn(0f, 1f)
-                }
-
-                action.delay = etEditDelayMs?.text?.toString()?.toLongOrNull() ?: action.delay
-                action.similarityPercent = etEditSimilarity?.text?.toString()?.toIntOrNull()?.coerceIn(10, 100) ?: action.similarityPercent
-                action.loopUntilStopped = cbLoopUntilStopped?.isChecked ?: action.loopUntilStopped
-            }
-            logDiagnostic("SCRIPT", "Изменения сохранены: X=${action?.xNorm}, Y=${action?.yNorm}")
-            hide()
-        }
-
-        view.bindClickByNames("btnEditDelete", "btnDeleteAction") {
-            val list = MyAutoClickService.instance?.actionsList
-            if (list != null && list.isNotEmpty()) {
-                val removeIdx = if (targetStepIndex in list.indices) targetStepIndex else list.size - 1
-                list.removeAt(removeIdx)
-            }
-            hide()
-        }
-
-        view.bindClickByNames("btnEditClose", "btnCancel") {
-            hide()
-        }
-
-        return view
-    }
-
-    private fun bindActionToUI(action: ActionConfig) {
-        val screenSize = context.getRealScreenSize()
-        etEditX?.setText((action.xNorm * screenSize.x).toInt().toString())
-        etEditY?.setText((action.yNorm * screenSize.y).toInt().toString())
-
-        etEditDelayMs?.setText(action.delay.toString())
-        etEditSimilarity?.setText(action.similarityPercent.toString())
-        cbLoopUntilStopped?.isChecked = action.loopUntilStopped
-        updateNotificationButtonText(action.notificationMode)
-
-        val list = if (action.multiTemplateIndices.isNotEmpty()) action.multiTemplateIndices else listOf(action.selectedTemplateIndex)
-        updateSummaryText(list)
-    }
-
-    private fun updateSummaryText(indices: List<Int>) {
-        tvSelectedTemplatesSummary?.text = "Выбранные маски (${indices.size}): #" + indices.joinToString(", #")
-    }
-
-    private fun updateNotificationButtonText(mode: Int) {
-        val label = when (mode) {
-            1 -> "🔔 Оповещение: [ 📳 ВИБРО ]"
-            2 -> "🔔 Оповещение: [ 🔊 ЗВУК ]"
-            3 -> "🔔 Оповещение: [ 🔊+📳 ЗВУК + ВИБРО ]"
-            else -> "🔔 Оповещение: [ ВЫКЛ ]"
-        }
-        btnToggleNotificationMode?.text = label
-    }
-}'''
-
-
-# =============================================================================
-# 4. floating_edit_dialog.xml (КНОПКА ОТКРЫТИЯ ДИАЛОГА ВЫБОРА)
-# =============================================================================
-EDIT_DIALOG_XML = '''<?xml version="1.0" encoding="utf-8"?>
+EDIT_DIALOG_XML = r'''<?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -718,9 +549,178 @@ EDIT_DIALOG_XML = '''<?xml version="1.0" encoding="utf-8"?>
 
 
 # =============================================================================
-# 5. CaptureFrameOverlay.kt (ЗАХВАТ КООРДИНАТ ДО СКРЫТИЯ И СДВИГ ТУЛБАРОВ)
+# 4. EDIT ACTION DIALOG KOTLIN CLASS
 # =============================================================================
-CAPTURE_FRAME_OVERLAY_KT = '''package com.example.autotap.ui.overlays
+EDIT_ACTION_DIALOG_KT = r'''package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.TextView
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
+import com.example.autotap.playNotificationAlert
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import java.io.File
+
+class EditActionDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
+
+    override val layoutResId: Int = R.layout.floating_edit_dialog
+
+    private var targetStepIndex: Int = -1
+    private var etEditX: EditText? = null
+    private var etEditY: EditText? = null
+    private var etEditDelayMs: EditText? = null
+    private var etEditSimilarity: EditText? = null
+    private var btnToggleNotificationMode: Button? = null
+    private var cbLoopUntilStopped: CheckBox? = null
+    private var tvSelectedTemplatesSummary: TextView? = null
+
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.6f
+    }
+
+    fun setTargetStepIndex(index: Int) {
+        this.targetStepIndex = index
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(layoutResId, null)
+
+        etEditX = view.findViewByNames("etEditX") as? EditText
+        etEditY = view.findViewByNames("etEditY") as? EditText
+        etEditDelayMs = view.findViewByNames("etEditDelayMs") as? EditText
+        etEditSimilarity = view.findViewByNames("etEditSimilarity") as? EditText
+        btnToggleNotificationMode = view.findViewByNames("btnToggleNotificationMode") as? Button
+        cbLoopUntilStopped = view.findViewByNames("cbLoopUntilStopped") as? CheckBox
+        tvSelectedTemplatesSummary = view.findViewByNames("tvSelectedTemplatesSummary") as? TextView
+
+        val actions = MyAutoClickService.instance?.actionsList ?: emptyList()
+        val stepAction = if (targetStepIndex in actions.indices) {
+            actions[targetStepIndex]
+        } else actions.lastOrNull()
+
+        if (stepAction != null) {
+            bindActionToUI(stepAction)
+        }
+
+        view.bindClickByNames("btnOpenTemplatePicker") {
+            val currentList = if (stepAction?.multiTemplateIndices?.isNotEmpty() == true) {
+                stepAction.multiTemplateIndices
+            } else listOf(stepAction?.selectedTemplateIndex ?: 0)
+
+            overlayManager.templatePickerDialog.showPicker(currentList) { selected ->
+                if (selected.isNotEmpty() && stepAction != null) {
+                    stepAction.multiTemplateIndices = selected
+                    stepAction.selectedTemplateIndex = selected[0]
+                    updateSummaryText(selected)
+                }
+            }
+        }
+
+        view.bindClickByNames("btnToggleNotificationMode") {
+            val action = stepAction ?: return@bindClickByNames
+            action.notificationMode = (action.notificationMode + 1) % 4
+            updateNotificationButtonText(action.notificationMode)
+            context.playNotificationAlert(action.notificationMode)
+        }
+
+        view.bindClickByNames("btnEditApply", "btnSave") {
+            val action = stepAction
+            val screenSize = context.getRealScreenSize()
+            if (action != null) {
+                val inputX = etEditX?.text?.toString()?.toFloatOrNull()
+                val inputY = etEditY?.text?.toString()?.toFloatOrNull()
+
+                if (inputX != null) {
+                    action.xNorm = if (inputX > 1.0f) (inputX / screenSize.x).coerceIn(0f, 1f) else inputX.coerceIn(0f, 1f)
+                }
+                if (inputY != null) {
+                    action.yNorm = if (inputY > 1.0f) (inputY / screenSize.y).coerceIn(0f, 1f) else inputY.coerceIn(0f, 1f)
+                }
+
+                action.delay = etEditDelayMs?.text?.toString()?.toLongOrNull() ?: action.delay
+                action.similarityPercent = etEditSimilarity?.text?.toString()?.toIntOrNull()?.coerceIn(10, 100) ?: action.similarityPercent
+                action.loopUntilStopped = cbLoopUntilStopped?.isChecked ?: action.loopUntilStopped
+            }
+            logDiagnostic("SCRIPT", "Изменения сохранены: X=${action?.xNorm}, Y=${action?.yNorm}")
+            hide()
+        }
+
+        view.bindClickByNames("btnEditDelete", "btnDeleteAction") {
+            val list = MyAutoClickService.instance?.actionsList
+            if (list != null && list.isNotEmpty()) {
+                val removeIdx = if (targetStepIndex in list.indices) targetStepIndex else list.size - 1
+                list.removeAt(removeIdx)
+            }
+            hide()
+        }
+
+        view.bindClickByNames("btnEditClose", "btnCancel") {
+            hide()
+        }
+
+        return view
+    }
+
+    private fun bindActionToUI(action: ActionConfig) {
+        val screenSize = context.getRealScreenSize()
+        etEditX?.setText((action.xNorm * screenSize.x).toInt().toString())
+        etEditY?.setText((action.yNorm * screenSize.y).toInt().toString())
+
+        etEditDelayMs?.setText(action.delay.toString())
+        etEditSimilarity?.setText(action.similarityPercent.toString())
+        cbLoopUntilStopped?.isChecked = action.loopUntilStopped
+        updateNotificationButtonText(action.notificationMode)
+
+        val list = if (action.multiTemplateIndices.isNotEmpty()) action.multiTemplateIndices else listOf(action.selectedTemplateIndex)
+        updateSummaryText(list)
+    }
+
+    private fun updateSummaryText(indices: List<Int>) {
+        tvSelectedTemplatesSummary?.text = "Выбранные маски (${indices.size}): #" + indices.joinToString(", #")
+    }
+
+    private fun updateNotificationButtonText(mode: Int) {
+        val label = when (mode) {
+            1 -> "🔔 Оповещение: [ 📳 ВИБРО ]"
+            2 -> "🔔 Оповещение: [ 🔊 ЗВУК ]"
+            3 -> "🔔 Оповещение: [ 🔊+📳 ЗВУК + ВИБРО ]"
+            else -> "🔔 Оповещение: [ ВЫКЛ ]"
+        }
+        btnToggleNotificationMode?.text = label
+    }
+}'''
+
+
+# =============================================================================
+# 5. CAPTURE FRAME OVERLAY KOTLIN CLASS
+# =============================================================================
+CAPTURE_FRAME_OVERLAY_KT = r'''package com.example.autotap.ui.overlays
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -788,7 +788,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             val root = rootView
 
             if (svc != null && square != null && root != null) {
-                // 1. ЗАХВАТЫВАЕМ ТОЧНЫЕ КООРДИНАТЫ РАМКИ ДО СКРЫТИЯ ОКНА
                 val location = IntArray(2)
                 square.getLocationOnScreen(location)
                 val cropX = location[0]
@@ -796,7 +795,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 val cropW = square.width
                 val cropH = square.height
 
-                // 2. Скрываем окно для чистого скриншота
                 root.visibility = View.INVISIBLE
 
                 mainHandler.postDelayed({
@@ -900,7 +898,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             }
         }
 
-        // СДВИГАЕМ САМИ КНОПКИ ВЛЕВО/ВПРАВО У КРАЕВ ЭКРАНА (ПОЛЕ Х ОСТАЕТСЯ НА 0PX КРАЮ!)
         val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
         val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
         val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
@@ -980,9 +977,9 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
 
 # =============================================================================
-# 6. OverlayManager.kt (РЕГИСТРАЦИЯ ТАМПЛЕЙТ-ПИКЕРА)
+# 6. OVERLAY MANAGER KOTLIN CLASS
 # =============================================================================
-OVERLAY_MANAGER_KT = '''package com.example.autotap.ui.base
+OVERLAY_MANAGER_KT = r'''package com.example.autotap.ui.base
 
 import android.content.Context
 import com.example.autotap.logger.logDiagnostic
@@ -1104,9 +1101,9 @@ class OverlayManager(val context: Context) {
 
 
 # =============================================================================
-# 7. floating_control_panel.xml (ИКОНКА РАЗВОРОТА ≡ В БАББЛЕ)
+# 7. CONTROL PANEL LAYOUT
 # =============================================================================
-CONTROL_PANEL_XML = '''<?xml version="1.0" encoding="utf-8"?>
+CONTROL_PANEL_XML = r'''<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/layoutMainCard"
     android:layout_width="wrap_content"
@@ -1283,7 +1280,7 @@ CONTROL_PANEL_XML = '''<?xml version="1.0" encoding="utf-8"?>
 
 def execute_patch():
     print("=================================================================")
-    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v53 (ACCURATE CROP & SHIFTING TOOLBARS)")
+    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v55 (NAMEERROR FIX)")
     print("=================================================================")
 
     tasks = [
@@ -1300,7 +1297,7 @@ def execute_patch():
         write_file(rel_path, content)
 
     print("=================================================================")
-    print("🎉 ВСЕ 5 ПОЖЕЛАНИЙ УСПЕШНО РЕАЛИЗОВАНЫ В КОДЕ!")
+    print("🎉 ВСЕ ФАЙЛЫ УСПЕШНО ОБНОВЛЕНЫ БЕЗ ОШИБОК ИМЕН!")
     print("=================================================================")
 
 if __name__ == "__main__":

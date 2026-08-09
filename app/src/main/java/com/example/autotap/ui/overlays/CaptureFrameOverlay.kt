@@ -66,7 +66,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             val root = rootView
 
             if (svc != null && square != null && root != null) {
-                // 1. ЗАХВАТЫВАЕМ ТОЧНЫЕ КООРДИНАТЫ РАМКИ ДО СКРЫТИЯ ОКНА
                 val location = IntArray(2)
                 square.getLocationOnScreen(location)
                 val cropX = location[0]
@@ -74,7 +73,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 val cropW = square.width
                 val cropH = square.height
 
-                // 2. Скрываем окно для чистого скриншота
                 root.visibility = View.INVISIBLE
 
                 mainHandler.postDelayed({
@@ -178,7 +176,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             }
         }
 
-        // СДВИГАЕМ САМИ КНОПКИ ВЛЕВО/ВПРАВО У КРАЕВ ЭКРАНА (ПОЛЕ Х ОСТАЕТСЯ НА 0PX КРАЮ!)
         val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
         val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
         val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
