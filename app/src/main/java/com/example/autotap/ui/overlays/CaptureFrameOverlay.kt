@@ -35,6 +35,9 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
     private var currentFrameHeightPx = 140.dpToPx(context)
 
     private var captureSquareView: View? = null
+    private var topBarView: View? = null
+    private var bottomBarView: View? = null
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
@@ -51,6 +54,8 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(layoutResId, null)
 
         captureSquareView = view.findViewByNames("captureSquare")
+        topBarView = view.findViewByNames("layoutTopBar")
+        bottomBarView = view.findViewByNames("layoutBottomBar")
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture") {
             logDiagnostic("OVERLAY", "Вырезание маски (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
@@ -61,7 +66,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             val root = rootView
 
             if (svc != null && square != null && root != null) {
-                // Скрываем оверлей перед скриншотом для исключения серой заставки
+                // Скрываем оверлей для чистого скриншота без заставок
                 root.visibility = View.INVISIBLE
 
                 mainHandler.postDelayed({
@@ -118,8 +123,8 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         }
 
         // Перетаскивание за ЛЮБУЮ ЧАСТЬ кадра
-        val topBar = view.findViewByNames("layoutTopBar") ?: view
-        val bottomBar = view.findViewByNames("layoutBottomBar") ?: view
+        val topBar = topBarView ?: view
+        val bottomBar = bottomBarView ?: view
         val square = captureSquareView ?: view
 
         setupDragAndDrop(topBar)
@@ -136,14 +141,24 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun updatePosition(x: Int, y: Int) {
         super.updatePosition(x, y)
-        applyEdgeSnappingAlignment(x)
+        applySmartEdgeFlipping(x, y)
     }
 
-    private fun applyEdgeSnappingAlignment(currentX: Int) {
+    private fun applySmartEdgeFlipping(currentX: Int, currentY: Int) {
         val square = captureSquareView ?: return
+        val topBar = topBarView ?: return
+        val bottomBar = bottomBarView ?: return
         val screenSize = context.getRealScreenSize()
-        val lp = square.layoutParams as? LinearLayout.LayoutParams ?: return
 
+        // 1. АВТО-УКЛОНЕНИЕ ТУЛБАРОВ У ВЕРХНЕГО И НИЖНЕГО КРАЕВ
+        val isNearTop = currentY <= 50.dpToPx(context)
+        val isNearBottom = currentY >= screenSize.y - 180.dpToPx(context)
+
+        topBar.translationY = if (isNearTop) (square.height + 40.dpToPx(context)).toFloat() else 0f
+        bottomBar.translationY = if (isNearBottom) -(square.height + 40.dpToPx(context)).toFloat() else 0f
+
+        // 2. ДИНАМИЧЕСКОЕ ПРИЛИПАНИЕ РАМКИ ВЛЕВО И ВПРАВО
+        val lp = square.layoutParams as? LinearLayout.LayoutParams ?: return
         val leftThreshold = 60.dpToPx(context)
         val rightThreshold = screenSize.x - 140.dpToPx(context)
 

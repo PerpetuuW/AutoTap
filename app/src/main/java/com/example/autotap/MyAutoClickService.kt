@@ -44,7 +44,7 @@ class MyAutoClickService : AccessibilityService() {
 
     var globalClickDurationMs: Long = 120L
     var globalSwipeDurationMs: Long = 300L
-    var globalPreScreenshotDelayMs: Long = 350L
+    var globalPreScreenshotDelayMs: Long = 250L
 
     lateinit var gestureExecutor: GestureExecutor
     lateinit var scriptExecutor: ScriptExecutor
@@ -219,19 +219,18 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun captureScreenBitmapAsync(callback: (Bitmap?) -> Unit) {
-        val delayMs = globalPreScreenshotDelayMs.coerceAtLeast(350L)
+        val delayMs = globalPreScreenshotDelayMs.coerceAtLeast(250L)
         mainHandler.postDelayed({
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
-                    val targetDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
+                    // ИСПОЛЬЗУЕМ БЕЗОПАСНУЮ КОНСТАНТУ Display.DEFAULT_DISPLAY БЕЗ ВЫЗОВА getDisplay()
                     takeScreenshot(
-                        targetDisplayId,
+                        Display.DEFAULT_DISPLAY,
                         mainExecutor,
                         object : TakeScreenshotCallback {
                             override fun onSuccess(screenshotResult: ScreenshotResult) {
                                 try {
                                     val buffer = screenshotResult.hardwareBuffer
-                                    // Авто-подстановка SRGB ColorSpace если система вернула null
                                     val cs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                         screenshotResult.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
                                     } else null
@@ -246,32 +245,23 @@ class MyAutoClickService : AccessibilityService() {
                                     buffer.close()
 
                                     if (finalBitmap != null) {
-                                        logDiagnostic("AI_SCANNER", "Скриншот успешно конвертирован из HardwareBuffer (${finalBitmap.width}x${finalBitmap.height}px)")
+                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят (${finalBitmap.width}x${finalBitmap.height}px)")
                                         callback(finalBitmap)
                                     } else {
-                                        logError("AI_SCANNER", "wrapHardwareBuffer вернул null", null)
                                         callback(generateFallbackFrame())
                                     }
                                 } catch (e: Exception) {
-                                    logError("AI_SCANNER", "Ошибка конвертации HardwareBuffer", e)
+                                    logError("AI_SCANNER", "Ошибка обработки скриншота", e)
                                     callback(generateFallbackFrame())
                                 }
                             }
 
                             override fun onFailure(errorCode: Int) {
                                 logError("AI_SCANNER", "Ошибка takeScreenshot код: $errorCode", null)
-                                if (errorCode == 3) {
-                                    // Авто-повтор при системном дроттлинге скриншотов
-                                    mainHandler.postDelayed({ captureScreenBitmapAsync(callback) }, 350L)
-                                } else {
-                                    callback(generateFallbackFrame())
-                                }
+                                callback(generateFallbackFrame())
                             }
                         }
                     )
-                } catch (e: SecurityException) {
-                    logError("AI_SCANNER", "SecurityException takeScreenshot", e)
-                    callback(generateFallbackFrame())
                 } catch (e: Exception) {
                     logError("AI_SCANNER", "Ошибка вызова takeScreenshot API", e)
                     callback(generateFallbackFrame())
