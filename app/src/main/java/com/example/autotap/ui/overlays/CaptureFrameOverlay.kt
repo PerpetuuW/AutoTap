@@ -66,22 +66,28 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             val root = rootView
 
             if (svc != null && square != null && root != null) {
-                // Скрываем оверлей для чистого скриншота без заставок
+                // 1. ЗАХВАТЫВАЕМ ТОЧНЫЕ КООРДИНАТЫ РАМКИ ДО СКРЫТИЯ ОКНА
+                val location = IntArray(2)
+                square.getLocationOnScreen(location)
+                val cropX = location[0]
+                val cropY = location[1]
+                val cropW = square.width
+                val cropH = square.height
+
+                // 2. Скрываем окно для чистого скриншота
                 root.visibility = View.INVISIBLE
 
                 mainHandler.postDelayed({
                     svc.captureScreenBitmapAsync { fullBitmap ->
                         root.visibility = View.VISIBLE
                         if (fullBitmap != null && fullBitmap.width > 10 && fullBitmap.height > 10) {
-                            val location = IntArray(2)
-                            square.getLocationOnScreen(location)
-                            val safeX = location[0].coerceIn(0, (fullBitmap.width - 10).coerceAtLeast(0))
-                            val safeY = location[1].coerceIn(0, (fullBitmap.height - 10).coerceAtLeast(0))
+                            val safeX = cropX.coerceIn(0, (fullBitmap.width - 10).coerceAtLeast(0))
+                            val safeY = cropY.coerceIn(0, (fullBitmap.height - 10).coerceAtLeast(0))
 
                             val maxAllowedW = fullBitmap.width - safeX
                             val maxAllowedH = fullBitmap.height - safeY
-                            val safeW = square.width.coerceIn(5, maxAllowedW)
-                            val safeH = square.height.coerceIn(5, maxAllowedH)
+                            val safeW = cropW.coerceIn(5, maxAllowedW)
+                            val safeH = cropH.coerceIn(5, maxAllowedH)
 
                             val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
 
@@ -122,7 +128,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        // Перетаскивание за ЛЮБУЮ ЧАСТЬ кадра
         val topBar = topBarView ?: view
         val bottomBar = bottomBarView ?: view
         val square = captureSquareView ?: view
@@ -141,37 +146,65 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun updatePosition(x: Int, y: Int) {
         super.updatePosition(x, y)
-        applySmartEdgeFlipping(x, y)
+        applyShiftingToolbarsRepositioning(x, y)
     }
 
-    private fun applySmartEdgeFlipping(currentX: Int, currentY: Int) {
+    private fun applyShiftingToolbarsRepositioning(currentX: Int, currentY: Int) {
         val square = captureSquareView ?: return
         val topBar = topBarView ?: return
         val bottomBar = bottomBarView ?: return
         val screenSize = context.getRealScreenSize()
 
-        // 1. АВТО-УКЛОНЕНИЕ ТУЛБАРОВ У ВЕРХНЕГО И НИЖНЕГО КРАЕВ
-        val isNearTop = currentY <= 50.dpToPx(context)
-        val isNearBottom = currentY >= screenSize.y - 180.dpToPx(context)
+        val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
+        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
+        val squareHeight = square.height.takeIf { it > 0 } ?: 140.dpToPx(context)
+        val gap = 4.dpToPx(context)
 
-        topBar.translationY = if (isNearTop) (square.height + 40.dpToPx(context)).toFloat() else 0f
-        bottomBar.translationY = if (isNearBottom) -(square.height + 40.dpToPx(context)).toFloat() else 0f
+        val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
+        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
 
-        // 2. ДИНАМИЧЕСКОЕ ПРИЛИПАНИЕ РАМКИ ВЛЕВО И ВПРАВО
-        val lp = square.layoutParams as? LinearLayout.LayoutParams ?: return
-        val leftThreshold = 60.dpToPx(context)
-        val rightThreshold = screenSize.x - 140.dpToPx(context)
-
-        val newGravity = when {
-            currentX <= leftThreshold -> Gravity.START
-            currentX >= rightThreshold -> Gravity.END
-            else -> Gravity.CENTER_HORIZONTAL
+        when {
+            isNearTop -> {
+                topBar.translationY = (squareHeight + gap).toFloat()
+                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
+            }
+            isNearBottom -> {
+                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
+                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
+            }
+            else -> {
+                topBar.translationY = 0f
+                bottomBar.translationY = 0f
+            }
         }
 
-        if (lp.gravity != newGravity) {
-            lp.gravity = newGravity
-            square.layoutParams = lp
-            square.requestLayout()
+        // СДВИГАЕМ САМИ КНОПКИ ВЛЕВО/ВПРАВО У КРАЕВ ЭКРАНА (ПОЛЕ Х ОСТАЕТСЯ НА 0PX КРАЮ!)
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
+        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
+        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
+
+        if (square.width < maxToolbarW) {
+            val extraWidth = maxToolbarW - square.width
+            val isNearLeft = currentX <= extraWidth / 2
+            val isNearRight = currentX >= screenSize.x - square.width - (extraWidth / 2)
+
+            when {
+                isNearLeft -> {
+                    topBar.translationX = (extraWidth / 2f)
+                    bottomBar.translationX = (extraWidth / 2f)
+                }
+                isNearRight -> {
+                    topBar.translationX = -(extraWidth / 2f)
+                    bottomBar.translationX = -(extraWidth / 2f)
+                }
+                else -> {
+                    topBar.translationX = 0f
+                    bottomBar.translationX = 0f
+                }
+            }
+        } else {
+            topBar.translationX = 0f
+            bottomBar.translationX = 0f
         }
     }
 

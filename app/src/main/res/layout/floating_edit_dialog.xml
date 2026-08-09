@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#CC000000"
-    android:padding="12dp">
+    android:padding="16dp">
 
     <LinearLayout
         android:id="@+id/layoutEditCard"
@@ -113,65 +113,35 @@
             android:padding="8dp"
             android:layout_marginBottom="12dp" />
 
-        <!-- 3. ВИЗУАЛЬНЫЙ ВЫБОР МАСОК ДЛЯ МУЛЬТИПОИСКА -->
+        <!-- 3. КНОПКА ОТКРЫТИЯ НОВОГО ДИАЛОГА ВЫБОРА МАСОК С ПРЕВЬЮ -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🖼 Выбор ИИ-масок для поиска (отметьте галочками):"
+            android:text="🎯 Выбор ИИ-масок для мультипоиска:"
             android:textColor="#58A6FF"
             android:textSize="12sp"
             android:textStyle="bold"
-            android:layout_marginBottom="6dp"/>
+            android:layout_marginBottom="4dp"/>
 
-        <LinearLayout
+        <Button
+            android:id="@+id/btnOpenTemplatePicker"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="🖼 Открыть галерею масок с превью"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/accent_blue"
+            android:textStyle="bold"
+            android:textSize="12sp"
+            android:layout_marginBottom="4dp"/>
+
+        <TextView
+            android:id="@+id/tvSelectedTemplatesSummary"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="6dp">
-
-            <Button
-                android:id="@+id/btnSelectAllTemplates"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="36dp"
-                android:minHeight="0dp"
-                android:text="☑️ Выделить все"
-                android:textColor="@color/text_white"
-                android:backgroundTint="@color/accent_blue"
-                android:textSize="11sp"
-                android:padding="0dp" />
-
-            <View
-                android:layout_width="8dp"
-                android:layout_height="match_parent"/>
-
-            <Button
-                android:id="@+id/btnUnselectAllTemplates"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="36dp"
-                android:minHeight="0dp"
-                android:text="☐ Снять все"
-                android:textColor="@color/text_white"
-                android:backgroundTint="@color/bg_dark_blue"
-                android:textSize="11sp"
-                android:padding="0dp" />
-        </LinearLayout>
-
-        <!-- Контейнер карточек масок с превью -->
-        <ScrollView
-            android:layout_width="match_parent"
-            android:layout_height="140dp"
-            android:background="@color/bg_dark_blue"
-            android:padding="4dp"
-            android:layout_marginBottom="10dp">
-
-            <LinearLayout
-                android:id="@+id/layoutTemplatesPickerContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-        </ScrollView>
+            android:text="Выбранные маски: #0"
+            android:textColor="#00F5D4"
+            android:textSize="11sp"
+            android:layout_marginBottom="12dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"

@@ -31,6 +31,8 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     private var currentHeightPx = 200.dpToPx(context)
 
     private var viewSearchAreaFrameView: View? = null
+    private var topBarView: View? = null
+    private var bottomBarView: View? = null
 
     init {
         gravity = Gravity.TOP or Gravity.START
@@ -45,6 +47,8 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(R.layout.floating_search_area_frame, null)
 
         viewSearchAreaFrameView = view.findViewByNames("viewSearchAreaFrame")
+        topBarView = view.findViewByNames("layoutSearchTopBar")
+        bottomBarView = view.findViewByNames("layoutSearchBottomBar")
 
         view.bindClickByNames("btnSaveSearchArea") {
             val svc = MyAutoClickService.instance
@@ -111,27 +115,47 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun updatePosition(x: Int, y: Int) {
         super.updatePosition(x, y)
-        applyEdgeSnappingAlignment(x)
+        applyNonOverlappingToolbarRepositioning(x, y)
     }
 
-    private fun applyEdgeSnappingAlignment(currentX: Int) {
+    private fun applyNonOverlappingToolbarRepositioning(currentX: Int, currentY: Int) {
         val frame = viewSearchAreaFrameView ?: return
+        val topBar = topBarView ?: return
+        val bottomBar = bottomBarView ?: return
         val screenSize = context.getRealScreenSize()
-        val lp = frame.layoutParams as? LinearLayout.LayoutParams ?: return
 
-        val leftThreshold = 60.dpToPx(context)
-        val rightThreshold = screenSize.x - 140.dpToPx(context)
+        val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
+        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
+        val squareHeight = frame.height.takeIf { it > 0 } ?: 200.dpToPx(context)
+        val gap = 4.dpToPx(context)
 
-        val newGravity = when {
-            currentX <= leftThreshold -> Gravity.START
-            currentX >= rightThreshold -> Gravity.END
-            else -> Gravity.CENTER_HORIZONTAL
+        val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
+        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
+
+        when {
+            isNearTop -> {
+                topBar.translationY = (squareHeight + gap).toFloat()
+                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
+            }
+            isNearBottom -> {
+                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
+                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
+            }
+            else -> {
+                topBar.translationY = 0f
+                bottomBar.translationY = 0f
+            }
         }
 
-        if (lp.gravity != newGravity) {
-            lp.gravity = newGravity
-            frame.layoutParams = lp
-            frame.requestLayout()
+        val rightMarginPx = 16.dpToPx(context)
+        val squareRightOnScreen = currentX + frame.width
+        if (squareRightOnScreen >= screenSize.x - rightMarginPx) {
+            val shiftLeft = (squareRightOnScreen - screenSize.x + rightMarginPx).coerceAtLeast(0)
+            topBar.translationX = -shiftLeft.toFloat()
+            bottomBar.translationX = -shiftLeft.toFloat()
+        } else {
+            topBar.translationX = 0f
+            bottomBar.translationX = 0f
         }
     }
 

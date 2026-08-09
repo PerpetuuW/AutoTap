@@ -223,7 +223,6 @@ class MyAutoClickService : AccessibilityService() {
         mainHandler.postDelayed({
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
-                    // ИСПОЛЬЗУЕМ БЕЗОПАСНУЮ КОНСТАНТУ Display.DEFAULT_DISPLAY БЕЗ ВЫЗОВА getDisplay()
                     takeScreenshot(
                         Display.DEFAULT_DISPLAY,
                         mainExecutor,
@@ -262,6 +261,10 @@ class MyAutoClickService : AccessibilityService() {
                             }
                         }
                     )
+                } catch (e: SecurityException) {
+                    logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите службу AutoTap в Спец. возможностях", e)
+                    notifyUserToResetAccessibilitySwitch()
+                    callback(generateFallbackFrame())
                 } catch (e: Exception) {
                     logError("AI_SCANNER", "Ошибка вызова takeScreenshot API", e)
                     callback(generateFallbackFrame())
@@ -270,6 +273,16 @@ class MyAutoClickService : AccessibilityService() {
                 callback(generateFallbackFrame())
             }
         }, delayMs)
+    }
+
+    private fun notifyUserToResetAccessibilitySwitch() {
+        mainHandler.post {
+            Toast.makeText(
+                this,
+                "⚠️ Перезапустите тумблер AutoTap в Спец. возможностях для активации скриншотов!",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     fun captureScreenBitmap(): Bitmap? {

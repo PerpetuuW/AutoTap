@@ -20,6 +20,7 @@ import com.example.autotap.ui.overlays.SaveRecordingDialog
 import com.example.autotap.ui.overlays.ScriptsDialog
 import com.example.autotap.ui.overlays.SearchAreaOverlay
 import com.example.autotap.ui.overlays.TargetMarkerOverlay
+import com.example.autotap.ui.overlays.TemplatePickerDialog
 import com.example.autotap.ui.overlays.TemplatesManagerDialog
 import com.example.autotap.ui.overlays.TutorialOverlay
 
@@ -47,6 +48,7 @@ class OverlayManager(val context: Context) {
     val saveRecordingDialog by lazy { SaveRecordingDialog(context, this) }
     val searchAreaOverlay by lazy { SearchAreaOverlay(context, this) }
     val targetMarkerOverlay by lazy { TargetMarkerOverlay(context, this) }
+    val templatePickerDialog by lazy { TemplatePickerDialog(context, this) }
 
     init {
         register(OverlayLayer.PANEL_LAYER, controlPanel)

@@ -11,7 +11,6 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
@@ -40,8 +39,7 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     private var etEditSimilarity: EditText? = null
     private var btnToggleNotificationMode: Button? = null
     private var cbLoopUntilStopped: CheckBox? = null
-    private var templatesPickerContainer: LinearLayout? = null
-    private val selectedMaskIndices = mutableSetOf<Int>()
+    private var tvSelectedTemplatesSummary: TextView? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -66,7 +64,7 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         etEditSimilarity = view.findViewByNames("etEditSimilarity") as? EditText
         btnToggleNotificationMode = view.findViewByNames("btnToggleNotificationMode") as? Button
         cbLoopUntilStopped = view.findViewByNames("cbLoopUntilStopped") as? CheckBox
-        templatesPickerContainer = view.findViewByNames("layoutTemplatesPickerContainer") as? LinearLayout
+        tvSelectedTemplatesSummary = view.findViewByNames("tvSelectedTemplatesSummary") as? TextView
 
         val actions = MyAutoClickService.instance?.actionsList ?: emptyList()
         val stepAction = if (targetStepIndex in actions.indices) {
@@ -77,12 +75,18 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
             bindActionToUI(stepAction)
         }
 
-        view.bindClickByNames("btnSelectAllTemplates") {
-            selectAllTemplates(true)
-        }
+        view.bindClickByNames("btnOpenTemplatePicker") {
+            val currentList = if (stepAction?.multiTemplateIndices?.isNotEmpty() == true) {
+                stepAction.multiTemplateIndices
+            } else listOf(stepAction?.selectedTemplateIndex ?: 0)
 
-        view.bindClickByNames("btnUnselectAllTemplates") {
-            selectAllTemplates(false)
+            overlayManager.templatePickerDialog.showPicker(currentList) { selected ->
+                if (selected.isNotEmpty() && stepAction != null) {
+                    stepAction.multiTemplateIndices = selected
+                    stepAction.selectedTemplateIndex = selected[0]
+                    updateSummaryText(selected)
+                }
+            }
         }
 
         view.bindClickByNames("btnToggleNotificationMode") {
@@ -108,17 +112,9 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
                 action.delay = etEditDelayMs?.text?.toString()?.toLongOrNull() ?: action.delay
                 action.similarityPercent = etEditSimilarity?.text?.toString()?.toIntOrNull()?.coerceIn(10, 100) ?: action.similarityPercent
-
-                // Сохранение выбранных масок для мультипоиска
-                val sortedList = selectedMaskIndices.sorted()
-                if (sortedList.isNotEmpty()) {
-                    action.multiTemplateIndices = sortedList
-                    action.selectedTemplateIndex = sortedList[0]
-                }
-
                 action.loopUntilStopped = cbLoopUntilStopped?.isChecked ?: action.loopUntilStopped
             }
-            logDiagnostic("SCRIPT", "Изменения сохранены: MultiTemplates=${action?.multiTemplateIndices}")
+            logDiagnostic("SCRIPT", "Изменения сохранены: X=${action?.xNorm}, Y=${action?.yNorm}")
             hide()
         }
 
@@ -148,86 +144,12 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         cbLoopUntilStopped?.isChecked = action.loopUntilStopped
         updateNotificationButtonText(action.notificationMode)
 
-        selectedMaskIndices.clear()
-        if (action.multiTemplateIndices.isNotEmpty()) {
-            selectedMaskIndices.addAll(action.multiTemplateIndices)
-        } else {
-            selectedMaskIndices.add(action.selectedTemplateIndex)
-        }
-
-        populateTemplatesPickerList()
+        val list = if (action.multiTemplateIndices.isNotEmpty()) action.multiTemplateIndices else listOf(action.selectedTemplateIndex)
+        updateSummaryText(list)
     }
 
-    private fun populateTemplatesPickerList() {
-        val container = templatesPickerContainer ?: return
-        container.removeAllViews()
-
-        val templateFiles = context.filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") }
-            ?.sortedBy { file ->
-                file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull() ?: 0
-            } ?: emptyList()
-
-        if (templateFiles.isEmpty()) {
-            val emptyTv = TextView(context).apply {
-                text = "ИИ-масок пока нет. Вырежьте их прицелом 📷"
-                setTextColor(Color.GRAY)
-                setPadding(12, 12, 12, 12)
-            }
-            container.addView(emptyTv)
-            return
-        }
-
-        for (file in templateFiles) {
-            val index = file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull() ?: continue
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(8, 6, 8, 6)
-            }
-
-            val cb = CheckBox(context).apply {
-                isChecked = selectedMaskIndices.contains(index)
-                setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) selectedMaskIndices.add(index) else selectedMaskIndices.remove(index)
-                }
-            }
-
-            val iv = ImageView(context).apply {
-                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                if (bitmap != null) setImageBitmap(bitmap)
-                layoutParams = LinearLayout.LayoutParams(40, 40).apply { setMargins(8, 0, 12, 0) }
-            }
-
-            val tv = TextView(context).apply {
-                text = "Маска #$index (${file.length() / 1024} КБ)"
-                setTextColor(Color.WHITE)
-                textSize = 12f
-            }
-
-            row.addView(cb)
-            row.addView(iv)
-            row.addView(tv)
-            container.addView(row)
-        }
-    }
-
-    private fun selectAllTemplates(select: Boolean) {
-        val container = templatesPickerContainer ?: return
-        selectedMaskIndices.clear()
-
-        val templateFiles = context.filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") } ?: emptyArray()
-        if (select) {
-            for (file in templateFiles) {
-                val index = file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull() ?: continue
-                selectedMaskIndices.add(index)
-            }
-        }
-
-        for (i in 0 until container.childCount) {
-            val row = container.getChildAt(i) as? LinearLayout ?: continue
-            val cb = row.getChildAt(0) as? CheckBox ?: continue
-            cb.isChecked = select
-        }
+    private fun updateSummaryText(indices: List<Int>) {
+        tvSelectedTemplatesSummary?.text = "Выбранные маски (${indices.size}): #" + indices.joinToString(", #")
     }
 
     private fun updateNotificationButtonText(mode: Int) {

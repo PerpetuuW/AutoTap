@@ -29,7 +29,6 @@ class TutorialEngine(private val service: MyAutoClickService) {
             return
         }
 
-        // Показываем подменю, чтобы кнопка успела измериться
         val mainRow = panelView.findViewByNames("layoutMainRow")
         val subMenu = panelView.findViewByNames("layoutSubMenu")
 
@@ -41,7 +40,6 @@ class TutorialEngine(private val service: MyAutoClickService) {
             View.MeasureSpec.makeMeasureSpec(service.resources.displayMetrics.heightPixels, View.MeasureSpec.AT_MOST)
         )
 
-        // Асинхронный замер ПОСЛЕ прохода рендеринга Android UI
         panelView.post {
             val child = panelView.findViewByNames(childIdName)
             val paddingPx = 6.dpToPx(service)
@@ -68,10 +66,12 @@ class TutorialEngine(private val service: MyAutoClickService) {
 
     fun startDefaultTutorial() {
         steps.clear()
+        
+        // Последовательный порядок по кнопкам панели
         steps.add(
             TutorialStepConfig(
                 id = "step_1",
-                title = "Шаг 1 из 8: Обзор Панели",
+                title = "Шаг 1 из 9: Обзор Панели",
                 message = "Добро пожаловать в AutoTap PRO! Это главная панель управления. Нажмите 'Далее'.",
                 autoAdvance = false
             )
@@ -79,56 +79,63 @@ class TutorialEngine(private val service: MyAutoClickService) {
         steps.add(
             TutorialStepConfig(
                 id = "step_2",
-                title = "Шаг 2 из 8: Сворачивание Панели",
-                message = "Нажмите на кнопку ≡, чтобы скрыть панель в 1 строку или в плавающий шарик."
+                title = "Шаг 2 из 9: Кнопка СТАРТ",
+                message = "Кнопка ► запускает и останавливает выполнение шагов кликера."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_3",
-                title = "Шаг 3 из 8: Вырезание ИИ-Масок",
-                message = "Кнопка 📷 откроет прицел. Рамка вырежет точные пиксели с экрана игры."
+                title = "Шаг 3 из 9: Добавление Шагов",
+                message = "Кнопка + добавляет клики, свайпы и шаги ИИ-поиска."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_4",
-                title = "Шаг 4 из 8: Добавление Шагов",
-                message = "Кнопка + добавляет обычный клик, свайп или новый шаг ИИ-поиска."
+                title = "Шаг 4 из 9: Вырезание ИИ-Масок",
+                message = "Кнопка 📷 откроет прицел. Рамка вырежет точные картинки с экрана игры."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_5",
-                title = "Шаг 5 из 8: Включение Джойстика",
-                message = "Кнопка Джойстика откроет стик плавного удержания движения."
+                title = "Шаг 5 из 9: Справка ?",
+                message = "Кнопка ? вызовет это обучение и подробную справку в любой момент."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_6",
-                title = "Шаг 6 из 8: Запись Кликов",
-                message = "Кнопка Записи включает фиксацию ваших тачей по экрану в реальном времени."
+                title = "Шаг 6 из 9: Сворачивание Меню ≡",
+                message = "Кнопка ≡ скрывает панель в 1 строку или открывает нижнее меню."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_7",
-                title = "Шаг 7 из 8: Сохранение Сценариев",
-                message = "Кнопка Папки открывает список сохраненных скриптов и бэкапов."
+                title = "Шаг 7 из 9: Запись Кликов 🔴",
+                message = "Кнопка 🔴 включает живую запись ваших тачей по экрану."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_8",
-                title = "Шаг 8 из 8: Готово!",
-                message = "Поздравляем! Обучение завершено. Нажмите 'Завершить'."
+                title = "Шаг 8 из 9: Включение Джойстика",
+                message = "Кнопка Джойстика откроет стик плавного управления движением."
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_9",
+                title = "Шаг 9 из 9: Сценарии 📁",
+                message = "Кнопка Папки открывает сохранение и бэкап сценариев."
             )
         )
 
         currentStepIndex = 0
         isTutorialActive = true
-        logDiagnostic("TUTORIAL", "Запущен курс обучения с асинхронным подсчетом координат.")
+        logDiagnostic("TUTORIAL", "Запущен последовательный туториал.")
         showCurrentStep()
     }
 
@@ -161,12 +168,14 @@ class TutorialEngine(private val service: MyAutoClickService) {
             val step = steps[currentStepIndex]
 
             val targetButtonId = when (step.id) {
-                "step_2" -> "btnToggleMenu"
-                "step_3" -> "btnCapturePool"
-                "step_4" -> "btnAdd"
-                "step_5" -> "btnToggleJoystick"
-                "step_6" -> "btnRecord"
-                "step_7" -> "btnLoadScript"
+                "step_2" -> "btnPlay"
+                "step_3" -> "btnAdd"
+                "step_4" -> "btnCapturePool"
+                "step_5" -> "btnHelpTutorial"
+                "step_6" -> "btnToggleMenu"
+                "step_7" -> "btnRecord"
+                "step_8" -> "btnToggleJoystick"
+                "step_9" -> "btnLoadScript"
                 else -> ""
             }
 
