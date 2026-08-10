@@ -49,13 +49,13 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         }
 
         view.bindClickByNames("btnCapturePool") {
-            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона по btnCapturePool.")
+            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона.")
             context.vibrateFeedback()
             overlayManager.captureFrameOverlay.show()
         }
 
         view.bindClickByNames("btnAdd") {
-            logDiagnostic("OVERLAY", "Открытие меню добавления действия по btnAdd.")
+            logDiagnostic("OVERLAY", "Открытие меню добавления действия.")
             context.vibrateFeedback()
             overlayManager.addActionDialog.show()
         }
@@ -88,13 +88,18 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
             val svc = MyAutoClickService.instance
             if (svc != null) {
                 svc.actionsList.clear()
+                overlayManager.updateTargetMarkers()
                 context.vibrateFeedback()
-                logDiagnostic("OVERLAY", "Очищены все шаги сценария.")
+                logDiagnostic("OVERLAY", "Очищены все шаги сценария и мишени.")
             }
         }
 
+        view.bindClickByNames("btnHideNumbers") {
+            overlayManager.toggleTargetMarkersVisibility()
+            context.vibrateFeedback()
+        }
+
         view.bindClickByNames("btnLoadScript") {
-            logDiagnostic("OVERLAY", "Кнопка btnLoadScript нажата.")
             overlayManager.scriptsDialog.show()
         }
 
@@ -108,12 +113,10 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         }
 
         view.bindClickByNames("btnHelpTutorial") {
-            logDiagnostic("OVERLAY", "Кнопка btnHelpTutorial нажата.")
             MyAutoClickService.instance?.tutorialEngine?.startDefaultTutorial()
         }
 
         view.bindClickByNames("btnClose") {
-            logDiagnostic("OVERLAY", "Кнопка КРЕСТИК нажата. Скрытие панели управления.")
             MyAutoClickService.instance?.scriptExecutor?.stop()
             hide()
         }
@@ -134,7 +137,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         val targetView = overlayView ?: rootView
 
         when (displayStage) {
-            0 -> { // Full Stage
+            0 -> {
                 singleBubble?.visibility = View.GONE
                 mainRow?.visibility = View.VISIBLE
                 subMenu?.visibility = View.VISIBLE
@@ -145,7 +148,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
-            1 -> { // Single Bubble Stage
+            1 -> {
                 mainRow?.visibility = View.GONE
                 subMenu?.visibility = View.GONE
                 singleBubble?.visibility = View.VISIBLE
@@ -157,7 +160,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
-            2 -> { // Compact Stage
+            2 -> {
                 singleBubble?.visibility = View.GONE
                 mainRow?.visibility = View.VISIBLE
                 subMenu?.visibility = View.GONE
@@ -170,7 +173,6 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
             }
         }
         context.vibrateFeedback()
-        logDiagnostic("OVERLAY", "3-Этапный циклический режим панели: этап $displayStage")
     }
 
     fun updateToggleStates() {

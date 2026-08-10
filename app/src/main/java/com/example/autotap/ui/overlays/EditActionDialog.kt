@@ -75,6 +75,13 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
             bindActionToUI(stepAction)
         }
 
+        // Запуск Живой Калибровки из меню настройки шага
+        view.bindClickByNames("btnCalibrateStepMask") {
+            val maskIndex = stepAction?.selectedTemplateIndex ?: 0
+            hide()
+            overlayManager.debuggerOverlay.startLiveCalibration(maskIndex)
+        }
+
         view.bindClickByNames("btnOpenTemplatePicker") {
             val currentList = if (stepAction?.multiTemplateIndices?.isNotEmpty() == true) {
                 stepAction.multiTemplateIndices

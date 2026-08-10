@@ -26,7 +26,7 @@ class HybridCascadeMatcher {
             searchArea.bottom.coerceIn(0, frame.height)
         )
 
-        val step = if (modes.hybridCascadeMode) {
+        val coarseStep = if (modes.hybridCascadeMode) {
             when (modes.profile) {
                 TemplateProfile.SMALL -> 2
                 TemplateProfile.LARGE -> 6
@@ -42,34 +42,61 @@ class HybridCascadeMatcher {
 
         if (endX <= startX || endY <= startY) return candidates
 
+        // ФАЗА 1: Грубое быстрое сканирование (Порог 50%)
+        val coarseThreshold = (threshold - 0.30f).coerceAtLeast(0.50f)
+        val potentialHits = mutableListOf<PointF>()
+
         var x = startX
         while (x <= endX) {
             var y = startY
             while (y <= endY) {
                 if (frame.isRecycled || mask.isRecycled) break
 
-                val pixelScore = comparePixels(frame, mask, x, y)
-                val contourScore = if (modes.shapeOnlyMode || modes.profile == TemplateProfile.THIN_LINE) {
-                    compareEdges(frame, mask, x, y)
-                } else {
-                    pixelScore
-                }
+                val pixelScore = comparePixelsWithTolerance(frame, mask, x, y)
+                val contourScore = compareEdges(frame, mask, x, y)
+                val coarseScore = (contourScore * 0.4f) + (pixelScore * 0.6f)
 
-                val finalScore = (contourScore * modes.contourWeight) + (pixelScore * modes.pixelWeight)
-
-                if (finalScore >= threshold) {
-                    val pt = PointF(x + mask.width / 2f, y + mask.height / 2f)
-                    val bbox = Rect(x, y, x + mask.width, y + mask.height)
-                    candidates.add(MatchCandidate(pt, finalScore, bbox, 1.0f, 0))
+                if (coarseScore >= coarseThreshold) {
+                    potentialHits.add(PointF(x.toFloat(), y.toFloat()))
                 }
-                y += step
+                y += coarseStep
             }
-            x += step
+            x += coarseStep
         }
-        return candidates
+
+        // ФАЗА 2: Точнейшая доводка с шагом 1 пиксель (1px Fine Refinement)
+        val fineWindow = coarseStep + 2
+        val visitedPoints = HashSet<Long>()
+
+        for (hit in potentialHits) {
+            val fxStart = (hit.x.toInt() - fineWindow).coerceIn(startX, endX)
+            val fxEnd = (hit.x.toInt() + fineWindow).coerceIn(startX, endX)
+            val fyStart = (hit.y.toInt() - fineWindow).coerceIn(startY, endY)
+            val fyEnd = (hit.y.toInt() + fineWindow).coerceIn(startY, endY)
+
+            for (fx in fxStart..fxEnd) {
+                for (fy in fyStart..fyEnd) {
+                    val pointKey = (fx.toLong() shl 32) or (fy.toLong() and 0xFFFFFFFFL)
+                    if (visitedPoints.contains(pointKey)) continue
+                    visitedPoints.add(pointKey)
+
+                    val pixelScore = comparePixelsWithTolerance(frame, mask, fx, fy)
+                    val contourScore = compareEdges(frame, mask, fx, fy)
+                    val exactScore = (contourScore * 0.4f) + (pixelScore * 0.6f)
+
+                    if (exactScore >= threshold) {
+                        val pt = PointF(fx + mask.width / 2f, fy + mask.height / 2f)
+                        val bbox = Rect(fx, fy, fx + mask.width, fy + mask.height)
+                        candidates.add(MatchCandidate(pt, exactScore, bbox, 1.0f, 0))
+                    }
+                }
+            }
+        }
+
+        return candidates.sortedByDescending { it.score }
     }
 
-    private fun comparePixels(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+    private fun comparePixelsWithTolerance(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
         if (frame.isRecycled || mask.isRecycled) return 0f
         var totalDiff = 0L
         var pixelCount = 0
@@ -91,6 +118,12 @@ class HybridCascadeMatcher {
                 val framePixel = frame.getPixel(fx, fy)
                 val maskPixel = mask.getPixel(mx, my)
 
+                val ma = (maskPixel shr 24) and 0xFF
+                if (ma < 30) {
+                    my += stepY
+                    continue
+                }
+
                 val fr = (framePixel shr 16) and 0xFF
                 val fg = (framePixel shr 8) and 0xFF
                 val fb = framePixel and 0xFF
@@ -99,7 +132,11 @@ class HybridCascadeMatcher {
                 val mg = (maskPixel shr 8) and 0xFF
                 val mb = maskPixel and 0xFF
 
-                totalDiff += abs(fr - mr) + abs(fg - mg) + abs(fb - mb)
+                val diffR = abs(fr - mr).let { if (it <= 12) 0 else it - 12 }
+                val diffG = abs(fg - mg).let { if (it <= 12) 0 else it - 12 }
+                val diffB = abs(fb - mb).let { if (it <= 12) 0 else it - 12 }
+
+                totalDiff += diffR + diffG + diffB
                 pixelCount++
 
                 my += stepY
@@ -107,8 +144,8 @@ class HybridCascadeMatcher {
             mx += stepX
         }
 
-        if (pixelCount == 0) return 0f
-        val maxDiff = pixelCount * 255f * 3f
+        if (pixelCount == 0) return 1.0f
+        val maxDiff = pixelCount * 240f * 3f
         val similarity = 1.0f - (totalDiff.toFloat() / maxDiff)
         return similarity.coerceIn(0f, 1f)
     }
@@ -141,7 +178,7 @@ class HybridCascadeMatcher {
             mx += stepX
         }
 
-        if (count == 0) return 0f
+        if (count == 0) return 1.0f
         val maxGradDiff = count * 255f
         return (1.0f - (edgeDiff.toFloat() / maxGradDiff)).coerceIn(0f, 1f)
     }

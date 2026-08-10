@@ -8,14 +8,15 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- Modern Dark Obsidian Palette -->
-    <color name="bg_dark_blue">#0D1117</color>
+    <!-- Premium Dark Obsidian Palette -->
+    <color name="bg_dark_blue">#0B0E14</color>
     <color name="panel_blue">#161B22</color>
-    <color name="accent_blue">#58A6FF</color>
+    <color name="accent_blue">#1F6FEB</color>
     <color name="electric_cyan">#00F5D4</color>
     <color name="text_white">#F0F6FC</color>
     <color name="text_gray">#8B949E</color>
-    <color name="red_close">#F04438</color>
+    <color name="red_close">#2A1215</color>
+    <color name="red_close_text">#FF5B5B</color>
     <color name="card_border">#30363D</color>
     <color name="gold_accent">#FFB703</color>
 </resources>

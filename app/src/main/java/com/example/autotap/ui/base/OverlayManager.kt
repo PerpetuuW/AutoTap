@@ -1,7 +1,11 @@
 package com.example.autotap.ui.base
 
 import android.content.Context
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.dpToPx
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.ActionType
 import com.example.autotap.ui.debug.ScenarioDebuggerOverlay
 import com.example.autotap.ui.overlays.AddActionDialog
 import com.example.autotap.ui.overlays.CandidateSelectionOverlay
@@ -27,6 +31,8 @@ import com.example.autotap.ui.overlays.TutorialOverlay
 class OverlayManager(val context: Context) {
 
     private val overlays = mutableMapOf<OverlayLayer, OverlayBase>()
+    private val activeTargetMarkers = mutableListOf<TargetMarkerOverlay>()
+    var areMarkersVisible = true
 
     val controlPanel by lazy { ControlPanelOverlay(context, this) }
     val debuggerOverlay by lazy { ScenarioDebuggerOverlay(context, this) }
@@ -47,7 +53,6 @@ class OverlayManager(val context: Context) {
     val permissionsDialog by lazy { PermissionsDialog(context, this) }
     val saveRecordingDialog by lazy { SaveRecordingDialog(context, this) }
     val searchAreaOverlay by lazy { SearchAreaOverlay(context, this) }
-    val targetMarkerOverlay by lazy { TargetMarkerOverlay(context, this) }
     val templatePickerDialog by lazy { TemplatePickerDialog(context, this) }
 
     init {
@@ -58,7 +63,6 @@ class OverlayManager(val context: Context) {
         register(OverlayLayer.TUTORIAL_LAYER, tutorialOverlay)
         register(OverlayLayer.DIALOG_LAYER, editActionDialog)
         register(OverlayLayer.SEARCH_AREA_LAYER, searchAreaOverlay)
-        register(OverlayLayer.TARGET_LAYER, targetMarkerOverlay)
         register(OverlayLayer.STOP_BUTTON_LAYER, floatingStopButton)
         logDiagnostic("OVERLAY", "OverlayManager полностью инициализирован.")
     }
@@ -77,6 +81,7 @@ class OverlayManager(val context: Context) {
 
     fun showControlPanel() {
         controlPanel.show()
+        updateTargetMarkers()
     }
 
     fun hideControlPanel() {
@@ -95,12 +100,51 @@ class OverlayManager(val context: Context) {
         clickVisualizer.showClickAt(x, y)
     }
 
+    // ДВИНЖОК ОБНОВЛЕНИЯ ВИЗУАЛЬНЫХ МИШЕНЕЙ НА ЭКРАНЕ
+    fun updateTargetMarkers() {
+        activeTargetMarkers.forEach { it.hide() }
+        activeTargetMarkers.clear()
+
+        if (!areMarkersVisible) return
+
+        val svc = MyAutoClickService.instance ?: return
+        val screenSize = context.getRealScreenSize()
+        val actions = svc.actionsList
+
+        for ((index, action) in actions.withIndex()) {
+            val marker = TargetMarkerOverlay(context, this, index, isEndMarker = false)
+            val px = (action.xNorm * screenSize.x - 22.dpToPx(context)).toInt().coerceIn(0, screenSize.x - 44.dpToPx(context))
+            val py = (action.yNorm * screenSize.y - 22.dpToPx(context)).toInt().coerceIn(0, screenSize.y - 44.dpToPx(context))
+            marker.initialX = px
+            marker.initialY = py
+            marker.show()
+            activeTargetMarkers.add(marker)
+
+            if (action.type == ActionType.SWIPE) {
+                val endMarker = TargetMarkerOverlay(context, this, index, isEndMarker = true)
+                val endPx = (action.endXNorm * screenSize.x - 22.dpToPx(context)).toInt().coerceIn(0, screenSize.x - 44.dpToPx(context))
+                val endPy = (action.endYNorm * screenSize.y - 22.dpToPx(context)).toInt().coerceIn(0, screenSize.y - 44.dpToPx(context))
+                endMarker.initialX = endPx
+                endMarker.initialY = endPy
+                endMarker.show()
+                activeTargetMarkers.add(endMarker)
+            }
+        }
+        logDiagnostic("OVERLAY", "Отображено мишеней на экране: ${activeTargetMarkers.size}")
+    }
+
+    fun toggleTargetMarkersVisibility() {
+        areMarkersVisible = !areMarkersVisible
+        updateTargetMarkers()
+    }
+
     fun setTouchable(layer: OverlayLayer, enabled: Boolean) {
         overlays[layer]?.setTouchable(enabled)
     }
 
     fun hideAll() {
         overlays.values.forEach { it.hide() }
+        activeTargetMarkers.forEach { it.hide() }
     }
 
     fun onConfigurationChanged() {
@@ -114,6 +158,6 @@ class OverlayManager(val context: Context) {
                 } catch (_: Exception) {}
             }
         }
-        logDiagnostic("OVERLAY", "Автоматический пересчет позиций оверлеев при повороте экрана.")
+        updateTargetMarkers()
     }
 }

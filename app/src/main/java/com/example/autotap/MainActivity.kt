@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.text.TextUtils
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -178,7 +177,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
             Toast.makeText(
                 this,
-                "Прокрутите В САМЫЙ НИЗ экрана (или 3 точки вверху) -> нажмите 'Разрешить ограниченные настройки'",
+                "Прокрутите в самый низ (или 3 точки вверху) -> 'Разрешить ограниченные настройки'",
                 Toast.LENGTH_LONG
             ).show()
             logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
@@ -193,23 +192,17 @@ class MainActivity : AppCompatActivity() {
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
 
         (root.findViewByNames("btnAppDetails") as? Button)?.apply {
-            text = "1. Ограниченные настройки (в самом низу)"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            text = "1. Ограниченные настройки (MIUI / Android 13+)"
         }
 
         (root.findViewByNames("btnAccessibility") as? Button)?.apply {
             text = if (isServiceActive) "2. Спец. возможности: [ ВКЛ ]" else "2. Спец. возможности: [ ВЫКЛ ]"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+            setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5B5B"))
         }
 
         (root.findViewByNames("btnOverlay") as? Button)?.apply {
             text = if (hasOverlay) "3. Поверх других приложений: [ ВКЛ ]" else "3. Поверх других приложений: [ ВЫКЛ ]"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+            setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5B5B"))
         }
 
         (root.findViewByNames("btnPermissionsHelp") as? Button)?.apply {

@@ -33,8 +33,11 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(R.layout.dialog_add_action, null)
 
         view.bindClickByNames("btnAddClick") {
-            MyAutoClickService.instance?.addNewActionAtPosition(0.5f, 0.5f)
-            logDiagnostic("SCRIPT", "Добавлено действие КЛИК.")
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.addNewActionAtPosition(0.5f, 0.5f)
+                overlayManager.updateTargetMarkers()
+            }
             hide()
         }
 
@@ -42,12 +45,11 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
             val svc = MyAutoClickService.instance
             if (svc != null) {
                 svc.actionsList.add(ActionConfig(type = ActionType.SWIPE, xNorm = 0.3f, yNorm = 0.5f, endXNorm = 0.7f, endYNorm = 0.5f))
-                logDiagnostic("SCRIPT", "Добавлено действие СВАЙП.")
+                overlayManager.updateTargetMarkers()
             }
             hide()
         }
 
-        // СОЗДАНИЕ ИИ-ШАГА ИСПОЛЬЗУЕТ УЖЕ СУЩЕСТВУЮЩИЕ ШАБЛОНЫ
         view.bindClickByNames("btnAddTrigger", "btnAddAi") {
             val svc = MyAutoClickService.instance
             if (svc != null) {
@@ -58,7 +60,7 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
                     loopUntilStopped = true
                 )
                 svc.actionsList.add(action)
-                logDiagnostic("SCRIPT", "Добавлено действие ИИ-Поиска (выбор существующей маски).")
+                overlayManager.updateTargetMarkers()
                 overlayManager.editActionDialog.setTargetStepIndex(svc.actionsList.size - 1)
                 overlayManager.editActionDialog.show()
             }

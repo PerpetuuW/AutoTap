@@ -13,6 +13,7 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.dpToPx
@@ -28,15 +29,15 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
     private var ivPreview: ImageView? = null
     private var btnConfirm: Button? = null
     private var btnTrash: Button? = null
-    private var lastCapturedIndex = -1
+    private var currentTemplateIndex = -1
 
-    private val autoHideHandler = Handler(Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         width = WindowManager.LayoutParams.WRAP_CONTENT
         height = WindowManager.LayoutParams.WRAP_CONTENT
         gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        initialY = 100.dpToPx(context)
+        initialY = 90.dpToPx(context)
     }
 
     override fun createView(): View {
@@ -47,7 +48,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             setPadding(24, 16, 24, 16)
 
             val tv = TextView(context).apply {
-                text = "🎯 Калибровка ИИ-Маски"
+                text = "Калибровка ИИ-Маски"
                 setTextColor(Color.parseColor("#00F5D4"))
                 textSize = 14f
                 setTypeface(null, Typeface.BOLD)
@@ -63,7 +64,6 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             ivPreview = img
             addView(img, LinearLayout.LayoutParams(120.dpToPx(context), 120.dpToPx(context)))
 
-            // Равновесная строка кнопок без обрезки текста
             val btnRow = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
@@ -71,25 +71,25 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             }
 
             btnConfirm = Button(context).apply {
-                text = "✅ Понятно"
-                textSize = 12f
+                text = "Подтвердить объект"
+                textSize = 11f
                 setTypeface(null, Typeface.BOLD)
                 setBackgroundColor(Color.parseColor("#1F6FEB"))
                 setTextColor(Color.WHITE)
-                setPadding(16, 0, 16, 0)
-                setOnClickListener { hide() }
+                setOnClickListener {
+                    confirmSmartMaskGeneration()
+                }
             }
 
             btnTrash = Button(context).apply {
-                text = "🗑 В корзину"
-                textSize = 12f
+                text = "Удалить в корзину"
+                textSize = 11f
                 setTypeface(null, Typeface.BOLD)
-                setBackgroundColor(Color.parseColor("#F04438"))
-                setTextColor(Color.WHITE)
-                setPadding(16, 0, 16, 0)
+                setBackgroundColor(Color.parseColor("#2A1215"))
+                setTextColor(Color.parseColor("#FF5B5B"))
                 setOnClickListener {
-                    if (lastCapturedIndex >= 0) {
-                        MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(lastCapturedIndex)
+                    if (currentTemplateIndex >= 0) {
+                        MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(currentTemplateIndex)
                     }
                     hide()
                 }
@@ -97,26 +97,49 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
 
             val btnLp = LinearLayout.LayoutParams(0, 44.dpToPx(context), 1.0f)
             btnRow.addView(btnConfirm, btnLp)
-            btnRow.addView(View(context), LinearLayout.LayoutParams(12.dpToPx(context), 1))
+            btnRow.addView(View(context), LinearLayout.LayoutParams(10.dpToPx(context), 1))
             btnRow.addView(btnTrash, btnLp)
-            addView(btnRow, LinearLayout.LayoutParams(260.dpToPx(context), LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(btnRow, LinearLayout.LayoutParams(270.dpToPx(context), LinearLayout.LayoutParams.WRAP_CONTENT))
         }
 
         return root
     }
 
-    fun showCalibratedTemplate(bitmap: Bitmap, templateIndex: Int, profileName: String, widthPx: Int, heightPx: Int) {
-        this.lastCapturedIndex = templateIndex
+    fun startLiveCalibration(templateIndex: Int) {
+        this.currentTemplateIndex = templateIndex
         show()
 
-        ivPreview?.setImageBitmap(bitmap)
-        ivPreview?.visibility = View.VISIBLE
+        val svc = MyAutoClickService.instance ?: return
+        val bitmap = svc.templateRepository.loadTemplate(templateIndex)
 
-        statusText?.text = "🎯 Маска #$templateIndex откалибрована!\nРазмер: ${widthPx}x${heightPx}px | Профиль: $profileName"
-        logAppEvent("AI_SCANNER", "Показан объект калибровки маски #$templateIndex (${widthPx}x${heightPx}px)")
+        if (bitmap != null) {
+            ivPreview?.setImageBitmap(bitmap)
+            ivPreview?.visibility = View.VISIBLE
+            statusText?.text = "Сканирование экрана для Маски #$templateIndex...\nПодтвердите найденный объект"
+        } else {
+            statusText?.text = "Ошибка загрузки маски #$templateIndex"
+        }
+    }
 
-        autoHideHandler.removeCallbacksAndMessages(null)
-        autoHideHandler.postDelayed({ hide() }, 5000L)
+    private fun confirmSmartMaskGeneration() {
+        val svc = MyAutoClickService.instance
+        if (svc != null && currentTemplateIndex >= 0) {
+            val calibrated = svc.templateRepository.recalibrateTemplate(currentTemplateIndex)
+            val profile = calibrated?.metadata?.profile?.name ?: "MEDIUM"
+            val recSim = calibrated?.metadata?.recommendedSimilarity ?: 85
+
+            Toast.makeText(
+                context,
+                "Умная маска #$currentTemplateIndex создана! Профиль: $profile (Порог: $recSim%)",
+                Toast.LENGTH_LONG
+            ).show()
+            logAppEvent("AI_SCANNER", "Умная маска #$currentTemplateIndex сгенерирована.")
+        }
+        hide()
+    }
+
+    fun showCalibratedTemplate(bitmap: Bitmap, templateIndex: Int, profileName: String, widthPx: Int, heightPx: Int) {
+        startLiveCalibration(templateIndex)
     }
 
     fun showCandidates(candidates: List<MatchCandidate>) {
@@ -124,26 +147,29 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             showNoMatch()
             return
         }
+        show()
         val topCandidate = candidates.first()
         val scorePercent = "${(topCandidate.score * 100).toInt()}%"
-        statusText?.text = "🎯 Маска #${topCandidate.templateIndex} найдена: $scorePercent точность"
+        statusText?.text = "Найден объект: точность $scorePercent\nПодтвердите выбор объекта"
+        ivPreview?.visibility = View.GONE
         logAppEvent("AI_SCANNER", "ИИ нашел совпадение: Маска #${topCandidate.templateIndex}, точность: $scorePercent")
 
-        autoHideHandler.removeCallbacksAndMessages(null)
-        autoHideHandler.postDelayed({ hide() }, 2500L)
+        mainHandler.removeCallbacksAndMessages(null)
+        mainHandler.postDelayed({ hide() }, 2500L)
     }
 
     fun showNoMatch() {
-        statusText?.text = "🔍 ИИ Поиск: совпадений не найдено"
+        show()
+        statusText?.text = "ИИ Поиск: совпадений не найдено"
         ivPreview?.visibility = View.GONE
         logAppEvent("AI_SCANNER", "Debugger: NO MATCH")
 
-        autoHideHandler.removeCallbacksAndMessages(null)
-        autoHideHandler.postDelayed({ hide() }, 2000L)
+        mainHandler.removeCallbacksAndMessages(null)
+        mainHandler.postDelayed({ hide() }, 2000L)
     }
 
     override fun hide() {
-        autoHideHandler.removeCallbacksAndMessages(null)
+        mainHandler.removeCallbacksAndMessages(null)
         super.hide()
     }
 }

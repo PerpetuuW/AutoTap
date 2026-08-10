@@ -18,19 +18,47 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         val searchModes = buildProfileAwareModes(action, profile)
         val threshold = action.similarityPercent / 100f
 
-        // ПРОХОД 1: СВЕРХБЫСТРЫЙ ПОИСК В ЛОКАЛЬНОЙ ЗОНЕ ЯКОРЯ (±15% ВОКРУГ ТОЧКИ СЪЕМКИ)
-        if (!action.customSearchArea) {
+        // 1. ПЕРВАЯ ПОПЫТКА НА ЦЕЛЕВОМ ПОРОГЕ (например, 85%)
+        var candidates = if (!action.customSearchArea) {
             val hotspotArea = buildAnchorHotspotArea(action, frame, mask)
             val hotspotCandidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, threshold)
             if (hotspotCandidates.isNotEmpty()) {
-                logDiagnostic("AI_SCANNER", "Умный локальный якорь: цель найдена за 2мс в исходной зоне!")
-                return hotspotCandidates
+                logDiagnostic("AI_SCANNER", "Локальный якорь: цель найдена в исходной зоне!")
+                hotspotCandidates
+            } else {
+                val fullArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+                cascadeMatcher.match(frame, mask, fullArea, searchModes, threshold)
+            }
+        } else {
+            val fullArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+            cascadeMatcher.match(frame, mask, fullArea, searchModes, threshold)
+        }
+
+        // 2. АВТОМАШИНА АДАПТИВНОЙ КАЛИБРОВКИ (Снижение порога если нет совпадений)
+        if (candidates.isEmpty()) {
+            val adaptiveThreshold = (threshold - 0.15f).coerceAtLeast(0.55f)
+            logDiagnostic("AI_SCANNER", "Авто-Калибровка: на пороге ${(threshold * 100).toInt()}% нет совпадений. Адаптивное снижение порога до ${(adaptiveThreshold * 100).toInt()}%...")
+
+            candidates = if (!action.customSearchArea) {
+                val hotspotArea = buildAnchorHotspotArea(action, frame, mask)
+                val softHotspot = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, adaptiveThreshold)
+                if (softHotspot.isNotEmpty()) softHotspot
+                else {
+                    val fullArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+                    cascadeMatcher.match(frame, mask, fullArea, searchModes, adaptiveThreshold)
+                }
+            } else {
+                val fullArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+                cascadeMatcher.match(frame, mask, fullArea, searchModes, adaptiveThreshold)
+            }
+
+            if (candidates.isNotEmpty()) {
+                val best = candidates.maxByOrNull { it.score }
+                logDiagnostic("AI_SCANNER", "🎯 Адаптивная калибровка УСПЕШНА: цель найдена с уверенностью ${((best?.score ?: 0f) * 100).toInt()}%!")
             }
         }
 
-        // ПРОХОД 2: ПОЛНОЭКРАННЫЙ ПОИСК (FALLBACK ЕСЛИ ОБЪЕКТ СМЕСТИЛСЯ)
-        val fullSearchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
-        return cascadeMatcher.match(frame, mask, fullSearchArea, searchModes, threshold)
+        return rankCandidates(candidates)
     }
 
     fun matchMultiTemplate(frame: Bitmap, action: ActionConfig): List<MatchCandidate> {
@@ -50,21 +78,15 @@ class TemplateMatcher(private val repository: TemplateRepository) {
             val searchModes = buildProfileAwareModes(action, profile)
             val threshold = action.similarityPercent / 100f
 
-            // ПРОХОД 1 ПО ЛОКАЛЬНОМУ ЯКОРЮ
-            if (!action.customSearchArea) {
-                val hotspotArea = buildAnchorHotspotArea(action, frame, mask)
-                val hotspotCandidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, threshold)
-                if (hotspotCandidates.isNotEmpty()) {
-                    for (c in hotspotCandidates) {
-                        allCandidates.add(c.copy(templateIndex = index))
-                    }
-                    continue
-                }
+            val hotspotArea = if (!action.customSearchArea) buildAnchorHotspotArea(action, frame, mask) else buildProfileAwareSearchArea(action, frame, profile, mask)
+            var candidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, threshold)
+
+            // Адаптивная калибровка для каждого шаблона
+            if (candidates.isEmpty()) {
+                val adaptiveThreshold = (threshold - 0.15f).coerceAtLeast(0.55f)
+                candidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, adaptiveThreshold)
             }
 
-            // ПРОХОД 2 ПО ВСЕМУ ЭКРАНУ
-            val fullSearchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
-            val candidates = cascadeMatcher.match(frame, mask, fullSearchArea, searchModes, threshold)
             for (c in candidates) {
                 allCandidates.add(c.copy(templateIndex = index))
             }
@@ -81,8 +103,8 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         val anchorX = (action.xNorm * frame.width).toInt()
         val anchorY = (action.yNorm * frame.height).toInt()
 
-        val paddingX = (frame.width * 0.15f).toInt().coerceAtLeast(mask.width * 2)
-        val paddingY = (frame.height * 0.15f).toInt().coerceAtLeast(mask.height * 2)
+        val paddingX = (frame.width * 0.20f).toInt().coerceAtLeast(mask.width * 2)
+        val paddingY = (frame.height * 0.20f).toInt().coerceAtLeast(mask.height * 2)
 
         return Rect(
             (anchorX - paddingX).coerceIn(0, frame.width),
@@ -93,48 +115,16 @@ class TemplateMatcher(private val repository: TemplateRepository) {
     }
 
     private fun buildProfileAwareModes(action: ActionConfig, profile: TemplateProfile): SearchModes {
-        return when (profile) {
-            TemplateProfile.SMALL -> SearchModes(
-                shapeOnlyMode = action.shapeOnlyMode,
-                autoTuningMode = action.autoTuningMode,
-                hybridCascadeMode = action.hybridCascadeMode,
-                multiScaleSearch = action.multiScaleSearch,
-                contourWeight = 0.4f,
-                pixelWeight = 0.6f,
-                scaleBoost = 0.25f,
-                profile = profile
-            )
-            TemplateProfile.LARGE -> SearchModes(
-                shapeOnlyMode = action.shapeOnlyMode,
-                autoTuningMode = action.autoTuningMode,
-                hybridCascadeMode = action.hybridCascadeMode,
-                multiScaleSearch = action.multiScaleSearch,
-                contourWeight = 0.2f,
-                pixelWeight = 0.8f,
-                scaleBoost = -0.25f,
-                profile = profile
-            )
-            TemplateProfile.THIN_LINE -> SearchModes(
-                shapeOnlyMode = true,
-                autoTuningMode = action.autoTuningMode,
-                hybridCascadeMode = action.hybridCascadeMode,
-                multiScaleSearch = false,
-                contourWeight = 0.85f,
-                pixelWeight = 0.15f,
-                scaleBoost = 0.0f,
-                profile = profile
-            )
-            else -> SearchModes(
-                shapeOnlyMode = action.shapeOnlyMode,
-                autoTuningMode = action.autoTuningMode,
-                hybridCascadeMode = action.hybridCascadeMode,
-                multiScaleSearch = action.multiScaleSearch,
-                contourWeight = 0.3f,
-                pixelWeight = 0.7f,
-                scaleBoost = 0.0f,
-                profile = profile
-            )
-        }
+        return SearchModes(
+            shapeOnlyMode = action.shapeOnlyMode,
+            autoTuningMode = true,
+            hybridCascadeMode = action.hybridCascadeMode,
+            multiScaleSearch = action.multiScaleSearch,
+            contourWeight = 0.3f,
+            pixelWeight = 0.7f,
+            scaleBoost = 0.0f,
+            profile = profile
+        )
     }
 
     private fun buildProfileAwareSearchArea(action: ActionConfig, frame: Bitmap, profile: TemplateProfile, mask: Bitmap): Rect {
