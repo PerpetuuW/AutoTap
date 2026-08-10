@@ -107,7 +107,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         return root
     }
 
-    // Пробный ИИ-поиск объекта на экране с радарным маяком
+    // ВЫПОЛНЕНИЕ ПРОБНОГО ПОИСКА В ОТДЕЛЬНОМ ФОНОВОМ ПОТОКЕ (БЕЗ ЗАВИСАНИЯ UI)
     fun startLiveCalibration(templateIndex: Int, directBitmap: Bitmap? = null) {
         this.currentTemplateIndex = templateIndex
         show()
@@ -120,25 +120,28 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             ivPreview?.visibility = View.VISIBLE
             statusText?.text = "Сканирование экрана для Маски #$templateIndex...\nПоиск объекта на экране..."
 
-            // Запуск пробного поиска и включение неонового радарного маяка
             svc.captureScreenBitmapAsync { frameBmp ->
                 if (frameBmp != null) {
-                    val testAction = ActionConfig(selectedTemplateIndex = templateIndex, similarityPercent = 70)
-                    val scanResult = svc.aiScannerEngine.scan({ frameBmp }, testAction)
-                    val candidates = scanResult.candidates
+                    // Тяжелый ИИ-поиск перенесен в фоновый Thread!
+                    Thread {
+                        val testAction = ActionConfig(selectedTemplateIndex = templateIndex, similarityPercent = 70)
+                        val scanResult = svc.aiScannerEngine.scan({ frameBmp }, testAction)
+                        val candidates = scanResult.candidates
 
-                    if (candidates.isNotEmpty()) {
-                        val top = candidates.first()
-                        val percent = "${(top.score * 100).toInt()}%"
-                        statusText?.text = "🎯 Объект найден на экране ($percent)!\\nПроверьте радарный маяк на экране и подтвердите."
-                        
-                        // Показываем радарный маяк над найденной целью
-                        overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) { confirmedCandidate ->
-                            confirmSmartMaskGeneration()
+                        // Возвращаемся на UI-поток для обновления интерфейса
+                        mainHandler.post {
+                            if (candidates.isNotEmpty()) {
+                                val top = candidates.first()
+                                val percent = "${(top.score * 100).toInt()}%"
+                                statusText?.text = "🎯 Объект найден ($percent)!\nПроверьте маяк и подтвердите маску."
+                                overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) {
+                                    confirmSmartMaskGeneration()
+                                }
+                            } else {
+                                statusText?.text = "Пробный поиск: объект пока не найден.\nПодтвердите создание маски #$templateIndex."
+                            }
                         }
-                    } else {
-                        statusText?.text = "🔍 Пробный поиск: объект пока не найден.\\nПодтвердите создание маски #$templateIndex."
-                    }
+                    }.start()
                 }
             }
         } else {
@@ -158,7 +161,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
                 "Умная маска #$currentTemplateIndex создана! Профиль: $profile (Порог: $recSim%)",
                 Toast.LENGTH_LONG
             ).show()
-            logAppEvent("AI_SCANNER", "Умная маска #$currentTemplateIndex сгенерирована после подтверждения.")
+            logAppEvent("AI_SCANNER", "Умная маска #$currentTemplateIndex сгенерирована.")
         }
         overlayManager.candidateOverlay.hide()
         hide()

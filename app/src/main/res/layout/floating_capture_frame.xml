@@ -8,7 +8,7 @@
     android:padding="0dp"
     android:elevation="18dp">
 
-    <!-- ВЕРХНИЙ ТУЛБАР -->
+    <!-- ЕДИНЫЙ ОБЪЕДИНЕННЫЙ ТУЛБАР (Двигать + Камера + Зона + Закрыть в 1 строку) -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
@@ -20,10 +20,23 @@
         android:paddingEnd="6dp"
         android:layout_marginBottom="2dp">
 
+        <TextView
+            android:id="@+id/handleMoveFrame"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="⁝⁝ ДВИГАТЬ"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="4dp"
+            android:paddingEnd="6dp"
+            android:layout_marginEnd="4dp" />
+
         <ImageButton
             android:id="@+id/btnDoCapture"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:src="@drawable/ic_camera"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_primary"
@@ -33,8 +46,8 @@
 
         <Button
             android:id="@+id/btnCaptureSearchArea"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:text="Зона"
@@ -46,8 +59,8 @@
 
         <ImageButton
             android:id="@+id/btnCancelCapture"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
@@ -55,43 +68,20 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- 100% ЧИСТЫЙ ВНУТРЕННИЙ КАДР БЕЗ ИКОНОК ВНУТРИ -->
+    <!-- 100% ЧИСТЫЙ КАДР С ВЫНЕСЕННОЙ РУЧКОЙ РЕСАЙЗА -->
     <FrameLayout
         android:id="@+id/captureSquare"
         android:layout_width="160dp"
         android:layout_height="160dp"
-        android:background="@drawable/border_capture_square" />
+        android:background="@drawable/border_capture_square">
 
-    <!-- НИЖНЯЯ ПЛАШКА С ВЫНЕСЕННЫМ ЗНАЧКОМ РЕСАЙЗА -->
-    <LinearLayout
-        android:id="@+id/layoutBottomBar"
-        android:layout_width="wrap_content"
-        android:layout_height="28dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/drag_handle_bg"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:layout_marginTop="2dp">
-
-        <TextView
-            android:id="@+id/handleMoveFrame"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="ДВИГАТЬ"
-            android:textColor="#FFB703"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:layout_marginEnd="8dp" />
-
-        <!-- Значок изменения размера вынесен ЗА ПРЕДЕЛЫ поля! -->
         <ImageView
             android:id="@+id/handleResize"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="bottom|end"
             android:src="@drawable/handle_manipulator_bg"
-            android:padding="2dp"
+            android:padding="3dp"
             android:contentDescription="Resize Grip" />
-    </LinearLayout>
+    </FrameLayout>
 </LinearLayout>
