@@ -1,5 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-    <solid android:color="#0D1117" />
-    <stroke android:width="3dp" android:color="#00F5D4" />
-</shape>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Внешнее кольцо регулятора -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#0D1117" />
+            <stroke android:width="2.5dp" android:color="#00F5D4" />
+        </shape>
+    </item>
+    <!-- Визуальные двусторонние диагональные стрелочки ⤢ -->
+    <item
+        android:top="6dp"
+        android:bottom="6dp"
+        android:left="6dp"
+        android:right="6dp">
+        <vector
+            android:width="24dp"
+            android:height="24dp"
+            android:viewportWidth="24"
+            android:viewportHeight="24">
+            <path
+                android:fillColor="#00F5D4"
+                android:pathData="M21,11V3h-10l3.29,3.29-10,10L1,13v8h8l-3.29,-3.29 10,-10L17.71,11z"/>
+        </vector>
+    </item>
+</layer-list>

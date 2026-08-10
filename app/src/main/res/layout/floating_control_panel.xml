@@ -8,15 +8,15 @@
     android:padding="8dp"
     android:elevation="16dp">
 
-    <!-- КНОПКА-БАББЛ СО ЗНАЧКОМ РАЗВОРОТА ≡ -->
+    <!-- 💥 КНОПКА СВОРАЧИВАНИЯ/РАСКРЫТИЯ В ЕДИНОМ СТИЛЕ ≡ (БЕЗ ЛИШНИХ КРУЖКОВ) -->
     <ImageButton
         android:id="@+id/btnSingleBubble"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
         android:src="@drawable/ic_menu"
         android:scaleType="centerInside"
-        android:background="@drawable/handle_manipulator_bg"
-        android:padding="12dp"
+        android:background="@drawable/btn_premium_secondary"
+        android:padding="10dp"
         android:visibility="gone"
         android:contentDescription="Expand Panel" />
 

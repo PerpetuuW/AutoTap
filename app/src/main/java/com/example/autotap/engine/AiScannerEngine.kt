@@ -19,18 +19,39 @@ class AiScannerEngine(private val service: MyAutoClickService) {
 
     fun scanAsync(frameProvider: () -> Bitmap?, action: ActionConfig, callback: (PointF?) -> Unit) {
         if (isScanning) {
-            // КРИТИЧЕСКИЙ ФИКС: При занятом сканере НЕ вызываем callback(null),
-            // чтобы исключить рекурсивный зацикленный спам таймера!
+            logDiagnostic("AI_SCANNER", "[WARNING] Пропуск вызова scanAsync: предыдущий процесс сканирования еще активен (isScanning=true).")
+            callback(null)
             return
         }
         isScanning = true
         Thread {
             try {
+                val startTime = System.currentTimeMillis()
                 val result = scan(frameProvider, action)
+                val duration = System.currentTimeMillis() - startTime
+
                 lastScanResult = result
+
+                val candidates = result.candidates
+                val reqPercent = action.similarityPercent
+
+                if (candidates.isNotEmpty()) {
+                    val best = candidates.first()
+                    val bestPercent = (best.score * 100).toInt()
+                    logDiagnostic(
+                        "AI_SCANNER",
+                        "🎯 Поиск Маски #${action.selectedTemplateIndex} ($duration мс): УСПЕХ! Найдено целей: ${candidates.size}. Высшая точность: $bestPercent% (Требуется: $reqPercent%) в точке (${best.point.x.toInt()}, ${best.point.y.toInt()})"
+                    )
+                } else {
+                    logDiagnostic(
+                        "AI_SCANNER",
+                        "🔍 Поиск Маски #${action.selectedTemplateIndex} ($duration мс): Совпадений выше порога $reqPercent% НЕ найдено."
+                    )
+                }
+
                 callback(result.point)
             } catch (e: Exception) {
-                logError("AI_SCANNER", "Ошибка в scanAsync", e)
+                logError("AI_SCANNER", "Исключение во время работы scanAsync()", e)
                 callback(null)
             } finally {
                 isScanning = false
@@ -41,23 +62,23 @@ class AiScannerEngine(private val service: MyAutoClickService) {
     fun scan(frameProvider: () -> Bitmap?, action: ActionConfig): AiScanResult {
         val frame = frameProvider()
         if (frame == null) {
-            logDiagnostic("AI_SCANNER", "Снимок экрана недоступен.")
+            logError("AI_SCANNER", "Снимок экрана равен NULL. Сканирование отменено.", null)
             return AiScanResult(null, emptyList())
         }
 
         val candidates = if (action.multiTemplateIndices.isNotEmpty()) {
+            logDiagnostic("AI_SCANNER", "Запуск мульти-поиска по маскам: ${action.multiTemplateIndices}")
             templateMatcher.matchMultiTemplate(frame, action)
         } else {
+            logDiagnostic("AI_SCANNER", "Запуск одиночного поиска для Маски #${action.selectedTemplateIndex}")
             templateMatcher.matchSingleTemplate(frame, action)
         }
 
         if (candidates.isEmpty()) {
-            logDiagnostic("AI_SCANNER", "Совпадений по маскам не найдено.")
             return AiScanResult(null, emptyList())
         }
 
         val bestCandidate = candidates.first()
-        logDiagnostic("AI_SCANNER", "ИИ нашел целей: ${candidates.size}. Высший шаблон #${bestCandidate.templateIndex} (score=${"%.2f".format(bestCandidate.score)}) в $bestCandidate")
         return AiScanResult(bestCandidate.point, candidates)
     }
 }

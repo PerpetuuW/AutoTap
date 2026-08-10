@@ -11,16 +11,16 @@ object StructuredLogger {
     private var logFile: File? = null
 
     fun init(context: Context) {
-        // ГАРАНТИРОВАННЫЙ ВНУТРЕННИЙ ПУТЬ ДЛЯ FILE PROVIDER
         val dir = context.filesDir
         logFile = File(dir, "error_log.txt")
         rotateLogIfNeeded()
+        logDiagnostic("SYSTEM", "StructuredLogger успешно инициализирован. Путь: " + (logFile?.absolutePath ?: "null"))
     }
 
     @Synchronized
     fun logDiagnostic(category: String, message: String) {
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-        val formatted = "[$timestamp] [$category] $message\n"
+        val formatted = "[" + timestamp + "] [" + category + "] " + message + "\n"
         println(formatted)
         appendToLogFile(formatted)
     }
@@ -28,8 +28,8 @@ object StructuredLogger {
     @Synchronized
     fun logError(category: String, message: String, throwable: Throwable? = null) {
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-        val errText = throwable?.stackTraceToString() ?: ""
-        val formatted = "[$timestamp] [ERROR] [$category] $message $errText\n"
+        val errText = if (throwable != null) "\nСтек ошибки: " + throwable.stackTraceToString() else ""
+        val formatted = "[" + timestamp + "] [ERROR] [" + category + "] " + message + errText + "\n"
         System.err.println(formatted)
         appendToLogFile(formatted)
     }

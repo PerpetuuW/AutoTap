@@ -1046,12 +1046,18 @@ class MyAutoClickService : AccessibilityService() {
                                         Bitmap.wrapHardwareBuffer(buffer, ColorSpace.get(ColorSpace.Named.SRGB))
                                     }
 
-                                    val finalBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, true)
+                                    val rawBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, true)
                                     buffer.close()
 
-                                    if (finalBitmap != null) {
-                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят (${finalBitmap.width}x${finalBitmap.height}px)")
-                                        callback(finalBitmap)
+                                    if (rawBitmap != null) {
+                                        // Принудительная канонизация пикселей в ARGB_8888
+                                        val canonicalBitmap = Bitmap.createBitmap(rawBitmap.width, rawBitmap.height, Bitmap.Config.ARGB_8888)
+                                        val canvas = Canvas(canonicalBitmap)
+                                        canvas.drawBitmap(rawBitmap, 0f, 0f, null)
+                                        rawBitmap.recycle()
+
+                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят и канонизирован (${canonicalBitmap.width}x${canonicalBitmap.height}px)")
+                                        callback(canonicalBitmap)
                                     } else {
                                         callback(generateFallbackFrame())
                                     }
@@ -1516,15 +1522,34 @@ class AiScannerEngine(private val service: MyAutoClickService) {
 
     fun scanAsync(frameProvider: () -> Bitmap?, action: ActionConfig, callback: (PointF?) -> Unit) {
         if (isScanning) {
-            // КРИТИЧЕСКИЙ ФИКС: При занятом сканере НЕ вызываем callback(null),
-            // чтобы исключить рекурсивный зацикленный спам таймера!
             return
         }
         isScanning = true
         Thread {
             try {
+                val startTime = System.currentTimeMillis()
                 val result = scan(frameProvider, action)
+                val duration = System.currentTimeMillis() - startTime
+
                 lastScanResult = result
+
+                val candidates = result.candidates
+                val reqPercent = action.similarityPercent
+
+                if (candidates.isNotEmpty()) {
+                    val best = candidates.first()
+                    val bestPercent = (best.score * 100).toInt()
+                    logDiagnostic(
+                        "AI_SCANNER",
+                        "🎯 Поиск Маски #${action.selectedTemplateIndex} ($duration мс): УСПЕХ! Найдено целей: ${candidates.size}. Высшая точность: $bestPercent% (Требуется: $reqPercent%) в точка (${best.point.x.toInt()}, ${best.point.y.toInt()})"
+                    )
+                } else {
+                    logDiagnostic(
+                        "AI_SCANNER",
+                        "🔍 Поиск Маски #${action.selectedTemplateIndex} ($duration мс): Совпадений выше $reqPercent% не найдено на текущем кадре."
+                    )
+                }
+
                 callback(result.point)
             } catch (e: Exception) {
                 logError("AI_SCANNER", "Ошибка в scanAsync", e)
@@ -1549,12 +1574,10 @@ class AiScannerEngine(private val service: MyAutoClickService) {
         }
 
         if (candidates.isEmpty()) {
-            logDiagnostic("AI_SCANNER", "Совпадений по маскам не найдено.")
             return AiScanResult(null, emptyList())
         }
 
         val bestCandidate = candidates.first()
-        logDiagnostic("AI_SCANNER", "ИИ нашел целей: ${candidates.size}. Высший шаблон #${bestCandidate.templateIndex} (score=${"%.2f".format(bestCandidate.score)}) в $bestCandidate")
         return AiScanResult(bestCandidate.point, candidates)
     }
 }
@@ -1596,12 +1619,7 @@ class GestureExecutor(private val service: MyAutoClickService) {
     private var lastJoystickY = 0f
 
     fun performClick(x: Float, y: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        if (service.isOverlayArea(x, y)) {
-            logDiagnostic("GESTURE", "Пропуск клика в ($x, $y): точка попадает в область активного оверлея.")
-            callback?.invoke(false)
-            return
-        }
-
+        // КРИТИЧЕСКИЙ ФИКС: Клики сценария не блокируются маркерами мишеней
         try {
             val screenSize = service.getRealScreenSize()
             val safeX = x.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
@@ -1618,7 +1636,6 @@ class GestureExecutor(private val service: MyAutoClickService) {
     }
 
     fun performClickSync(x: Float, y: Float, durationMs: Long): Boolean {
-        if (service.isOverlayArea(x, y)) return false
         performClick(x, y, durationMs, null)
         return true
     }
@@ -1653,9 +1670,6 @@ class GestureExecutor(private val service: MyAutoClickService) {
         }
     }
 
-    // =========================================================================
-    // НЕПРЕРЫВНЫЙ ПОТОКОВЫЙ ДЖОЙСТИК (continueStroke & willContinue = true)
-    // =========================================================================
     fun startContinuousJoystick(centerX: Float, centerY: Float) {
         val screenSize = service.getRealScreenSize()
         val safeX = centerX.coerceIn(0f, (screenSize.x - 1).toFloat())
@@ -1708,7 +1722,6 @@ class GestureExecutor(private val service: MyAutoClickService) {
                 lineTo(lastJoystickX, lastJoystickY)
             }
             try {
-                // willContinue = false ОТПРАВЛЯЕТ ФИНАЛЬНЫЙ ACTION_UP В ИГРУ
                 val stroke = activeJoystickStroke!!.continueStroke(path, 0L, 50L, false)
                 service.dispatchGestureTask(stroke, "StopJoystick", null)
             } catch (_: Exception) {}
@@ -2070,6 +2083,12 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             val candidates = scanResult?.candidates ?: emptyList()
 
             if (candidates.isNotEmpty()) {
+                // Отображение неонового радарного кольца над найденными целями в рантайме!
+                mainHandler.post {
+                    service.overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) {
+                        // Опциональный тап
+                    }
+                }
                 clickCandidateSequence(candidates, 0, action)
             } else {
                 if (action.loopUntilStopped && isRunning) {
@@ -2493,6 +2512,44 @@ class HybridCascadeMatcher {
         if (frame.isRecycled || mask.isRecycled) return candidates
         if (mask.width < 2 || mask.height < 2 || frame.width < 2 || frame.height < 2) return candidates
 
+        val scales = if (modes.multiScaleSearch) {
+            floatArrayOf(1.0f, 0.85f, 1.15f, 0.7f, 1.3f)
+        } else {
+            floatArrayOf(1.0f)
+        }
+
+        for (scale in scales) {
+            val scaledMask = if (scale != 1.0f) {
+                val targetW = (mask.width * scale).toInt().coerceAtLeast(4)
+                val targetH = (mask.height * scale).toInt().coerceAtLeast(4)
+                if (targetW < frame.width && targetH < frame.height) {
+                    Bitmap.createScaledBitmap(mask, targetW, targetH, true)
+                } else null
+            } else mask
+
+            if (scaledMask == null || scaledMask.isRecycled) continue
+
+            val matchResults = matchInternal(frame, scaledMask, searchArea, modes, threshold, scale)
+            candidates.addAll(matchResults)
+
+            if (scaledMask != mask) {
+                scaledMask.recycle()
+            }
+        }
+
+        return candidates.sortedByDescending { it.score }
+    }
+
+    private fun matchInternal(
+        frame: Bitmap,
+        mask: Bitmap,
+        searchArea: Rect,
+        modes: SearchModes,
+        threshold: Float,
+        scale: Float
+    ): List<MatchCandidate> {
+        val candidates = mutableListOf<MatchCandidate>()
+
         val safeSearchArea = Rect(
             searchArea.left.coerceIn(0, frame.width),
             searchArea.top.coerceIn(0, frame.height),
@@ -2516,8 +2573,7 @@ class HybridCascadeMatcher {
 
         if (endX <= startX || endY <= startY) return candidates
 
-        // ФАЗА 1: Грубое быстрое сканирование (Порог 50%)
-        val coarseThreshold = (threshold - 0.30f).coerceAtLeast(0.50f)
+        val coarseThreshold = (threshold - 0.30f).coerceAtLeast(0.45f)
         val potentialHits = mutableListOf<PointF>()
 
         var x = startX
@@ -2538,7 +2594,6 @@ class HybridCascadeMatcher {
             x += coarseStep
         }
 
-        // ФАЗА 2: Точнейшая доводка с шагом 1 пиксель (1px Fine Refinement)
         val fineWindow = coarseStep + 2
         val visitedPoints = HashSet<Long>()
 
@@ -2561,13 +2616,13 @@ class HybridCascadeMatcher {
                     if (exactScore >= threshold) {
                         val pt = PointF(fx + mask.width / 2f, fy + mask.height / 2f)
                         val bbox = Rect(fx, fy, fx + mask.width, fy + mask.height)
-                        candidates.add(MatchCandidate(pt, exactScore, bbox, 1.0f, 0))
+                        candidates.add(MatchCandidate(pt, exactScore, bbox, scale, 0))
                     }
                 }
             }
         }
 
-        return candidates.sortedByDescending { it.score }
+        return candidates
     }
 
     private fun comparePixelsWithTolerance(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
@@ -2606,9 +2661,10 @@ class HybridCascadeMatcher {
                 val mg = (maskPixel shr 8) and 0xFF
                 val mb = maskPixel and 0xFF
 
-                val diffR = abs(fr - mr).let { if (it <= 12) 0 else it - 12 }
-                val diffG = abs(fg - mg).let { if (it <= 12) 0 else it - 12 }
-                val diffB = abs(fb - mb).let { if (it <= 12) 0 else it - 12 }
+                // Нормализация с адаптивным фоновым допуском на сглаживание шрифтов (+-16)
+                val diffR = abs(fr - mr).let { if (it <= 16) 0 else it - 16 }
+                val diffG = abs(fg - mg).let { if (it <= 16) 0 else it - 16 }
+                val diffB = abs(fb - mb).let { if (it <= 16) 0 else it - 16 }
 
                 totalDiff += diffR + diffG + diffB
                 pixelCount++
@@ -2619,7 +2675,7 @@ class HybridCascadeMatcher {
         }
 
         if (pixelCount == 0) return 1.0f
-        val maxDiff = pixelCount * 240f * 3f
+        val maxDiff = pixelCount * 230f * 3f
         val similarity = 1.0f - (totalDiff.toFloat() / maxDiff)
         return similarity.coerceIn(0f, 1f)
     }
@@ -3744,6 +3800,7 @@ import com.example.autotap.R
 import com.example.autotap.dpToPx
 import com.example.autotap.engine.ai.MatchCandidate
 import com.example.autotap.logAppEvent
+import com.example.autotap.model.ActionConfig
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayManager
 
@@ -3773,7 +3830,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             setPadding(24, 16, 24, 16)
 
             val tv = TextView(context).apply {
-                text = "🎯 Калибровка ИИ-Маски"
+                text = "Калибровка ИИ-Маски"
                 setTextColor(Color.parseColor("#00F5D4"))
                 textSize = 14f
                 setTypeface(null, Typeface.BOLD)
@@ -3796,7 +3853,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             }
 
             btnConfirm = Button(context).apply {
-                text = "Подтвердить объект"
+                text = "Подтвердить маску"
                 textSize = 11f
                 setTypeface(null, Typeface.BOLD)
                 setBackgroundColor(Color.parseColor("#1F6FEB"))
@@ -3816,6 +3873,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
                     if (currentTemplateIndex >= 0) {
                         MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(currentTemplateIndex)
                     }
+                    overlayManager.candidateOverlay.hide()
                     hide()
                 }
             }
@@ -3830,6 +3888,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         return root
     }
 
+    // ВЫПОЛНЕНИЕ ПРОБНОГО ПОИСКА В ОТДЕЛЬНОМ ФОНОВОМ ПОТОКЕ (БЕЗ ЗАВИСАНИЯ UI)
     fun startLiveCalibration(templateIndex: Int, directBitmap: Bitmap? = null) {
         this.currentTemplateIndex = templateIndex
         show()
@@ -3840,7 +3899,32 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         if (bitmap != null) {
             ivPreview?.setImageBitmap(bitmap)
             ivPreview?.visibility = View.VISIBLE
-            statusText?.text = "Сканирование экрана для Маски #$templateIndex...\nПодтвердите найденный объект"
+            statusText?.text = "Сканирование экрана для Маски #$templateIndex...\nПоиск объекта на экране..."
+
+            svc.captureScreenBitmapAsync { frameBmp ->
+                if (frameBmp != null) {
+                    // Тяжелый ИИ-поиск перенесен в фоновый Thread!
+                    Thread {
+                        val testAction = ActionConfig(selectedTemplateIndex = templateIndex, similarityPercent = 70)
+                        val scanResult = svc.aiScannerEngine.scan({ frameBmp }, testAction)
+                        val candidates = scanResult.candidates
+
+                        // Возвращаемся на UI-поток для обновления интерфейса
+                        mainHandler.post {
+                            if (candidates.isNotEmpty()) {
+                                val top = candidates.first()
+                                val percent = "${(top.score * 100).toInt()}%"
+                                statusText?.text = "🎯 Объект найден ($percent)!\nПроверьте маяк и подтвердите маску."
+                                overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) {
+                                    confirmSmartMaskGeneration()
+                                }
+                            } else {
+                                statusText?.text = "Пробный поиск: объект пока не найден.\nПодтвердите создание маски #$templateIndex."
+                            }
+                        }
+                    }.start()
+                }
+            }
         } else {
             statusText?.text = "Ошибка загрузки маски #$templateIndex"
         }
@@ -3860,6 +3944,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             ).show()
             logAppEvent("AI_SCANNER", "Умная маска #$currentTemplateIndex сгенерирована.")
         }
+        overlayManager.candidateOverlay.hide()
         hide()
     }
 
@@ -4201,6 +4286,10 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 val cropW = square.width
                 val cropH = square.height
 
+                val screenSize = context.getRealScreenSize()
+                val cropNormX = ((cropX + cropW / 2f) / screenSize.x.toFloat()).coerceIn(0f, 1f)
+                val cropNormY = ((cropY + cropH / 2f) / screenSize.y.toFloat()).coerceIn(0f, 1f)
+
                 root.visibility = View.INVISIBLE
 
                 mainHandler.postDelayed({
@@ -4222,16 +4311,21 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                                     val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
                                     svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
-                                    val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
-                                    if (calibrated != null) {
-                                        overlayManager.debuggerOverlay.showCalibratedTemplate(
-                                            croppedMask,
-                                            nextTemplateIndex,
-                                            calibrated.metadata.profile.name,
-                                            safeW,
-                                            safeH
-                                        )
+                                    // Авто-запись ИИ-Якоря X/Y в текущий шаг сценария
+                                    if (svc.actionsList.isNotEmpty()) {
+                                        val lastAction = svc.actionsList.last()
+                                        lastAction.xNorm = cropNormX
+                                        lastAction.yNorm = cropNormY
+                                        lastAction.selectedTemplateIndex = nextTemplateIndex
                                     }
+
+                                    overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                        croppedMask,
+                                        nextTemplateIndex,
+                                        "MEDIUM",
+                                        safeW,
+                                        safeH
+                                    )
                                 } catch (e: Exception) {
                                     logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
                                 }
@@ -4254,14 +4348,12 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        // ИЗОЛИРОВАННЫЙ СЛУШАТЕЛЬ ДВИЖЕНИЯ ДЛЯ ЗНАЧКА handleMoveFrame
         val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
         val topBar = topBarView ?: view
 
         setupDragAndDrop(moveHandle)
         setupDragAndDrop(topBar)
 
-        // ИЗОЛИРОВАННЫЙ СЛУШАТЕЛЬ РЕСАЙЗА ДЛЯ РУЧКИ handleResize [⤢]
         val resizeHandle = view.findViewByNames("handleResize")
         val sq = captureSquareView
         if (resizeHandle != null && sq != null) {
@@ -4369,11 +4461,11 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     currentFrameWidthPx = newW
                     currentFrameHeightPx = newH
 
-                    val sqLp = targetSquare.layoutParams
-                    if (sqLp != null) {
-                        sqLp.width = newW
-                        sqLp.height = newH
-                        targetSquare.layoutParams = sqLp
+                    val lp = targetSquare.layoutParams
+                    if (lp != null) {
+                        lp.width = newW
+                        lp.height = newH
+                        targetSquare.layoutParams = lp
                         targetSquare.requestLayout()
                     }
                     true
@@ -8543,7 +8635,7 @@ class TutorialOverlay(
     android:padding="0dp"
     android:elevation="18dp">
 
-    <!-- ВЕРХНИЙ ТУЛБАР -->
+    <!-- ЕДИНЫЙ ОБЪЕДИНЕННЫЙ ТУЛБАР (Двигать + Камера + Зона + Закрыть в 1 строку) -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
@@ -8555,10 +8647,23 @@ class TutorialOverlay(
         android:paddingEnd="6dp"
         android:layout_marginBottom="2dp">
 
+        <TextView
+            android:id="@+id/handleMoveFrame"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="⁝⁝ ДВИГАТЬ"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="4dp"
+            android:paddingEnd="6dp"
+            android:layout_marginEnd="4dp" />
+
         <ImageButton
             android:id="@+id/btnDoCapture"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:src="@drawable/ic_camera"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_primary"
@@ -8568,8 +8673,8 @@ class TutorialOverlay(
 
         <Button
             android:id="@+id/btnCaptureSearchArea"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:text="Зона"
@@ -8581,8 +8686,8 @@ class TutorialOverlay(
 
         <ImageButton
             android:id="@+id/btnCancelCapture"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
@@ -8590,7 +8695,7 @@ class TutorialOverlay(
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- РАМКА ПРИЦЕЛА С УГЛОВОЙ РУЧКОЙ РЕСАЙЗА -->
+    <!-- 100% ЧИСТЫЙ КАДР С ВЫНЕСЕННОЙ РУЧКОЙ РЕСАЙЗА -->
     <FrameLayout
         android:id="@+id/captureSquare"
         android:layout_width="160dp"
@@ -8606,29 +8711,6 @@ class TutorialOverlay(
             android:padding="3dp"
             android:contentDescription="Resize Grip" />
     </FrameLayout>
-
-    <!-- НИЖНЯЯ ПЛАШКА ПЕРЕМЕЩЕНИЯ -->
-    <LinearLayout
-        android:id="@+id/layoutBottomBar"
-        android:layout_width="wrap_content"
-        android:layout_height="28dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/drag_handle_bg"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:layout_marginTop="2dp">
-
-        <TextView
-            android:id="@+id/handleMoveFrame"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="ДВИГАТЬ"
-            android:textColor="#FFB703"
-            android:textSize="10sp"
-            android:textStyle="bold" />
-    </LinearLayout>
 </LinearLayout>
 
 --- END OF FILE: app/src/main/res/layout/floating_capture_frame.xml ---
@@ -9862,7 +9944,7 @@ class TutorialOverlay(
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeAllMask"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagRequestTouchExplorationMode|flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canPerformGestures="true"
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"

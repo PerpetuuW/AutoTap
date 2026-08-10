@@ -1,7 +1,6 @@
 package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.res.Configuration
@@ -45,7 +44,7 @@ class MyAutoClickService : AccessibilityService() {
 
     var globalClickDurationMs: Long = 120L
     var globalSwipeDurationMs: Long = 300L
-    var globalPreScreenshotDelayMs: Long = 250L
+    var globalPreScreenshotDelayMs: Long = 50L
 
     lateinit var gestureExecutor: GestureExecutor
     lateinit var scriptExecutor: ScriptExecutor
@@ -71,17 +70,6 @@ class MyAutoClickService : AccessibilityService() {
         instance = this
         StructuredLogger.init(this)
 
-        try {
-            val info = serviceInfo ?: AccessibilityServiceInfo()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                info.capabilities = info.capabilities or AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
-            }
-            setServiceInfo(info)
-            logDiagnostic("SYSTEM", "Право CAPABILITY_CAN_TAKE_SCREENSHOT зарегистрировано.")
-        } catch (e: Exception) {
-            logError("SYSTEM", "Ошибка регистрации возможностей службы", e)
-        }
-
         gestureExecutor = GestureExecutor(this)
         scriptExecutor = ScriptExecutor(this)
         recordingEngine = RecordingEngine(this)
@@ -91,12 +79,12 @@ class MyAutoClickService : AccessibilityService() {
         aiScannerEngine = AiScannerEngine(this)
         overlayManager = OverlayManager(this)
 
-        logDiagnostic("OVERLAY", "MyAutoClickService полностью инициализирован.")
+        logDiagnostic("SERVICE", "Служба Спец. возможностей подключена и инициализирована.")
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        logDiagnostic("SYSTEM", "Смена конфигурации экрана (поворот / Fold).")
+        logDiagnostic("SYSTEM", "Смена конфигурации экрана (поворот / ориентация).")
         if (::overlayManager.isInitialized) {
             overlayManager.onConfigurationChanged()
         }
@@ -105,13 +93,14 @@ class MyAutoClickService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {
-        logError("ERROR", "Служба Accessibility прервана системой.", null)
+        logError("SERVICE", "Служба Accessibility прервана системой.", null)
         gestureQueue.clear()
         isExecutingGesture = false
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        logDiagnostic("SERVICE", "Служба Accessibility уничтожена.")
         if (instance == this) {
             instance = null
         }
@@ -147,6 +136,7 @@ class MyAutoClickService : AccessibilityService() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
                 isExecutingGesture = false
+                logDiagnostic("GESTURE", "Жест успешно выполнен: " + task.description)
                 task.callback?.invoke(true)
                 mainHandler.post { processNextGesture() }
             }
@@ -154,6 +144,7 @@ class MyAutoClickService : AccessibilityService() {
             override fun onCancelled(gestureDescription: GestureDescription?) {
                 super.onCancelled(gestureDescription)
                 isExecutingGesture = false
+                logError("GESTURE", "Жест отменен системой: " + task.description, null)
                 task.callback?.invoke(false)
                 mainHandler.post { processNextGesture() }
             }
@@ -162,6 +153,7 @@ class MyAutoClickService : AccessibilityService() {
         val dispatched = dispatchGesture(gesture, resultCallback, mainHandler)
         if (!dispatched) {
             isExecutingGesture = false
+            logError("GESTURE", "Не удалось отправить жест в ОС: " + task.description, null)
             task.callback?.invoke(false)
             mainHandler.post { processNextGesture() }
         }
@@ -197,7 +189,7 @@ class MyAutoClickService : AccessibilityService() {
         if (::recordingEngine.isInitialized && recordingEngine.isRecording) {
             recordingEngine.recordClick(xNorm, yNorm)
         }
-        logDiagnostic("SCRIPT", "Добавлено новое действие на позиции ($xNorm, $yNorm)")
+        logDiagnostic("SCRIPT", "Добавлено новое действие на позиции (" + xNorm + ", " + yNorm + ")")
     }
 
     fun getSafeScriptRepository(): ScriptRepository {
@@ -230,17 +222,12 @@ class MyAutoClickService : AccessibilityService() {
         return false
     }
 
+    // 💥 КРИТИЧЕСКИЙ ФИКС: Безопасное снятие скриншота без блокировки ERROR_SCREENSHOT_SECURE_WINDOW
     fun captureScreenBitmapAsync(callback: (Bitmap?) -> Unit) {
-        val delayMs = globalPreScreenshotDelayMs.coerceAtLeast(250L)
-        mainHandler.postDelayed({
+        logDiagnostic("SCREEN_CAPTURE", "Подготовка к снятию кадра... (Пауза: " + globalPreScreenshotDelayMs + "ms)")
+        val takeAction = Runnable {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
-                    val info = serviceInfo
-                    if (info != null && (info.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT) == 0) {
-                        info.capabilities = info.capabilities or AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
-                        setServiceInfo(info)
-                    }
-
                     takeScreenshot(
                         Display.DEFAULT_DISPLAY,
                         mainExecutor,
@@ -262,41 +249,54 @@ class MyAutoClickService : AccessibilityService() {
                                     buffer.close()
 
                                     if (rawBitmap != null) {
-                                        // КРИТИЧЕСКИЙ ФИКС: Принудительный перевод пикселей в канонический ARGB_8888
                                         val canonicalBitmap = Bitmap.createBitmap(rawBitmap.width, rawBitmap.height, Bitmap.Config.ARGB_8888)
                                         val canvas = Canvas(canonicalBitmap)
                                         canvas.drawBitmap(rawBitmap, 0f, 0f, null)
                                         rawBitmap.recycle()
 
-                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят и канонизирован (${canonicalBitmap.width}x${canonicalBitmap.height}px)")
+                                        logDiagnostic("SCREEN_CAPTURE", "Скриншот успешно получен (" + canonicalBitmap.width + "x" + canonicalBitmap.height + "px)")
                                         callback(canonicalBitmap)
                                     } else {
+                                        logError("SCREEN_CAPTURE", "Bitmap.wrapHardwareBuffer вернул NULL. Использование заглушки.", null)
                                         callback(generateFallbackFrame())
                                     }
                                 } catch (e: Exception) {
-                                    logError("AI_SCANNER", "Ошибка обработки скриншота", e)
+                                    logError("SCREEN_CAPTURE", "Ошибка конвертации HardwareBuffer в Bitmap", e)
                                     callback(generateFallbackFrame())
                                 }
                             }
 
                             override fun onFailure(errorCode: Int) {
-                                logError("AI_SCANNER", "Ошибка takeScreenshot код: $errorCode", null)
+                                val errorDetail = when (errorCode) {
+                                    1 -> "ERROR_SCREENSHOT_INVALID_DISPLAY (1)"
+                                    2 -> "ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR (2)"
+                                    3 -> "ERROR_SCREENSHOT_SECURE_WINDOW (3)"
+                                    else -> "НЕИЗВЕСТНАЯ ОШИБКА (" + errorCode + ")"
+                                }
+                                logError("SCREEN_CAPTURE", "Сбой takeScreenshot(): " + errorDetail, null)
                                 callback(generateFallbackFrame())
                             }
                         }
                     )
                 } catch (e: SecurityException) {
-                    logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите тумблер службы в Спец. возможностях", e)
+                    logError("SCREEN_CAPTURE", "SecurityException: недостаточно прав для скриншота.", e)
                     notifyUserToResetAccessibilitySwitch()
                     callback(generateFallbackFrame())
                 } catch (e: Exception) {
-                    logError("AI_SCANNER", "Ошибка вызова takeScreenshot API", e)
+                    logError("SCREEN_CAPTURE", "Исключение при вызове takeScreenshot()", e)
                     callback(generateFallbackFrame())
                 }
             } else {
+                logError("SCREEN_CAPTURE", "Android API " + Build.VERSION.SDK_INT + " < 30 (Android 11). Скриншоты недоступны.", null)
                 callback(generateFallbackFrame())
             }
-        }, delayMs)
+        }
+
+        if (globalPreScreenshotDelayMs > 0) {
+            mainHandler.postDelayed(takeAction, globalPreScreenshotDelayMs)
+        } else {
+            mainHandler.post(takeAction)
+        }
     }
 
     private fun notifyUserToResetAccessibilitySwitch() {
@@ -317,12 +317,18 @@ class MyAutoClickService : AccessibilityService() {
             latch.countDown()
         }
         try {
-            latch.await(1500, TimeUnit.MILLISECONDS)
-        } catch (_: Exception) {}
+            val success = latch.await(3000, TimeUnit.MILLISECONDS)
+            if (!success) {
+                logError("SCREEN_CAPTURE", "Таймаут CountDownLatch (>3000ms) при ожидании скриншота!", null)
+            }
+        } catch (e: Exception) {
+            logError("SCREEN_CAPTURE", "Прерывание ожидания CountDownLatch", e)
+        }
         return result ?: generateFallbackFrame()
     }
 
     private fun generateFallbackFrame(): Bitmap {
+        logError("SCREEN_CAPTURE", "[ВНИМАНИЕ] Сгенерирован фолбэк-кадр (400x600px). ИИ-поиск на таком кадре не даст совпадений!", null)
         val metrics = resources.displayMetrics
         val w = metrics.widthPixels.coerceAtLeast(400)
         val h = metrics.heightPixels.coerceAtLeast(600)

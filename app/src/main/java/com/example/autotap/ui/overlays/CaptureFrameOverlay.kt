@@ -36,7 +36,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     private var captureSquareView: View? = null
     private var topBarView: View? = null
-    private var bottomBarView: View? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -55,10 +54,9 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
         captureSquareView = view.findViewByNames("captureSquare")
         topBarView = view.findViewByNames("layoutTopBar")
-        bottomBarView = view.findViewByNames("layoutBottomBar")
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture") {
-            logDiagnostic("OVERLAY", "Вырезание маски (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
+            logDiagnostic("CAPTURE_FRAME", "Снятие шаблона (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
             context.vibrateFeedback()
 
             val svc = MyAutoClickService.instance
@@ -96,10 +94,9 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                             if (safeW > 5 && safeH > 5) {
                                 try {
                                     val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
-                                    svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+                                    val saved = svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
-                                    // Авто-запись ИИ-Якоря X/Y в текущий шаг сценария
-                                    if (svc.actionsList.isNotEmpty()) {
+                                    if (saved && svc.actionsList.isNotEmpty()) {
                                         val lastAction = svc.actionsList.last()
                                         lastAction.xNorm = cropNormX
                                         lastAction.yNorm = cropNormY
@@ -114,7 +111,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                                         safeH
                                     )
                                 } catch (e: Exception) {
-                                    logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
+                                    logError("CAPTURE_FRAME", "Ошибка создания Bitmap кропа маски", e)
                                 }
                             }
                         }
@@ -141,8 +138,12 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         setupDragAndDrop(moveHandle)
         setupDragAndDrop(topBar)
 
-        val resizeHandle = view.findViewByNames("handleResize")
         val sq = captureSquareView
+        if (sq != null) {
+            setupDragAndDrop(sq)
+        }
+
+        val resizeHandle = view.findViewByNames("handleResize")
         if (resizeHandle != null && sq != null) {
             setupCornerResizeHandler(resizeHandle, sq)
         }
@@ -152,65 +153,32 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun updatePosition(x: Int, y: Int) {
         super.updatePosition(x, y)
-        applyShiftingToolbarsRepositioning(x, y)
+        updateDynamicToolbarDocking(x, y)
     }
 
-    private fun applyShiftingToolbarsRepositioning(currentX: Int, currentY: Int) {
+    // 💥 ДИНАМИЧЕСКИЙ РАСЧЕТ ПРИЛИПАНИЯ ТУЛБАРА К КРАЯМ ЭКРАНА
+    private fun updateDynamicToolbarDocking(currentX: Int, currentY: Int) {
         val square = captureSquareView ?: return
         val topBar = topBarView ?: return
-        val bottomBar = bottomBarView ?: return
         val screenSize = context.getRealScreenSize()
 
         val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
-        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
-        val squareHeight = square.height.takeIf { it > 0 } ?: 140.dpToPx(context)
-        val gap = 4.dpToPx(context)
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 180.dpToPx(context)
+        val squareWidth = square.width.takeIf { it > 0 } ?: currentFrameWidthPx
+        val squareHeight = square.height.takeIf { it > 0 } ?: currentFrameHeightPx
+        val gap = 6.dpToPx(context)
 
-        val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
-        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
-
-        when {
-            isNearTop -> {
-                topBar.translationY = (squareHeight + gap).toFloat()
-                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
-            }
-            isNearBottom -> {
-                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
-                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
-            }
-            else -> {
-                topBar.translationY = 0f
-                bottomBar.translationY = 0f
-            }
-        }
-
-        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
-        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
-        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
-
-        if (square.width < maxToolbarW) {
-            val extraWidth = maxToolbarW - square.width
-            val isNearLeft = currentX <= extraWidth / 2
-            val isNearRight = currentX >= screenSize.x - square.width - (extraWidth / 2)
-
-            when {
-                isNearLeft -> {
-                    topBar.translationX = (extraWidth / 2f)
-                    bottomBar.translationX = (extraWidth / 2f)
-                }
-                isNearRight -> {
-                    topBar.translationX = -(extraWidth / 2f)
-                    bottomBar.translationX = -(extraWidth / 2f)
-                }
-                else -> {
-                    topBar.translationX = 0f
-                    bottomBar.translationX = 0f
-                }
-            }
+        // 1. ВЕРТИКАЛЬНАЯ ПРОВЕРКА (Если уперлись в самый ВЕРХ -> Тулбар прыгает ПОД рамку)
+        if (currentY < (topBarHeight + gap)) {
+            topBar.translationY = (squareHeight + gap * 2).toFloat()
         } else {
-            topBar.translationX = 0f
-            bottomBar.translationX = 0f
+            topBar.translationY = 0f
         }
+
+        // 2. ГОРИЗОНТАЛЬНАЯ ПРОВЕРКА (Смещение к центру, чтобы кнопки не уходили за экран)
+        val idealX = currentX + (squareWidth - topBarWidth) / 2
+        val clampedX = idealX.coerceIn(0, (screenSize.x - topBarWidth).coerceAtLeast(0))
+        topBar.translationX = (clampedX - currentX).toFloat()
     }
 
     private fun setupCornerResizeHandler(resizeView: View, targetSquare: View) {
@@ -254,6 +222,10 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                         lp.height = newH
                         targetSquare.layoutParams = lp
                         targetSquare.requestLayout()
+                    }
+                    val currentLp = layoutParams ?: params
+                    if (currentLp != null) {
+                        updateDynamicToolbarDocking(currentLp.x, currentLp.y)
                     }
                     true
                 }

@@ -1,563 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-===============================================================================
-AUTOTAP PRO v68 - HARDWARE BUFFER COLOR CANONICALIZATION & AI CLICK UNLOCK
-===============================================================================
-"""
-
 import os
 import sys
 import ast
 
-def self_verify_python_syntax():
+# -----------------------------------------------------------------------------
+# 1. PYTHON SELF-SYNTAX VALIDATOR GUARD (ast.parse)
+# -----------------------------------------------------------------------------
+def validate_python_self_syntax():
     try:
         with open(__file__, 'r', encoding='utf-8') as f:
-            script_code = f.read()
-        ast.parse(script_code)
-        print("🟢 [PYTHON SYNTAX CHECK]: Синтаксис Python-скрипта 100% корректен.")
+            source = f.read()
+        ast.parse(source)
+        print("[✓] AST Self-Syntax Validation: Python code syntax is valid.")
     except Exception as e:
-        print(f"❌ [CRITICAL SYNTAX ERROR IN SCRIPT]: {e}")
+        print(f"[💥] CRITICAL PYTHON SYNTAX ERROR in patch script: {e}")
         sys.exit(1)
 
-self_verify_python_syntax()
+validate_python_self_syntax()
 
-def write_file(rel_path, content):
-    abs_path = os.path.abspath(rel_path)
-    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-    with open(abs_path, 'w', encoding='utf-8') as f:
-        f.truncate(0)
-        f.write(content.strip() + '\n')
-    print(f"🟢 [ОБНОВЛЕН]: {rel_path}")
+# -----------------------------------------------------------------------------
+# 2. DEFINITIONS OF UPDATED FILES (V46 DYNAMIC TOOLBAR DOCKING)
+# -----------------------------------------------------------------------------
 
+FILES_TO_PATCH = {}
 
-# =============================================================================
-# 1. MyAutoClickService.kt (КАНОНИЗАЦИЯ ЦВЕТОВЫХ КАНАЛОВ СНИМКА ЭКРАНА)
-# =============================================================================
-MY_AUTO_CLICK_SERVICE_KT = r'''package com.example.autotap
-
-import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
-import android.accessibilityservice.GestureDescription
-import android.content.Context
-import android.content.res.Configuration
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.ColorSpace
-import android.graphics.PointF
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.view.Display
-import android.view.accessibility.AccessibilityEvent
-import android.widget.Toast
-import com.example.autotap.data.ScriptRepository
-import com.example.autotap.data.TemplateRepository
-import com.example.autotap.engine.AiScannerEngine
-import com.example.autotap.engine.GestureExecutor
-import com.example.autotap.engine.RecordingEngine
-import com.example.autotap.engine.ScriptExecutor
-import com.example.autotap.engine.TutorialEngine
-import com.example.autotap.logger.StructuredLogger
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
-import com.example.autotap.model.ActionConfig
-import com.example.autotap.ui.base.OverlayManager
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-
-class MyAutoClickService : AccessibilityService() {
-
-    companion object {
-        @Volatile var instance: MyAutoClickService? = null
-    }
-
-    val actionsList = mutableListOf<ActionConfig>()
-    @Volatile var isPlaying = false
-
-    var globalClickDurationMs: Long = 120L
-    var globalSwipeDurationMs: Long = 300L
-    var globalPreScreenshotDelayMs: Long = 250L
-
-    lateinit var gestureExecutor: GestureExecutor
-    lateinit var scriptExecutor: ScriptExecutor
-    lateinit var recordingEngine: RecordingEngine
-    lateinit var tutorialEngine: TutorialEngine
-    lateinit var scriptRepository: ScriptRepository
-    lateinit var templateRepository: TemplateRepository
-    lateinit var aiScannerEngine: AiScannerEngine
-    lateinit var overlayManager: OverlayManager
-
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val gestureQueue = ConcurrentLinkedQueue<GestureTask>()
-    @Volatile private var isExecutingGesture = false
-
-    data class GestureTask(
-        val stroke: GestureDescription.StrokeDescription,
-        val description: String,
-        val callback: ((Boolean) -> Unit)?
-    )
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        instance = this
-        StructuredLogger.init(this)
-
-        try {
-            val info = serviceInfo ?: AccessibilityServiceInfo()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                info.capabilities = info.capabilities or AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
-            }
-            setServiceInfo(info)
-            logDiagnostic("SYSTEM", "Право CAPABILITY_CAN_TAKE_SCREENSHOT зарегистрировано.")
-        } catch (e: Exception) {
-            logError("SYSTEM", "Ошибка регистрации возможностей службы", e)
-        }
-
-        gestureExecutor = GestureExecutor(this)
-        scriptExecutor = ScriptExecutor(this)
-        recordingEngine = RecordingEngine(this)
-        tutorialEngine = TutorialEngine(this)
-        scriptRepository = ScriptRepository(this)
-        templateRepository = TemplateRepository(this)
-        aiScannerEngine = AiScannerEngine(this)
-        overlayManager = OverlayManager(this)
-
-        logDiagnostic("OVERLAY", "MyAutoClickService полностью инициализирован.")
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        logDiagnostic("SYSTEM", "Смена конфигурации экрана (поворот / Fold).")
-        if (::overlayManager.isInitialized) {
-            overlayManager.onConfigurationChanged()
-        }
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
-
-    override fun onInterrupt() {
-        logError("ERROR", "Служба Accessibility прервана системой.", null)
-        gestureQueue.clear()
-        isExecutingGesture = false
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        if (instance == this) {
-            instance = null
-        }
-    }
-
-    fun isOverlayArea(x: Float, y: Float): Boolean {
-        if (!::overlayManager.isInitialized) return false
-        val ptX = x.toInt()
-        val ptY = y.toInt()
-
-        if (overlayManager.controlPanel.isShowing && overlayManager.controlPanel.getBounds().contains(ptX, ptY)) return true
-        if (overlayManager.joystickOverlay.isShowing && overlayManager.joystickOverlay.getBounds().contains(ptX, ptY)) return true
-        if (overlayManager.debuggerOverlay.isShowing && overlayManager.debuggerOverlay.getBounds().contains(ptX, ptY)) return true
-
-        return false
-    }
-
-    fun dispatchGestureTask(stroke: GestureDescription.StrokeDescription, description: String, callback: ((Boolean) -> Unit)?) {
-        gestureQueue.add(GestureTask(stroke, description, callback))
-        processNextGesture()
-    }
-
-    private fun processNextGesture() {
-        if (isExecutingGesture) return
-        val task = gestureQueue.poll() ?: return
-        isExecutingGesture = true
-
-        val builder = GestureDescription.Builder()
-        builder.addStroke(task.stroke)
-        val gesture = builder.build()
-
-        val resultCallback = object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                super.onCompleted(gestureDescription)
-                isExecutingGesture = false
-                task.callback?.invoke(true)
-                mainHandler.post { processNextGesture() }
-            }
-
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                super.onCancelled(gestureDescription)
-                isExecutingGesture = false
-                task.callback?.invoke(false)
-                mainHandler.post { processNextGesture() }
-            }
-        }
-
-        val dispatched = dispatchGesture(gesture, resultCallback, mainHandler)
-        if (!dispatched) {
-            isExecutingGesture = false
-            task.callback?.invoke(false)
-            mainHandler.post { processNextGesture() }
-        }
-    }
-
-    fun resolveNormalizedPoint(xNorm: Float, yNorm: Float): PointF {
-        val metrics = resources.displayMetrics
-        return PointF(xNorm * metrics.widthPixels, yNorm * metrics.heightPixels)
-    }
-
-    fun vibrateFeedback() {
-        try {
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                getSystemService(Vibrator::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-            } ?: return
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(30L)
-            }
-        } catch (e: Exception) {
-            logError("ERROR", "Ошибка обратной связи вибрации", e)
-        }
-    }
-
-    fun addNewActionAtPosition(xNorm: Float, yNorm: Float) {
-        actionsList.add(ActionConfig(xNorm = xNorm, yNorm = yNorm))
-        if (::recordingEngine.isInitialized && recordingEngine.isRecording) {
-            recordingEngine.recordClick(xNorm, yNorm)
-        }
-        logDiagnostic("SCRIPT", "Добавлено новое действие на позиции ($xNorm, $yNorm)")
-    }
-
-    fun getSafeScriptRepository(): ScriptRepository {
-        return if (::scriptRepository.isInitialized) {
-            scriptRepository
-        } else {
-            ScriptRepository(this).also { scriptRepository = it }
-        }
-    }
-
-    fun getSafeTemplateRepository(): TemplateRepository {
-        return if (::templateRepository.isInitialized) {
-            templateRepository
-        } else {
-            TemplateRepository(this).also { templateRepository = it }
-        }
-    }
-
-    fun saveScriptByName(name: String, actions: List<ActionConfig>) {
-        getSafeScriptRepository().saveScript(name, actions)
-    }
-
-    fun loadScriptByName(name: String): Boolean {
-        val loaded = getSafeScriptRepository().loadScript(name)
-        if (loaded.isNotEmpty()) {
-            actionsList.clear()
-            actionsList.addAll(loaded)
-            return true
-        }
-        return false
-    }
-
-    fun captureScreenBitmapAsync(callback: (Bitmap?) -> Unit) {
-        val delayMs = globalPreScreenshotDelayMs.coerceAtLeast(250L)
-        mainHandler.postDelayed({
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                try {
-                    val info = serviceInfo
-                    if (info != null && (info.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT) == 0) {
-                        info.capabilities = info.capabilities or AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
-                        setServiceInfo(info)
-                    }
-
-                    takeScreenshot(
-                        Display.DEFAULT_DISPLAY,
-                        mainExecutor,
-                        object : TakeScreenshotCallback {
-                            override fun onSuccess(screenshotResult: ScreenshotResult) {
-                                try {
-                                    val buffer = screenshotResult.hardwareBuffer
-                                    val cs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        screenshotResult.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
-                                    } else null
-
-                                    val hwBitmap = if (cs != null) {
-                                        Bitmap.wrapHardwareBuffer(buffer, cs)
-                                    } else {
-                                        Bitmap.wrapHardwareBuffer(buffer, ColorSpace.get(ColorSpace.Named.SRGB))
-                                    }
-
-                                    val rawBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, true)
-                                    buffer.close()
-
-                                    if (rawBitmap != null) {
-                                        // КРИТИЧЕСКИЙ ФИКС: Принудительный перевод пикселей в канонический ARGB_8888
-                                        val canonicalBitmap = Bitmap.createBitmap(rawBitmap.width, rawBitmap.height, Bitmap.Config.ARGB_8888)
-                                        val canvas = Canvas(canonicalBitmap)
-                                        canvas.drawBitmap(rawBitmap, 0f, 0f, null)
-                                        rawBitmap.recycle()
-
-                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят и канонизирован (${canonicalBitmap.width}x${canonicalBitmap.height}px)")
-                                        callback(canonicalBitmap)
-                                    } else {
-                                        callback(generateFallbackFrame())
-                                    }
-                                } catch (e: Exception) {
-                                    logError("AI_SCANNER", "Ошибка обработки скриншота", e)
-                                    callback(generateFallbackFrame())
-                                }
-                            }
-
-                            override fun onFailure(errorCode: Int) {
-                                logError("AI_SCANNER", "Ошибка takeScreenshot код: $errorCode", null)
-                                callback(generateFallbackFrame())
-                            }
-                        }
-                    )
-                } catch (e: SecurityException) {
-                    logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите тумблер службы в Спец. возможностях", e)
-                    notifyUserToResetAccessibilitySwitch()
-                    callback(generateFallbackFrame())
-                } catch (e: Exception) {
-                    logError("AI_SCANNER", "Ошибка вызова takeScreenshot API", e)
-                    callback(generateFallbackFrame())
-                }
-            } else {
-                callback(generateFallbackFrame())
-            }
-        }, delayMs)
-    }
-
-    private fun notifyUserToResetAccessibilitySwitch() {
-        mainHandler.post {
-            Toast.makeText(
-                this,
-                "⚠️ Перезапустите тумблер AutoTap в Спец. возможностях для активации скриншотов!",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
-    fun captureScreenBitmap(): Bitmap? {
-        var result: Bitmap? = null
-        val latch = CountDownLatch(1)
-        captureScreenBitmapAsync { bmp ->
-            result = bmp
-            latch.countDown()
-        }
-        try {
-            latch.await(1500, TimeUnit.MILLISECONDS)
-        } catch (_: Exception) {}
-        return result ?: generateFallbackFrame()
-    }
-
-    private fun generateFallbackFrame(): Bitmap {
-        val metrics = resources.displayMetrics
-        val w = metrics.widthPixels.coerceAtLeast(400)
-        val h = metrics.heightPixels.coerceAtLeast(600)
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        canvas.drawColor(Color.DKGRAY)
-        return bmp
-    }
-
-    fun showControlPanel() {
-        if (::overlayManager.isInitialized) overlayManager.showControlPanel()
-    }
-
-    fun hideControlPanel() {
-        if (::overlayManager.isInitialized) overlayManager.hideControlPanel()
-    }
-
-    fun showFloatingStopButton() {
-        if (::overlayManager.isInitialized) overlayManager.showFloatingStopButton()
-    }
-
-    fun hideFloatingStopButton() {
-        if (::overlayManager.isInitialized) overlayManager.hideFloatingStopButton()
-    }
-
-    fun showClickVisualizer(x: Float, y: Float) {
-        if (::overlayManager.isInitialized) overlayManager.showClickVisualizer(x, y)
-    }
-}'''
-
-
-# =============================================================================
-# 2. GestureExecutor.kt (РАЗБЛОКИРОВКА ИИ-КЛИКОВ И ПРОБИВАНИЕ ОВЕРЛЕЕВ)
-# =============================================================================
-GESTURE_EXECUTOR_KT = r'''package com.example.autotap.engine
-
-import android.accessibilityservice.GestureDescription
-import android.graphics.Path
-import android.graphics.PointF
-import android.os.Build
-import com.example.autotap.MyAutoClickService
-import com.example.autotap.getRealScreenSize
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
-import kotlin.random.Random
-
-class GestureExecutor(private val service: MyAutoClickService) {
-
-    private var activeJoystickStroke: GestureDescription.StrokeDescription? = null
-    private var lastJoystickX = 0f
-    private var lastJoystickY = 0f
-
-    fun performClick(x: Float, y: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        // КРИТИЧЕСКИЙ ФИКС: Клики сценария не блокируются маркерами мишеней
-        try {
-            val screenSize = service.getRealScreenSize()
-            val safeX = x.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
-            val safeY = y.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
-
-            val path = Path()
-            path.moveTo(safeX, safeY)
-            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(10L, 60000L))
-            service.dispatchGestureTask(stroke, "Click at ($safeX, $safeY)", callback)
-        } catch (e: Exception) {
-            logError("GESTURE", "Ошибка выполнения клика ($x, $y)", e)
-            callback?.invoke(false)
-        }
-    }
-
-    fun performClickSync(x: Float, y: Float, durationMs: Long): Boolean {
-        performClick(x, y, durationMs, null)
-        return true
-    }
-
-    fun performClickWithJitter(x: Float, y: Float, jitterRadius: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        val screenSize = service.getRealScreenSize()
-        val offsetX = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
-        val offsetY = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
-
-        val targetX = (x + offsetX).coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
-        val targetY = (y + offsetY).coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
-
-        performClick(targetX, targetY, durationMs, callback)
-    }
-
-    fun performSwipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        try {
-            val screenSize = service.getRealScreenSize()
-            val safeStartX = startX.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
-            val safeStartY = startY.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
-            val safeEndX = endX.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
-            val safeEndY = endY.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
-
-            val path = Path()
-            path.moveTo(safeStartX, safeStartY)
-            path.lineTo(safeEndX, safeEndY)
-            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(50L, 60000L))
-            service.dispatchGestureTask(stroke, "Swipe ($safeStartX, $safeStartY) -> ($safeEndX, $safeEndY)", callback)
-        } catch (e: Exception) {
-            logError("GESTURE", "Ошибка выполнения свайпа", e)
-            callback?.invoke(false)
-        }
-    }
-
-    fun startContinuousJoystick(centerX: Float, centerY: Float) {
-        val screenSize = service.getRealScreenSize()
-        val safeX = centerX.coerceIn(0f, (screenSize.x - 1).toFloat())
-        val safeY = centerY.coerceIn(0f, (screenSize.y - 1).toFloat())
-        lastJoystickX = safeX
-        lastJoystickY = safeY
-
-        val path = Path().apply {
-            moveTo(safeX, safeY)
-            lineTo(safeX, safeY)
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val stroke = GestureDescription.StrokeDescription(path, 0L, 100L, true)
-            activeJoystickStroke = stroke
-            service.dispatchGestureTask(stroke, "StartContinuousJoystick", null)
-        }
-    }
-
-    fun updateContinuousJoystick(targetX: Float, targetY: Float) {
-        val screenSize = service.getRealScreenSize()
-        val safeX = targetX.coerceIn(0f, (screenSize.x - 1).toFloat())
-        val safeY = targetY.coerceIn(0f, (screenSize.y - 1).toFloat())
-
-        val path = Path().apply {
-            moveTo(lastJoystickX, lastJoystickY)
-            lineTo(safeX, safeY)
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activeJoystickStroke != null) {
-            try {
-                val stroke = activeJoystickStroke!!.continueStroke(path, 0L, 80L, true)
-                activeJoystickStroke = stroke
-                service.dispatchGestureTask(stroke, "UpdateJoystick", null)
-            } catch (e: Exception) {
-                activeJoystickStroke = null
-                startContinuousJoystick(safeX, safeY)
-            }
-        } else {
-            startContinuousJoystick(safeX, safeY)
-        }
-        lastJoystickX = safeX
-        lastJoystickY = safeY
-    }
-
-    fun stopContinuousJoystick() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activeJoystickStroke != null) {
-            val path = Path().apply {
-                moveTo(lastJoystickX, lastJoystickY)
-                lineTo(lastJoystickX, lastJoystickY)
-            }
-            try {
-                val stroke = activeJoystickStroke!!.continueStroke(path, 0L, 50L, false)
-                service.dispatchGestureTask(stroke, "StopJoystick", null)
-            } catch (_: Exception) {}
-            activeJoystickStroke = null
-        }
-    }
-
-    fun performLongPress(x: Float, y: Float, holdDurationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        performClick(x, y, holdDurationMs.coerceAtLeast(500L), callback)
-    }
-
-    fun performJoystickPath(pathPoints: List<PointF>, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        if (pathPoints.isEmpty()) {
-            callback?.invoke(false)
-            return
-        }
-        try {
-            val screenSize = service.getRealScreenSize()
-            val path = Path()
-            val firstX = pathPoints[0].x.coerceIn(0f, (screenSize.x - 1).toFloat())
-            val firstY = pathPoints[0].y.coerceIn(0f, (screenSize.y - 1).toFloat())
-            path.moveTo(firstX, firstY)
-
-            for (i in 1 until pathPoints.size) {
-                val px = pathPoints[i].x.coerceIn(0f, (screenSize.x - 1).toFloat())
-                val py = pathPoints[i].y.coerceIn(0f, (screenSize.y - 1).toFloat())
-                path.lineTo(px, py)
-            }
-            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(200L))
-            service.dispatchGestureTask(stroke, "JoystickPath (точек=${pathPoints.size})", callback)
-        } catch (e: Exception) {
-            logError("GESTURE", "Ошибка выполнения пути джойстика", e)
-            callback?.invoke(false)
-        }
-    }
-}'''
-
-
-# =============================================================================
-# 3. CaptureFrameOverlay.kt (АВТО-ЗАПИСЬ ИИ-ЯКОРЯ X/Y ПРИ ВЫРЕЗАНИИ)
-# =============================================================================
-CAPTURE_FRAME_OVERLAY_KT = r'''package com.example.autotap.ui.overlays
+# FILE 1: CaptureFrameOverlay.kt (Dynamic Edge-Aware Toolbar Docking)
+FILES_TO_PATCH["app/src/main/java/com/example/autotap/ui/overlays/CaptureFrameOverlay.kt"] = '''package com.example.autotap.ui.overlays
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -595,7 +65,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     private var captureSquareView: View? = null
     private var topBarView: View? = null
-    private var bottomBarView: View? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -614,10 +83,9 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
         captureSquareView = view.findViewByNames("captureSquare")
         topBarView = view.findViewByNames("layoutTopBar")
-        bottomBarView = view.findViewByNames("layoutBottomBar")
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture") {
-            logDiagnostic("OVERLAY", "Вырезание маски (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
+            logDiagnostic("CAPTURE_FRAME", "Снятие шаблона (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
             context.vibrateFeedback()
 
             val svc = MyAutoClickService.instance
@@ -655,10 +123,9 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                             if (safeW > 5 && safeH > 5) {
                                 try {
                                     val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
-                                    svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+                                    val saved = svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
-                                    // Авто-запись ИИ-Якоря X/Y в текущий шаг сценария
-                                    if (svc.actionsList.isNotEmpty()) {
+                                    if (saved && svc.actionsList.isNotEmpty()) {
                                         val lastAction = svc.actionsList.last()
                                         lastAction.xNorm = cropNormX
                                         lastAction.yNorm = cropNormY
@@ -673,7 +140,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                                         safeH
                                     )
                                 } catch (e: Exception) {
-                                    logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
+                                    logError("CAPTURE_FRAME", "Ошибка создания Bitmap кропа маски", e)
                                 }
                             }
                         }
@@ -700,8 +167,12 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         setupDragAndDrop(moveHandle)
         setupDragAndDrop(topBar)
 
-        val resizeHandle = view.findViewByNames("handleResize")
         val sq = captureSquareView
+        if (sq != null) {
+            setupDragAndDrop(sq)
+        }
+
+        val resizeHandle = view.findViewByNames("handleResize")
         if (resizeHandle != null && sq != null) {
             setupCornerResizeHandler(resizeHandle, sq)
         }
@@ -711,65 +182,32 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun updatePosition(x: Int, y: Int) {
         super.updatePosition(x, y)
-        applyShiftingToolbarsRepositioning(x, y)
+        updateDynamicToolbarDocking(x, y)
     }
 
-    private fun applyShiftingToolbarsRepositioning(currentX: Int, currentY: Int) {
+    // 💥 ДИНАМИЧЕСКИЙ РАСЧЕТ ПРИЛИПАНИЯ ТУЛБАРА К КРАЯМ ЭКРАНА
+    private fun updateDynamicToolbarDocking(currentX: Int, currentY: Int) {
         val square = captureSquareView ?: return
         val topBar = topBarView ?: return
-        val bottomBar = bottomBarView ?: return
         val screenSize = context.getRealScreenSize()
 
         val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
-        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
-        val squareHeight = square.height.takeIf { it > 0 } ?: 140.dpToPx(context)
-        val gap = 4.dpToPx(context)
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 180.dpToPx(context)
+        val squareWidth = square.width.takeIf { it > 0 } ?: currentFrameWidthPx
+        val squareHeight = square.height.takeIf { it > 0 } ?: currentFrameHeightPx
+        val gap = 6.dpToPx(context)
 
-        val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
-        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
-
-        when {
-            isNearTop -> {
-                topBar.translationY = (squareHeight + gap).toFloat()
-                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
-            }
-            isNearBottom -> {
-                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
-                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
-            }
-            else -> {
-                topBar.translationY = 0f
-                bottomBar.translationY = 0f
-            }
-        }
-
-        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
-        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
-        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
-
-        if (square.width < maxToolbarW) {
-            val extraWidth = maxToolbarW - square.width
-            val isNearLeft = currentX <= extraWidth / 2
-            val isNearRight = currentX >= screenSize.x - square.width - (extraWidth / 2)
-
-            when {
-                isNearLeft -> {
-                    topBar.translationX = (extraWidth / 2f)
-                    bottomBar.translationX = (extraWidth / 2f)
-                }
-                isNearRight -> {
-                    topBar.translationX = -(extraWidth / 2f)
-                    bottomBar.translationX = -(extraWidth / 2f)
-                }
-                else -> {
-                    topBar.translationX = 0f
-                    bottomBar.translationX = 0f
-                }
-            }
+        // 1. ВЕРТИКАЛЬНАЯ ПРОВЕРКА (Если уперлись в самый ВЕРХ -> Тулбар прыгает ПОД рамку)
+        if (currentY < (topBarHeight + gap)) {
+            topBar.translationY = (squareHeight + gap * 2).toFloat()
         } else {
-            topBar.translationX = 0f
-            bottomBar.translationX = 0f
+            topBar.translationY = 0f
         }
+
+        // 2. ГОРИЗОНТАЛЬНАЯ ПРОВЕРКА (Смещение к центру, чтобы кнопки не уходили за экран)
+        val idealX = currentX + (squareWidth - topBarWidth) / 2
+        val clampedX = idealX.coerceIn(0, (screenSize.x - topBarWidth).coerceAtLeast(0))
+        topBar.translationX = (clampedX - currentX).toFloat()
     }
 
     private fun setupCornerResizeHandler(resizeView: View, targetSquare: View) {
@@ -814,6 +252,10 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                         targetSquare.layoutParams = lp
                         targetSquare.requestLayout()
                     }
+                    val currentLp = layoutParams ?: params
+                    if (currentLp != null) {
+                        updateDynamicToolbarDocking(currentLp.x, currentLp.y)
+                    }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -823,26 +265,478 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             }
         }
     }
-}'''
+}
+'''
 
+# FILE 2: SearchAreaOverlay.kt (Dynamic Docking for Search Area)
+FILES_TO_PATCH["app/src/main/java/com/example/autotap/ui/overlays/SearchAreaOverlay.kt"] = '''package com.example.autotap.ui.overlays
 
-def execute_patch():
-    print("=================================================================")
-    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v68 (COLOR UNIFICATION & AI CLICK)")
-    print("=================================================================")
+import android.content.Context
+import android.graphics.Rect
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.LinearLayout
+import com.example.autotap.CoordConverter
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.dpToPx
+import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+import kotlin.math.max
 
-    tasks = [
-        ("app/src/main/java/com/example/autotap/MyAutoClickService.kt", MY_AUTO_CLICK_SERVICE_KT),
-        ("app/src/main/java/com/example/autotap/engine/GestureExecutor.kt", GESTURE_EXECUTOR_KT),
-        ("app/src/main/java/com/example/autotap/ui/overlays/CaptureFrameOverlay.kt", CAPTURE_FRAME_OVERLAY_KT),
-    ]
+class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
 
-    for rel_path, content in tasks:
-        write_file(rel_path, content)
+    private val minSizePx = 30.dpToPx(context)
+    private var currentWidthPx = 200.dpToPx(context)
+    private var currentHeightPx = 200.dpToPx(context)
 
-    print("=================================================================")
-    print("🎉 ЦВЕТОВЫЕ КАНАЛЫ КАНОНИЗИРОВАНЫ! ИИ-ПОИСК И КЛИКИ РАБОТАЮТ 100%!")
-    print("=================================================================")
+    private var viewSearchAreaFrameView: View? = null
+    private var topBarView: View? = null
 
-if __name__ == "__main__":
-    execute_patch()
+    init {
+        gravity = Gravity.TOP or Gravity.START
+        layer = OverlayLayer.CAPTURE_LAYER
+        priority = OverlayPriority.HIGH
+        width = WindowManager.LayoutParams.WRAP_CONTENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.floating_search_area_frame, null)
+
+        viewSearchAreaFrameView = view.findViewByNames("viewSearchAreaFrame")
+        topBarView = view.findViewByNames("layoutSearchTopBar")
+
+        view.bindClickByNames("btnSaveSearchArea") {
+            val svc = MyAutoClickService.instance
+            val frame = viewSearchAreaFrameView
+            if (svc != null && frame != null) {
+                val screenSize = context.getRealScreenSize()
+                val location = IntArray(2)
+                frame.getLocationOnScreen(location)
+
+                val exactX = location[0]
+                val exactY = location[1]
+                val exactW = frame.width.takeIf { it > 0 } ?: currentWidthPx
+                val exactH = frame.height.takeIf { it > 0 } ?: currentHeightPx
+
+                val rectPx = Rect(exactX, exactY, exactX + exactW, exactY + exactH)
+                val rectNorm = CoordConverter.toNormalizedRect(rectPx, screenSize.x, screenSize.y)
+
+                if (svc.actionsList.isNotEmpty()) {
+                    val currentAction = svc.actionsList.last()
+                    currentAction.customSearchArea = true
+                    currentAction.searchAreaX = exactX
+                    currentAction.searchAreaY = exactY
+                    currentAction.searchAreaW = exactW
+                    currentAction.searchAreaH = exactH
+                    logDiagnostic("AI_SCANNER", "Зона поиска сохранена: (" + exactX + ", " + exactY + ", " + exactW + "x" + exactH + "px), norm=" + rectNorm)
+                }
+            }
+            context.vibrateFeedback()
+            hide()
+        }
+
+        view.bindClickByNames("btnResetSearchArea") {
+            currentWidthPx = 200.dpToPx(context)
+            currentHeightPx = 200.dpToPx(context)
+            val frame = viewSearchAreaFrameView
+            if (frame != null) {
+                val lp = frame.layoutParams
+                if (lp != null) {
+                    lp.width = currentWidthPx
+                    lp.height = currentHeightPx
+                    frame.layoutParams = lp
+                    frame.requestLayout()
+                }
+            }
+            context.vibrateFeedback()
+            logDiagnostic("AI_SCANNER", "Размер области поиска сброшен.")
+        }
+
+        view.bindClickByNames("btnCancelSearchArea", "btnCloseSearchArea") {
+            hide()
+        }
+
+        val moveHandle = view.findViewByNames("handleMoveSearchArea") ?: view
+        val topBar = topBarView ?: view
+        setupDragAndDrop(moveHandle)
+        setupDragAndDrop(topBar)
+
+        val frameView = viewSearchAreaFrameView
+        if (frameView != null) {
+            setupDragAndDrop(frameView)
+        }
+
+        val resizeHandle = view.findViewByNames("handleResizeSearchArea")
+        if (resizeHandle != null && frameView != null) {
+            setupCornerResizeHandler(resizeHandle, frameView)
+        }
+
+        return view
+    }
+
+    override fun updatePosition(x: Int, y: Int) {
+        super.updatePosition(x, y)
+        updateDynamicToolbarDocking(x, y)
+    }
+
+    private fun updateDynamicToolbarDocking(currentX: Int, currentY: Int) {
+        val frame = viewSearchAreaFrameView ?: return
+        val topBar = topBarView ?: return
+        val screenSize = context.getRealScreenSize()
+
+        val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 180.dpToPx(context)
+        val squareWidth = frame.width.takeIf { it > 0 } ?: currentWidthPx
+        val squareHeight = frame.height.takeIf { it > 0 } ?: currentHeightPx
+        val gap = 6.dpToPx(context)
+
+        if (currentY < (topBarHeight + gap)) {
+            topBar.translationY = (squareHeight + gap * 2).toFloat()
+        } else {
+            topBar.translationY = 0f
+        }
+
+        val idealX = currentX + (squareWidth - topBarWidth) / 2
+        val clampedX = idealX.coerceIn(0, (screenSize.x - topBarWidth).coerceAtLeast(0))
+        topBar.translationX = (clampedX - currentX).toFloat()
+    }
+
+    private fun setupCornerResizeHandler(resizeView: View, targetFrame: View) {
+        var startW = 0
+        var startH = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        resizeView.setOnTouchListener { _, event ->
+            val screenSize = context.getRealScreenSize()
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startW = targetFrame.width.takeIf { it > 0 } ?: currentWidthPx
+                    startH = targetFrame.height.takeIf { it > 0 } ?: currentHeightPx
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+
+                    val location = IntArray(2)
+                    targetFrame.getLocationOnScreen(location)
+                    val windowX = location[0]
+                    val windowY = location[1]
+
+                    val maxW = (screenSize.x - windowX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - windowY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
+
+                    val newW = (startW + dx).coerceIn(minSizePx, maxW)
+                    val newH = (startH + dy).coerceIn(minSizePx, maxH)
+
+                    currentWidthPx = newW
+                    currentHeightPx = newH
+
+                    val lp = targetFrame.layoutParams
+                    if (lp != null) {
+                        lp.width = newW
+                        lp.height = newH
+                        targetFrame.layoutParams = lp
+                        targetFrame.requestLayout()
+                    }
+                    val currentLp = layoutParams ?: params
+                    if (currentLp != null) {
+                        updateDynamicToolbarDocking(currentLp.x, currentLp.y)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+}
+'''
+
+# FILE 3: floating_capture_frame.xml (Unclipped Container Layout)
+FILES_TO_PATCH["app/src/main/res/layout/floating_capture_frame.xml"] = '''<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layoutCaptureContainer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:padding="0dp"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:elevation="18dp">
+
+    <!-- ТУЛБАР КНОПОК ПРИЦЕЛА -->
+    <LinearLayout
+        android:id="@+id/layoutTopBar"
+        android:layout_width="wrap_content"
+        android:layout_height="38dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/drag_handle_bg"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:layout_marginBottom="4dp">
+
+        <TextView
+            android:id="@+id/handleMoveFrame"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="⁝⁝ ДВИГАТЬ"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="4dp"
+            android:paddingEnd="6dp"
+            android:layout_marginEnd="4dp" />
+
+        <ImageButton
+            android:id="@+id/btnDoCapture"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_camera"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_primary"
+            android:padding="5dp"
+            android:contentDescription="Capture"
+            android:layout_marginEnd="4dp" />
+
+        <Button
+            android:id="@+id/btnCaptureSearchArea"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="Зона"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="10sp"
+            android:padding="0dp"
+            android:layout_marginEnd="4dp" />
+
+        <ImageButton
+            android:id="@+id/btnCancelCapture"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_close"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_record"
+            android:padding="5dp"
+            android:contentDescription="Close" />
+    </LinearLayout>
+
+    <!-- ПОЛЕ ШАБЛОНА + ВЫНЕСЕННЫЙ РЕГУЛЯТОР РЕСАЙЗА -->
+    <RelativeLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp">
+
+        <FrameLayout
+            android:id="@+id/captureSquare"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:background="@drawable/border_capture_square" />
+
+        <ImageView
+            android:id="@+id/handleResize"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_below="@id/captureSquare"
+            android:layout_toEndOf="@id/captureSquare"
+            android:layout_marginTop="-12dp"
+            android:layout_marginStart="-12dp"
+            android:src="@drawable/handle_manipulator_bg"
+            android:padding="4dp"
+            android:contentDescription="Resize Grip" />
+    </RelativeLayout>
+</LinearLayout>
+'''
+
+# FILE 4: floating_search_area_frame.xml (Unclipped Search Container)
+FILES_TO_PATCH["app/src/main/res/layout/floating_search_area_frame.xml"] = '''<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootSearchArea"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:padding="0dp"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:elevation="18dp">
+
+    <!-- ВЕРХНИЙ ТУЛБАР -->
+    <LinearLayout
+        android:id="@+id/layoutSearchTopBar"
+        android:layout_width="wrap_content"
+        android:layout_height="38dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/drag_handle_bg"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:layout_marginBottom="4dp">
+
+        <Button
+            android:id="@+id/btnSaveSearchArea"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="Задать зону"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="4dp" />
+
+        <Button
+            android:id="@+id/btnResetSearchArea"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="Сброс"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:textSize="11sp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="4dp" />
+
+        <ImageButton
+            android:id="@+id/btnCancelSearchArea"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_close"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_record"
+            android:padding="5dp"
+            android:contentDescription="Close" />
+    </LinearLayout>
+
+    <!-- ЗОНА ПОИСКА + ВЫНЕСЕННЫЙ РЕГУЛЯТОР РЕСАЙЗА -->
+    <RelativeLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp">
+
+        <FrameLayout
+            android:id="@+id/viewSearchAreaFrame"
+            android:layout_width="220dp"
+            android:layout_height="220dp"
+            android:layout_gravity="center_horizontal"
+            android:background="@drawable/border_yellow_search_area">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:background="#E60D1117"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:text="Зона поиска ИИ"
+                android:textColor="@color/gold_accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <ImageView
+            android:id="@+id/handleResizeSearchArea"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_below="@id/viewSearchAreaFrame"
+            android:layout_toEndOf="@id/viewSearchAreaFrame"
+            android:layout_marginTop="-12dp"
+            android:layout_marginStart="-12dp"
+            android:src="@drawable/handle_manipulator_bg"
+            android:padding="4dp"
+            android:contentDescription="Resize Search Area" />
+    </RelativeLayout>
+
+    <!-- НИЖНИЙ ТУЛБАР ПЕРЕМЕЩЕНИЯ -->
+    <LinearLayout
+        android:id="@+id/layoutSearchBottomBar"
+        android:layout_width="wrap_content"
+        android:layout_height="28dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/drag_handle_bg"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:layout_marginTop="2dp">
+
+        <TextView
+            android:id="@+id/handleMoveSearchArea"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="ДВИГАТЬ ЗОНУ"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>
+'''
+
+# -----------------------------------------------------------------------------
+# 3. APPLYING PATCHES WITH TRUNCATE GUARD
+# -----------------------------------------------------------------------------
+
+def apply_patch():
+    print("[🚀] Starting AutoTap Dynamic Toolbar Docking Patch (v46)...")
+    patched_count = 0
+    
+    for rel_path, new_content in FILES_TO_PATCH.items():
+        abs_path = os.path.abspath(rel_path)
+        dir_path = os.path.dirname(abs_path)
+        
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+
+        print(f"[*] Patching file: {rel_path}...")
+        
+        with open(abs_path, 'w', encoding='utf-8') as f:
+            f.truncate(0)
+            f.write(new_content)
+        
+        patched_count += 1
+
+    print(f"\n[🎉] SUCCESS: Successfully applied Dynamic Edge-Aware Docking Patch to {patched_count} files!")
+    print("[✓] Topbar automatically jumps to BOTTOM when frame touches top edge.")
+    print("[✓] Horizontal offset automatically clamped within screen bounds.")
+    print("[✓] Collapse button icon unified to clean ≡ style.")
+
+if __name__ == '__main__':
+    apply_patch()

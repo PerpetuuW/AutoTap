@@ -34,7 +34,6 @@ object CoordConverter {
         val w = widthPx.coerceAtLeast(1).toFloat()
         val h = heightPx.coerceAtLeast(1).toFloat()
 
-        // Защита от инверсии граней (left > right или top > bottom)
         val left = min(rect.left, rect.right).toFloat()
         val right = max(rect.left, rect.right).toFloat()
         val top = min(rect.top, rect.bottom).toFloat()

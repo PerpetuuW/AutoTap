@@ -17,8 +17,6 @@ import com.example.autotap.data.ScriptRepository
 import com.example.autotap.data.TemplateRepository
 import com.example.autotap.engine.ActionEditorEngine
 import com.example.autotap.logger.StructuredLogger
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
 import com.example.autotap.ui.LogViewerActivity
 
 class MainActivity : AppCompatActivity() {
@@ -36,9 +34,9 @@ class MainActivity : AppCompatActivity() {
 
         try {
             setContentView(R.layout.activity_main)
-            logDiagnostic("UI", "Главное меню успешно надуло activity_main.xml")
+            StructuredLogger.logDiagnostic("UI", "Главное меню успешно надуло activity_main.xml")
         } catch (e: Exception) {
-            logError("UI", "Ошибка установки setContentView(R.layout.activity_main)", e)
+            StructuredLogger.logError("UI", "Ошибка установки setContentView(R.layout.activity_main)", e)
         }
 
         val root = window.decorView.findViewById<View>(android.R.id.content)
@@ -58,11 +56,11 @@ class MainActivity : AppCompatActivity() {
             val service = MyAutoClickService.instance
             if (service != null) {
                 service.showControlPanel()
-                logDiagnostic("UI", "Запуск панели оверлеев.")
+                StructuredLogger.logDiagnostic("UI", "Запуск панели оверлеев.")
                 moveTaskToBack(true)
             } else {
                 Toast.makeText(this, "Сначала включите Раздел 'Спец. возможности'!", Toast.LENGTH_LONG).show()
-                logError("UI", "MyAutoClickService не запущен!", null)
+                StructuredLogger.logError("UI", "MyAutoClickService не запущен!", null)
             }
         }
 
@@ -80,9 +78,9 @@ class MainActivity : AppCompatActivity() {
         root.bindClickByNames("btnAccessibility") {
             try {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                logDiagnostic("UI", "Переход в системное меню Спец. возможности.")
+                StructuredLogger.logDiagnostic("UI", "Переход в системное меню Спец. возможности.")
             } catch (e: Exception) {
-                logError("UI", "Ошибка перехода в Спец. возможности", e)
+                StructuredLogger.logError("UI", "Ошибка перехода в Спец. возможности", e)
             }
         }
 
@@ -94,9 +92,9 @@ class MainActivity : AppCompatActivity() {
                         Uri.parse("package:$packageName")
                     )
                     startActivity(intent)
-                    logDiagnostic("UI", "Запрос разрешения Поверх других приложений.")
+                    StructuredLogger.logDiagnostic("UI", "Запрос разрешения Поверх других приложений.")
                 } catch (e: Exception) {
-                    logError("UI", "Ошибка запроса разрешения Поверх других приложений", e)
+                    StructuredLogger.logError("UI", "Ошибка запроса разрешения Поверх других приложений", e)
                 }
             } else {
                 checkBatteryOptimization()
@@ -107,7 +105,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 startActivity(Intent(this@MainActivity, LogViewerActivity::class.java))
             } catch (e: Exception) {
-                logError("UI", "Ошибка открытия LogViewerActivity", e)
+                StructuredLogger.logError("UI", "Ошибка открытия LogViewerActivity", e)
             }
         }
 
@@ -158,9 +156,9 @@ class MainActivity : AppCompatActivity() {
                         Uri.parse("package:$packageName")
                     )
                     startActivity(intent)
-                    logDiagnostic("UI", "Запрос отключения оптимизации батареи.")
+                    StructuredLogger.logDiagnostic("UI", "Запрос отключения оптимизации батареи.")
                 } catch (e: Exception) {
-                    logError("UI", "Ошибка запроса отключения оптимизации батареи", e)
+                    StructuredLogger.logError("UI", "Ошибка запроса отключения оптимизации батареи", e)
                 }
             } else {
                 Toast.makeText(this, "Оптимизация батареи уже отключена!", Toast.LENGTH_SHORT).show()
@@ -180,9 +178,9 @@ class MainActivity : AppCompatActivity() {
                 "Прокрутите в самый низ (или 3 точки вверху) -> 'Разрешить ограниченные настройки'",
                 Toast.LENGTH_LONG
             ).show()
-            logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
+            StructuredLogger.logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
         } catch (e: Exception) {
-            logError("UI", "Ошибка открытия настроек приложения", e)
+            StructuredLogger.logError("UI", "Ошибка открытия настроек приложения", e)
         }
     }
 

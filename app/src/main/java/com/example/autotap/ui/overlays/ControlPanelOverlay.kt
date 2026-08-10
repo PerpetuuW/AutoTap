@@ -153,7 +153,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 subMenu?.visibility = View.GONE
                 singleBubble?.visibility = View.VISIBLE
                 if (lp != null && targetView != null) {
-                    val bubbleSizePx = 56.dpToPx(context)
+                    val bubbleSizePx = 44.dpToPx(context)
                     lp.width = bubbleSizePx
                     lp.height = bubbleSizePx
                     reboundToScreen(lp)

@@ -12,8 +12,6 @@ import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.findViewByNames
 import com.example.autotap.logger.StructuredLogger
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
 
 class LogViewerActivity : AppCompatActivity() {
 
@@ -24,9 +22,9 @@ class LogViewerActivity : AppCompatActivity() {
 
         try {
             setContentView(R.layout.dialog_logs)
-            logDiagnostic("UI", "Экран логов надул оригинальный dialog_logs.xml")
+            StructuredLogger.logDiagnostic("UI", "Экран логов надул оригинальный dialog_logs.xml")
         } catch (e: Exception) {
-            logError("UI", "Ошибка установки setContentView(R.layout.dialog_logs)", e)
+            StructuredLogger.logError("UI", "Ошибка установки setContentView(R.layout.dialog_logs)", e)
         }
 
         val root = window.decorView.findViewById<View>(android.R.id.content)
@@ -62,7 +60,7 @@ class LogViewerActivity : AppCompatActivity() {
         val file = StructuredLogger.getLogFile()
         if (file != null && file.exists()) {
             file.writeText("")
-            logDiagnostic("LOGS", "Лог-файл очищен по btnClearLogs.")
+            StructuredLogger.logDiagnostic("LOGS", "Лог-файл очищен по btnClearLogs.")
             Toast.makeText(this, "Лог-файл очищен", Toast.LENGTH_SHORT).show()
         }
         refreshLogs()
@@ -83,13 +81,12 @@ class LogViewerActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            // Флаг чтения Uri принудительно продублирован на chooser интент
             val chooser = Intent.createChooser(intent, "Поделиться error_log.txt").apply {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(chooser)
         } catch (e: Exception) {
-            logError("LOGS", "Ошибка отправки файла логов", e)
+            StructuredLogger.logError("LOGS", "Ошибка отправки файла логов", e)
             Toast.makeText(this, "Ошибка отправки лог-файла", Toast.LENGTH_SHORT).show()
         }
     }

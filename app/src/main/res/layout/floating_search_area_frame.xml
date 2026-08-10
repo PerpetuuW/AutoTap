@@ -6,6 +6,8 @@
     android:orientation="vertical"
     android:gravity="center_horizontal"
     android:padding="0dp"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     android:elevation="18dp">
 
     <!-- ВЕРХНИЙ ТУЛБАР -->
@@ -18,7 +20,7 @@
         android:background="@drawable/drag_handle_bg"
         android:paddingStart="6dp"
         android:paddingEnd="6dp"
-        android:layout_marginBottom="2dp">
+        android:layout_marginBottom="4dp">
 
         <Button
             android:id="@+id/btnSaveSearchArea"
@@ -60,37 +62,49 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- ЗОНА ПОИСКА С УГЛОВОЙ РУЧКОЙ РЕСАЙЗА -->
-    <FrameLayout
-        android:id="@+id/viewSearchAreaFrame"
-        android:layout_width="220dp"
-        android:layout_height="220dp"
-        android:layout_gravity="center_horizontal"
-        android:background="@drawable/border_yellow_search_area">
+    <!-- ЗОНА ПОИСКА + ВЫНЕСЕННЫЙ РЕГУЛЯТОР РЕСАЙЗА -->
+    <RelativeLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:background="#E60D1117"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp"
-            android:text="Зона поиска ИИ"
-            android:textColor="@color/gold_accent"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+        <FrameLayout
+            android:id="@+id/viewSearchAreaFrame"
+            android:layout_width="220dp"
+            android:layout_height="220dp"
+            android:layout_gravity="center_horizontal"
+            android:background="@drawable/border_yellow_search_area">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:background="#E60D1117"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:text="Зона поиска ИИ"
+                android:textColor="@color/gold_accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </FrameLayout>
 
         <ImageView
             android:id="@+id/handleResizeSearchArea"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:layout_gravity="bottom|end"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_below="@id/viewSearchAreaFrame"
+            android:layout_toEndOf="@id/viewSearchAreaFrame"
+            android:layout_marginTop="-12dp"
+            android:layout_marginStart="-12dp"
             android:src="@drawable/handle_manipulator_bg"
-            android:padding="3dp"
+            android:padding="4dp"
             android:contentDescription="Resize Search Area" />
-    </FrameLayout>
+    </RelativeLayout>
 
     <!-- НИЖНИЙ ТУЛБАР ПЕРЕМЕЩЕНИЯ -->
     <LinearLayout

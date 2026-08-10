@@ -29,7 +29,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
     fun start() {
         if (isRunning) return
         if (service.actionsList.isEmpty()) {
-            logDiagnostic("SCRIPT", "Невозможно запустить: список шагов пуст.")
+            logDiagnostic("SCRIPT_EXEC", "Запуск отменен: список действий пуст.")
             return
         }
 
@@ -40,11 +40,12 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         service.hideControlPanel()
         service.showFloatingStopButton()
 
-        logDiagnostic("SCRIPT", "Запуск сценария (${service.actionsList.size} шагов).")
+        logDiagnostic("SCRIPT_EXEC", "► Старт сценария (${service.actionsList.size} шагов).")
         executeNextStep()
     }
 
     fun stop() {
+        logDiagnostic("SCRIPT_EXEC", "⏹ Остановка сценария пользователем.")
         isRunning = false
         service.isPlaying = false
         currentStepIndex = 0
@@ -52,17 +53,16 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         mainHandler.removeCallbacksAndMessages(null)
         service.hideFloatingStopButton()
         service.showControlPanel()
-        logDiagnostic("SCRIPT", "Сценарий остановлен пользователем.")
     }
 
     fun jumpToStep(stepIndex: Int) {
         val actions = service.actionsList
         if (stepIndex in 0 until actions.size) {
             currentStepIndex = stepIndex
-            logDiagnostic("SCRIPT", "Переход на шаг $stepIndex")
+            logDiagnostic("SCRIPT_EXEC", "🔀 Условный переход на шаг #$stepIndex")
             mainHandler.post { executeNextStep() }
         } else {
-            logError("SCRIPT", "Недопустимый шаг для перехода: $stepIndex", null)
+            logError("SCRIPT_EXEC", "Недопустимый индекс шага для перехода: $stepIndex (Всего шагов: ${actions.size})", null)
             stop()
         }
     }
@@ -72,18 +72,18 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         val actions = service.actionsList
         if (currentStepIndex >= actions.size) {
             currentLoopCount++
-            logDiagnostic("SCRIPT", "Цикл сценария #$currentLoopCount выполнен.")
+            logDiagnostic("SCRIPT_EXEC", "Цикл сценария #$currentLoopCount полностью завершен.")
 
             val isInfinite = service.scriptRepository.currentMetadata?.isInfinite ?: true
             val maxLoops = service.scriptRepository.currentMetadata?.loopCount ?: 1
 
             if (isInfinite || currentLoopCount < maxLoops) {
                 currentStepIndex = 0
-                logDiagnostic("SCRIPT", "Повторный запуск цикла сценария (#$currentLoopCount)...")
+                logDiagnostic("SCRIPT_EXEC", "Перезапуск цикла сценария (#$currentLoopCount)...")
                 mainHandler.post { executeNextStep() }
                 return
             } else {
-                logDiagnostic("SCRIPT", "Все $maxLoops циклов сценария успешно выполнены.")
+                logDiagnostic("SCRIPT_EXEC", "Все $maxLoops циклов сценария успешно выполнены.")
                 stop()
                 return
             }
@@ -94,9 +94,8 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             return
         }
 
-        logDiagnostic("SCRIPT", "Выполнение шага $currentStepIndex: тип=${action.type.name}")
-
         val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
+        logDiagnostic("SCRIPT_EXEC", "Выполнение шага #$currentStepIndex: Тип=${action.type.name}, Норм=(${action.xNorm}, ${action.yNorm}), Экран=(${pt.x.toInt()}, ${pt.y.toInt()})")
 
         when (action.type) {
             ActionType.CLICK -> {
@@ -123,18 +122,22 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                         onStepCompleted(success, action)
                     }
                 } else {
+                    logError("SCRIPT_EXEC", "Ошибка: траектория джойстика пуста!", null)
                     onStepCompleted(false, action)
                 }
             }
             ActionType.AI_SEARCH -> {
+                logDiagnostic("SCRIPT_EXEC", "Запуск ИИ-поиска для шага #$currentStepIndex (Маска #${action.selectedTemplateIndex}, Порог: ${action.similarityPercent}%, Таймаут: ${action.aiTimeoutSeconds}s)")
                 executeMultiSearchLoop(action, System.currentTimeMillis())
             }
             ActionType.WAIT -> {
                 val waitDelay = action.delay.coerceAtLeast(10L)
+                logDiagnostic("SCRIPT_EXEC", "Пауза ожидания: ${waitDelay}ms")
                 mainHandler.postDelayed({ onStepCompleted(true, action) }, waitDelay)
             }
             ActionType.LOAD_SCRIPT -> {
                 val targetName = action.targetScriptToLoad
+                logDiagnostic("SCRIPT_EXEC", "Загрузка эстафетного сценария: '$targetName'")
                 if (!targetName.isNullOrEmpty()) {
                     val loaded = service.loadScriptByName(targetName)
                     if (loaded) {
@@ -143,6 +146,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                         return
                     }
                 }
+                logError("SCRIPT_EXEC", "Не удалось загрузить эстафетный сценарий '$targetName'", null)
                 onStepCompleted(false, action)
             }
         }
@@ -155,7 +159,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         val elapsedTime = System.currentTimeMillis() - startTimeMs
 
         if (timeoutMs > 0L && elapsedTime >= timeoutMs) {
-            logDiagnostic("AI_SCANNER", "Таймаут ИИ-поиска ($elapsedTime ms >= $timeoutMs ms) истек.")
+            logDiagnostic("AI_SCANNER", "⏳ Истек таймаут ИИ-поиска ($elapsedTime ms >= $timeoutMs ms).")
             onStepCompleted(false, action)
             return
         }
@@ -167,16 +171,13 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             val candidates = scanResult?.candidates ?: emptyList()
 
             if (candidates.isNotEmpty()) {
-                // Отображение неонового радарного кольца над найденными целями в рантайме!
                 mainHandler.post {
-                    service.overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) {
-                        // Опциональный тап
-                    }
+                    service.overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) {}
                 }
                 clickCandidateSequence(candidates, 0, action)
             } else {
                 if (action.loopUntilStopped && isRunning) {
-                    val scanIntervalMs = (action.scanIntervalSeconds * 1000f).toLong().coerceAtLeast(200L)
+                    val scanIntervalMs = (action.scanIntervalSeconds * 1000f).toLong().coerceAtLeast(100L)
                     mainHandler.postDelayed({ executeMultiSearchLoop(action, startTimeMs) }, scanIntervalMs)
                 } else {
                     onStepCompleted(false, action)
@@ -216,12 +217,14 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         if (success) {
             val jump = action.jumpToStepOnMatch
             if (jump != null) {
+                logDiagnostic("SCRIPT_EXEC", "Шаг #$currentStepIndex успешен -> Выполняется переход на шаг #$jump")
                 jumpToStep(jump)
                 return
             }
         } else {
             val jumpFail = action.jumpToStepOnFail
             if (jumpFail != null) {
+                logDiagnostic("SCRIPT_EXEC", "Шаг #$currentStepIndex НЕ успешен -> Выполняется переход на шаг #$jumpFail")
                 jumpToStep(jumpFail)
                 return
             }

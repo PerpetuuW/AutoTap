@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.logger.logError
 import com.example.autotap.model.ActionConfig
+import com.example.autotap.model.ActionType
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -39,6 +40,35 @@ class ScriptRepository(private val context: Context) {
                     put("searchAreaY", action.searchAreaY)
                     put("searchAreaW", action.searchAreaW)
                     put("searchAreaH", action.searchAreaH)
+                    put("jumpToStepOnMatch", action.jumpToStepOnMatch ?: -1)
+                    put("jumpToStepOnFail", action.jumpToStepOnFail ?: -1)
+                    val multiIndicesArr = JSONArray()
+                    for (idx in action.multiTemplateIndices) {
+                        multiIndicesArr.put(idx)
+                    }
+                    put("multiTemplateIndices", multiIndicesArr)
+                    put("targetScriptToLoad", action.targetScriptToLoad ?: "")
+                    put("randomRadius", action.randomRadius)
+                    put("scanIntervalSeconds", action.scanIntervalSeconds)
+                    put("clickAiTarget", action.clickAiTarget)
+                    put("loopUntilStopped", action.loopUntilStopped)
+                    put("shapeOnlyMode", action.shapeOnlyMode)
+                    put("autoTuningMode", action.autoTuningMode)
+                    put("hybridCascadeMode", action.hybridCascadeMode)
+                    put("multiScaleSearch", action.multiScaleSearch)
+                    put("notificationMode", action.notificationMode)
+                    put("longPressDuration", action.longPressDuration)
+                    put("clickOffsetX", action.clickOffsetX)
+                    put("clickOffsetY", action.clickOffsetY)
+
+                    val joystickArr = JSONArray()
+                    for (pt in action.joystickPath) {
+                        val ptObj = JSONObject()
+                        ptObj.put("x", pt.x)
+                        ptObj.put("y", pt.y)
+                        joystickArr.put(ptObj)
+                    }
+                    put("joystickPath", joystickArr)
                 }
                 actionsArray.put(actionObj)
             }
@@ -79,7 +109,28 @@ class ScriptRepository(private val context: Context) {
                 val actionsArray = rootObj.optJSONArray("actions") ?: JSONArray()
                 for (i in 0 until actionsArray.length()) {
                     val obj = actionsArray.getJSONObject(i)
+                    val matchJump = obj.optInt("jumpToStepOnMatch", -1)
+                    val failJump = obj.optInt("jumpToStepOnFail", -1)
+
+                    val multiIndicesList = mutableListOf<Int>()
+                    val multiArr = obj.optJSONArray("multiTemplateIndices")
+                    if (multiArr != null) {
+                        for (j in 0 until multiArr.length()) {
+                            multiIndicesList.add(multiArr.getInt(j))
+                        }
+                    }
+
+                    val joystickList = mutableListOf<android.graphics.PointF>()
+                    val joyArr = obj.optJSONArray("joystickPath")
+                    if (joyArr != null) {
+                        for (j in 0 until joyArr.length()) {
+                            val ptObj = joyArr.getJSONObject(j)
+                            joystickList.add(android.graphics.PointF(ptObj.optDouble("x", 0.0).toFloat(), ptObj.optDouble("y", 0.0).toFloat()))
+                        }
+                    }
+
                     val config = ActionConfig(
+                        type = try { ActionType.valueOf(obj.optString("type", ActionType.CLICK.name)) } catch (_: Exception) { ActionType.CLICK },
                         xNorm = obj.optDouble("xNorm", 0.5).toFloat(),
                         yNorm = obj.optDouble("yNorm", 0.5).toFloat(),
                         endXNorm = obj.optDouble("endXNorm", 0.5).toFloat(),
@@ -93,7 +144,24 @@ class ScriptRepository(private val context: Context) {
                         searchAreaX = obj.optInt("searchAreaX", 0),
                         searchAreaY = obj.optInt("searchAreaY", 0),
                         searchAreaW = obj.optInt("searchAreaW", 0),
-                        searchAreaH = obj.optInt("searchAreaH", 0)
+                        searchAreaH = obj.optInt("searchAreaH", 0),
+                        jumpToStepOnMatch = if (matchJump != -1) matchJump else null,
+                        jumpToStepOnFail = if (failJump != -1) failJump else null,
+                        multiTemplateIndices = multiIndicesList,
+                        targetScriptToLoad = obj.optString("targetScriptToLoad", "").takeIf { it.isNotEmpty() },
+                        randomRadius = obj.optDouble("randomRadius", 0.0).toFloat(),
+                        scanIntervalSeconds = obj.optDouble("scanIntervalSeconds", 0.1).toFloat(),
+                        clickAiTarget = obj.optBoolean("clickAiTarget", false),
+                        loopUntilStopped = obj.optBoolean("loopUntilStopped", true),
+                        shapeOnlyMode = obj.optBoolean("shapeOnlyMode", false),
+                        autoTuningMode = obj.optBoolean("autoTuningMode", true),
+                        hybridCascadeMode = obj.optBoolean("hybridCascadeMode", true),
+                        multiScaleSearch = obj.optBoolean("multiScaleSearch", true),
+                        notificationMode = obj.optInt("notificationMode", 0),
+                        longPressDuration = obj.optLong("longPressDuration", 500L),
+                        clickOffsetX = obj.optInt("clickOffsetX", 0),
+                        clickOffsetY = obj.optInt("clickOffsetY", 0),
+                        joystickPath = joystickList
                     )
                     list.add(config)
                 }

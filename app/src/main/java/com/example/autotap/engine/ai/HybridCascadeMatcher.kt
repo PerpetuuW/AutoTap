@@ -19,6 +19,44 @@ class HybridCascadeMatcher {
         if (frame.isRecycled || mask.isRecycled) return candidates
         if (mask.width < 2 || mask.height < 2 || frame.width < 2 || frame.height < 2) return candidates
 
+        val scales = if (modes.multiScaleSearch) {
+            floatArrayOf(1.0f, 0.85f, 1.15f, 0.7f, 1.3f)
+        } else {
+            floatArrayOf(1.0f)
+        }
+
+        for (scale in scales) {
+            val scaledMask = if (scale != 1.0f) {
+                val targetW = (mask.width * scale).toInt().coerceAtLeast(4)
+                val targetH = (mask.height * scale).toInt().coerceAtLeast(4)
+                if (targetW < frame.width && targetH < frame.height) {
+                    Bitmap.createScaledBitmap(mask, targetW, targetH, true)
+                } else null
+            } else mask
+
+            if (scaledMask == null || scaledMask.isRecycled) continue
+
+            val matchResults = matchInternal(frame, scaledMask, searchArea, modes, threshold, scale)
+            candidates.addAll(matchResults)
+
+            if (scaledMask != mask) {
+                scaledMask.recycle()
+            }
+        }
+
+        return candidates.sortedByDescending { it.score }
+    }
+
+    private fun matchInternal(
+        frame: Bitmap,
+        mask: Bitmap,
+        searchArea: Rect,
+        modes: SearchModes,
+        threshold: Float,
+        scale: Float
+    ): List<MatchCandidate> {
+        val candidates = mutableListOf<MatchCandidate>()
+
         val safeSearchArea = Rect(
             searchArea.left.coerceIn(0, frame.width),
             searchArea.top.coerceIn(0, frame.height),
@@ -42,8 +80,7 @@ class HybridCascadeMatcher {
 
         if (endX <= startX || endY <= startY) return candidates
 
-        // ФАЗА 1: Грубое быстрое сканирование (Порог 50%)
-        val coarseThreshold = (threshold - 0.30f).coerceAtLeast(0.50f)
+        val coarseThreshold = (threshold - 0.35f).coerceAtLeast(0.40f)
         val potentialHits = mutableListOf<PointF>()
 
         var x = startX
@@ -64,7 +101,6 @@ class HybridCascadeMatcher {
             x += coarseStep
         }
 
-        // ФАЗА 2: Точнейшая доводка с шагом 1 пиксель (1px Fine Refinement)
         val fineWindow = coarseStep + 2
         val visitedPoints = HashSet<Long>()
 
@@ -87,13 +123,13 @@ class HybridCascadeMatcher {
                     if (exactScore >= threshold) {
                         val pt = PointF(fx + mask.width / 2f, fy + mask.height / 2f)
                         val bbox = Rect(fx, fy, fx + mask.width, fy + mask.height)
-                        candidates.add(MatchCandidate(pt, exactScore, bbox, 1.0f, 0))
+                        candidates.add(MatchCandidate(pt, exactScore, bbox, scale, 0))
                     }
                 }
             }
         }
 
-        return candidates.sortedByDescending { it.score }
+        return candidates
     }
 
     private fun comparePixelsWithTolerance(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
@@ -132,9 +168,9 @@ class HybridCascadeMatcher {
                 val mg = (maskPixel shr 8) and 0xFF
                 val mb = maskPixel and 0xFF
 
-                val diffR = abs(fr - mr).let { if (it <= 12) 0 else it - 12 }
-                val diffG = abs(fg - mg).let { if (it <= 12) 0 else it - 12 }
-                val diffB = abs(fb - mb).let { if (it <= 12) 0 else it - 12 }
+                val diffR = abs(fr - mr).let { if (it <= 16) 0 else it - 16 }
+                val diffG = abs(fg - mg).let { if (it <= 16) 0 else it - 16 }
+                val diffB = abs(fb - mb).let { if (it <= 16) 0 else it - 16 }
 
                 totalDiff += diffR + diffG + diffB
                 pixelCount++
@@ -145,7 +181,7 @@ class HybridCascadeMatcher {
         }
 
         if (pixelCount == 0) return 1.0f
-        val maxDiff = pixelCount * 240f * 3f
+        val maxDiff = pixelCount * 230f * 3f
         val similarity = 1.0f - (totalDiff.toFloat() / maxDiff)
         return similarity.coerceIn(0f, 1f)
     }
@@ -183,12 +219,20 @@ class HybridCascadeMatcher {
         return (1.0f - (edgeDiff.toFloat() / maxGradDiff)).coerceIn(0f, 1f)
     }
 
+    // 💥 КРИТИЧЕСКИЙ ФИКС: Явный пересчет полных RGB яркостей вместо синего канала (and 0xFF)
     private fun getGradient(bmp: Bitmap, x: Int, y: Int): Int {
         if (bmp.isRecycled || x <= 0 || x >= bmp.width - 1 || y <= 0 || y >= bmp.height - 1) return 0
-        val p1 = bmp.getPixel(x - 1, y) and 0xFF
-        val p2 = bmp.getPixel(x + 1, y) and 0xFF
-        val p3 = bmp.getPixel(x, y - 1) and 0xFF
-        val p4 = bmp.getPixel(x, y + 1) and 0xFF
+        val p1 = getLuminance(bmp.getPixel(x - 1, y))
+        val p2 = getLuminance(bmp.getPixel(x + 1, y))
+        val p3 = getLuminance(bmp.getPixel(x, y - 1))
+        val p4 = getLuminance(bmp.getPixel(x, y + 1))
         return abs(p2 - p1) + abs(p4 - p3)
+    }
+
+    private fun getLuminance(pixel: Int): Int {
+        val r = (pixel shr 16) and 0xFF
+        val g = (pixel shr 8) and 0xFF
+        val b = pixel and 0xFF
+        return (r * 77 + g * 150 + b * 29) shr 8
     }
 }
