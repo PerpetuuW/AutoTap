@@ -8,7 +8,7 @@
     android:padding="0dp"
     android:elevation="18dp">
 
-    <!-- ВЕРХНИЙ ТУЛБАР (АВТО-УКЛОНЯЕТСЯ У ВЕРХНЕГО КРАЯ) -->
+    <!-- 1. ВЕРХНИЙ ТУЛБАР -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
@@ -18,7 +18,7 @@
         android:background="@drawable/drag_handle_bg"
         android:paddingStart="6dp"
         android:paddingEnd="6dp"
-        android:layout_marginBottom="4dp">
+        android:layout_marginBottom="2dp">
 
         <ImageButton
             android:id="@+id/btnDoCapture"
@@ -55,21 +55,43 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- РАМКА ПРИЦЕЛА (ПЕРЕТАСКИВАНИЕ ЗА ЛЮБУЮ ТОЧКУ КАДРА) -->
+    <!-- 2. ПОЛНОСТЬЮ ЧИСТЫЙ ВНУТРЕННИЙ КАДР ПРИЦЕЛА -->
     <FrameLayout
         android:id="@+id/captureSquare"
         android:layout_width="160dp"
         android:layout_height="160dp"
-        android:background="@drawable/border_capture_square">
+        android:background="@drawable/border_capture_square" />
 
-        <!-- Угловая ручка изменения размера -->
+    <!-- 3. НИЖНИЙ ТУЛБАР С ВЫНЕСЕННОЙ РУЧКОЙ РЕСАЙЗА -->
+    <LinearLayout
+        android:id="@+id/layoutBottomBar"
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/drag_handle_bg"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:layout_marginTop="2dp">
+
+        <TextView
+            android:id="@+id/handleMoveFrame"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="✥ ДВИГАТЬ"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Ручка изменения размера вынесена за пределы кадра! -->
         <ImageView
             android:id="@+id/handleResize"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:layout_gravity="bottom|end"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
             android:src="@drawable/handle_manipulator_bg"
-            android:padding="3dp"
+            android:padding="2dp"
             android:contentDescription="Resize Grip" />
-    </FrameLayout>
+    </LinearLayout>
 </LinearLayout>

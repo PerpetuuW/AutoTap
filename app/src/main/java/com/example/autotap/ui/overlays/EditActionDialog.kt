@@ -37,6 +37,7 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     private var etEditY: EditText? = null
     private var etEditDelayMs: EditText? = null
     private var etEditSimilarity: EditText? = null
+    private var etEditAiTimeout: EditText? = null
     private var btnToggleNotificationMode: Button? = null
     private var cbLoopUntilStopped: CheckBox? = null
     private var tvSelectedTemplatesSummary: TextView? = null
@@ -62,6 +63,7 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         etEditY = view.findViewByNames("etEditY") as? EditText
         etEditDelayMs = view.findViewByNames("etEditDelayMs") as? EditText
         etEditSimilarity = view.findViewByNames("etEditSimilarity") as? EditText
+        etEditAiTimeout = view.findViewByNames("etEditAiTimeout") as? EditText
         btnToggleNotificationMode = view.findViewByNames("btnToggleNotificationMode") as? Button
         cbLoopUntilStopped = view.findViewByNames("cbLoopUntilStopped") as? CheckBox
         tvSelectedTemplatesSummary = view.findViewByNames("tvSelectedTemplatesSummary") as? TextView
@@ -73,13 +75,6 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
         if (stepAction != null) {
             bindActionToUI(stepAction)
-        }
-
-        // Запуск Живой Калибровки из меню настройки шага
-        view.bindClickByNames("btnCalibrateStepMask") {
-            val maskIndex = stepAction?.selectedTemplateIndex ?: 0
-            hide()
-            overlayManager.debuggerOverlay.startLiveCalibration(maskIndex)
         }
 
         view.bindClickByNames("btnOpenTemplatePicker") {
@@ -119,9 +114,10 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
                 action.delay = etEditDelayMs?.text?.toString()?.toLongOrNull() ?: action.delay
                 action.similarityPercent = etEditSimilarity?.text?.toString()?.toIntOrNull()?.coerceIn(10, 100) ?: action.similarityPercent
+                action.aiTimeoutSeconds = etEditAiTimeout?.text?.toString()?.toFloatOrNull()?.coerceAtLeast(0.1f) ?: action.aiTimeoutSeconds
                 action.loopUntilStopped = cbLoopUntilStopped?.isChecked ?: action.loopUntilStopped
             }
-            logDiagnostic("SCRIPT", "Изменения сохранены: X=${action?.xNorm}, Y=${action?.yNorm}")
+            logDiagnostic("SCRIPT", "Изменения сохранены: X=${action?.xNorm}, Y=${action?.yNorm}, Timeout=${action?.aiTimeoutSeconds}s")
             hide()
         }
 
@@ -148,6 +144,7 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
         etEditDelayMs?.setText(action.delay.toString())
         etEditSimilarity?.setText(action.similarityPercent.toString())
+        etEditAiTimeout?.setText(action.aiTimeoutSeconds.toString())
         cbLoopUntilStopped?.isChecked = action.loopUntilStopped
         updateNotificationButtonText(action.notificationMode)
 

@@ -19,6 +19,7 @@ data class ActionConfig(
     var multiTemplateIndices: List<Int> = emptyList(),
     var similarityPercent: Int = 85,
     var scanIntervalSeconds: Float = 0.1f,
+    var aiTimeoutSeconds: Float = 5.0f, // Таймаут поиска в секундах
     var clickAiTarget: Boolean = false,
     var loopUntilStopped: Boolean = true,
     var jumpToStepOnMatch: Int? = null,
@@ -30,7 +31,7 @@ data class ActionConfig(
     var searchAreaW: Int = 0,
     var searchAreaH: Int = 0,
     var shapeOnlyMode: Boolean = false,
-    var autoTuningMode: Boolean = false,
+    var autoTuningMode: Boolean = true,
     var hybridCascadeMode: Boolean = true,
     var multiScaleSearch: Boolean = true,
     var joystickPath: List<PointF> = emptyList(),
@@ -38,5 +39,5 @@ data class ActionConfig(
     var longPressDuration: Long = 500L,
     var clickOffsetX: Int = 0,
     var clickOffsetY: Int = 0,
-    var notificationMode: Int = 0 // 0 = OFF, 1 = VIBRO, 2 = SOUND, 3 = BOTH
+    var notificationMode: Int = 0
 )

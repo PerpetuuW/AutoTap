@@ -28,7 +28,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Экранные координаты клика (X и Y в пикселях):"
+            android:text="Экранные координаты клика / ИИ-Якоря (X и Y px):"
             android:textColor="#58A6FF"
             android:textSize="12sp"
             android:textStyle="bold"
@@ -113,11 +113,11 @@
             android:padding="8dp"
             android:layout_marginBottom="12dp" />
 
-        <!-- 3. КНОПКА ОТКРЫТИЯ НОВОГО ДИАЛОГА ВЫБОРА МАСОК С ПРЕВЬЮ -->
+        <!-- 3. ВЫБОР МАСОК И ТАЙМАУТ ПОИСКА -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Выбор ИИ-масок для мультипоиска:"
+            android:text="Параметры ИИ-Мультипоиска и Таймаута:"
             android:textColor="#58A6FF"
             android:textSize="12sp"
             android:textStyle="bold"
@@ -141,32 +141,61 @@
             android:text="Выбранные маски: #0"
             android:textColor="#00F5D4"
             android:textSize="11sp"
-            android:layout_marginBottom="12dp"/>
+            android:layout_marginBottom="10dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
             android:layout_marginBottom="10dp">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:text="Точность совпадения %:"
-                android:textColor="@color/text_gray"
-                android:textSize="11sp"
-                android:layout_marginEnd="8dp"/>
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Точность совпадения %"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etEditSimilarity"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:hint="85"
+                    android:inputType="number"
+                    android:textColor="@color/text_white"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
 
-            <EditText
-                android:id="@+id/etEditSimilarity"
-                android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:hint="85"
-                android:inputType="number"
-                android:textColor="@color/text_white"
-                android:background="@drawable/drag_handle_bg"
-                android:padding="8dp" />
+            <View
+                android:layout_width="8dp"
+                android:layout_height="match_parent"/>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Таймаут поиска (сек)"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etEditAiTimeout"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:hint="5.0"
+                    android:inputType="numberDecimal"
+                    android:textColor="@color/text_white"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
         </LinearLayout>
 
         <CheckBox
