@@ -1,6 +1,7 @@
 package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.res.Configuration
@@ -69,6 +70,17 @@ class MyAutoClickService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         StructuredLogger.init(this)
+
+        try {
+            val info = serviceInfo ?: AccessibilityServiceInfo()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                info.capabilities = info.capabilities or AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
+            }
+            setServiceInfo(info)
+            logDiagnostic("SYSTEM", "Право CAPABILITY_CAN_TAKE_SCREENSHOT зарегистрировано.")
+        } catch (e: Exception) {
+            logError("SYSTEM", "Ошибка регистрации возможностей службы", e)
+        }
 
         gestureExecutor = GestureExecutor(this)
         scriptExecutor = ScriptExecutor(this)
@@ -223,6 +235,12 @@ class MyAutoClickService : AccessibilityService() {
         mainHandler.postDelayed({
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
+                    val info = serviceInfo
+                    if (info != null && (info.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT) == 0) {
+                        info.capabilities = info.capabilities or AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
+                        setServiceInfo(info)
+                    }
+
                     takeScreenshot(
                         Display.DEFAULT_DISPLAY,
                         mainExecutor,
@@ -240,12 +258,18 @@ class MyAutoClickService : AccessibilityService() {
                                         Bitmap.wrapHardwareBuffer(buffer, ColorSpace.get(ColorSpace.Named.SRGB))
                                     }
 
-                                    val finalBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, true)
+                                    val rawBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, true)
                                     buffer.close()
 
-                                    if (finalBitmap != null) {
-                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят (${finalBitmap.width}x${finalBitmap.height}px)")
-                                        callback(finalBitmap)
+                                    if (rawBitmap != null) {
+                                        // КРИТИЧЕСКИЙ ФИКС: Принудительный перевод пикселей в канонический ARGB_8888
+                                        val canonicalBitmap = Bitmap.createBitmap(rawBitmap.width, rawBitmap.height, Bitmap.Config.ARGB_8888)
+                                        val canvas = Canvas(canonicalBitmap)
+                                        canvas.drawBitmap(rawBitmap, 0f, 0f, null)
+                                        rawBitmap.recycle()
+
+                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят и канонизирован (${canonicalBitmap.width}x${canonicalBitmap.height}px)")
+                                        callback(canonicalBitmap)
                                     } else {
                                         callback(generateFallbackFrame())
                                     }
@@ -262,7 +286,7 @@ class MyAutoClickService : AccessibilityService() {
                         }
                     )
                 } catch (e: SecurityException) {
-                    logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите службу AutoTap в Спец. возможностях", e)
+                    logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите тумблер службы в Спец. возможностях", e)
                     notifyUserToResetAccessibilitySwitch()
                     callback(generateFallbackFrame())
                 } catch (e: Exception) {

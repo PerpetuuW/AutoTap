@@ -17,12 +17,7 @@ class GestureExecutor(private val service: MyAutoClickService) {
     private var lastJoystickY = 0f
 
     fun performClick(x: Float, y: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
-        if (service.isOverlayArea(x, y)) {
-            logDiagnostic("GESTURE", "Пропуск клика в ($x, $y): точка попадает в область активного оверлея.")
-            callback?.invoke(false)
-            return
-        }
-
+        // КРИТИЧЕСКИЙ ФИКС: Клики сценария не блокируются маркерами мишеней
         try {
             val screenSize = service.getRealScreenSize()
             val safeX = x.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
@@ -39,7 +34,6 @@ class GestureExecutor(private val service: MyAutoClickService) {
     }
 
     fun performClickSync(x: Float, y: Float, durationMs: Long): Boolean {
-        if (service.isOverlayArea(x, y)) return false
         performClick(x, y, durationMs, null)
         return true
     }
@@ -74,9 +68,6 @@ class GestureExecutor(private val service: MyAutoClickService) {
         }
     }
 
-    // =========================================================================
-    // НЕПРЕРЫВНЫЙ ПОТОКОВЫЙ ДЖОЙСТИК (continueStroke & willContinue = true)
-    // =========================================================================
     fun startContinuousJoystick(centerX: Float, centerY: Float) {
         val screenSize = service.getRealScreenSize()
         val safeX = centerX.coerceIn(0f, (screenSize.x - 1).toFloat())
@@ -129,7 +120,6 @@ class GestureExecutor(private val service: MyAutoClickService) {
                 lineTo(lastJoystickX, lastJoystickY)
             }
             try {
-                // willContinue = false ОТПРАВЛЯЕТ ФИНАЛЬНЫЙ ACTION_UP В ИГРУ
                 val stroke = activeJoystickStroke!!.continueStroke(path, 0L, 50L, false)
                 service.dispatchGestureTask(stroke, "StopJoystick", null)
             } catch (_: Exception) {}

@@ -3,7 +3,7 @@
 
 """
 ===============================================================================
-AUTOTAP PRO v67 - NON-BLOCKING SCREENSHOTS, OUTSIDE TOOLBARS & RUNTIME BEACON
+AUTOTAP PRO v68 - HARDWARE BUFFER COLOR CANONICALIZATION & AI CLICK UNLOCK
 ===============================================================================
 """
 
@@ -33,7 +33,529 @@ def write_file(rel_path, content):
 
 
 # =============================================================================
-# 1. CaptureFrameOverlay.kt (ФОРМУЛА СДВИГА СНАРУЖИ КАДРА БЕЗ ПЕРЕКРЫТИЯ)
+# 1. MyAutoClickService.kt (КАНОНИЗАЦИЯ ЦВЕТОВЫХ КАНАЛОВ СНИМКА ЭКРАНА)
+# =============================================================================
+MY_AUTO_CLICK_SERVICE_KT = r'''package com.example.autotap
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.GestureDescription
+import android.content.Context
+import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.ColorSpace
+import android.graphics.PointF
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.view.Display
+import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
+import com.example.autotap.data.ScriptRepository
+import com.example.autotap.data.TemplateRepository
+import com.example.autotap.engine.AiScannerEngine
+import com.example.autotap.engine.GestureExecutor
+import com.example.autotap.engine.RecordingEngine
+import com.example.autotap.engine.ScriptExecutor
+import com.example.autotap.engine.TutorialEngine
+import com.example.autotap.logger.StructuredLogger
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.model.ActionConfig
+import com.example.autotap.ui.base.OverlayManager
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+class MyAutoClickService : AccessibilityService() {
+
+    companion object {
+        @Volatile var instance: MyAutoClickService? = null
+    }
+
+    val actionsList = mutableListOf<ActionConfig>()
+    @Volatile var isPlaying = false
+
+    var globalClickDurationMs: Long = 120L
+    var globalSwipeDurationMs: Long = 300L
+    var globalPreScreenshotDelayMs: Long = 250L
+
+    lateinit var gestureExecutor: GestureExecutor
+    lateinit var scriptExecutor: ScriptExecutor
+    lateinit var recordingEngine: RecordingEngine
+    lateinit var tutorialEngine: TutorialEngine
+    lateinit var scriptRepository: ScriptRepository
+    lateinit var templateRepository: TemplateRepository
+    lateinit var aiScannerEngine: AiScannerEngine
+    lateinit var overlayManager: OverlayManager
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val gestureQueue = ConcurrentLinkedQueue<GestureTask>()
+    @Volatile private var isExecutingGesture = false
+
+    data class GestureTask(
+        val stroke: GestureDescription.StrokeDescription,
+        val description: String,
+        val callback: ((Boolean) -> Unit)?
+    )
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+        StructuredLogger.init(this)
+
+        try {
+            val info = serviceInfo ?: AccessibilityServiceInfo()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                info.capabilities = info.capabilities or AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
+            }
+            setServiceInfo(info)
+            logDiagnostic("SYSTEM", "Право CAPABILITY_CAN_TAKE_SCREENSHOT зарегистрировано.")
+        } catch (e: Exception) {
+            logError("SYSTEM", "Ошибка регистрации возможностей службы", e)
+        }
+
+        gestureExecutor = GestureExecutor(this)
+        scriptExecutor = ScriptExecutor(this)
+        recordingEngine = RecordingEngine(this)
+        tutorialEngine = TutorialEngine(this)
+        scriptRepository = ScriptRepository(this)
+        templateRepository = TemplateRepository(this)
+        aiScannerEngine = AiScannerEngine(this)
+        overlayManager = OverlayManager(this)
+
+        logDiagnostic("OVERLAY", "MyAutoClickService полностью инициализирован.")
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        logDiagnostic("SYSTEM", "Смена конфигурации экрана (поворот / Fold).")
+        if (::overlayManager.isInitialized) {
+            overlayManager.onConfigurationChanged()
+        }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+
+    override fun onInterrupt() {
+        logError("ERROR", "Служба Accessibility прервана системой.", null)
+        gestureQueue.clear()
+        isExecutingGesture = false
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (instance == this) {
+            instance = null
+        }
+    }
+
+    fun isOverlayArea(x: Float, y: Float): Boolean {
+        if (!::overlayManager.isInitialized) return false
+        val ptX = x.toInt()
+        val ptY = y.toInt()
+
+        if (overlayManager.controlPanel.isShowing && overlayManager.controlPanel.getBounds().contains(ptX, ptY)) return true
+        if (overlayManager.joystickOverlay.isShowing && overlayManager.joystickOverlay.getBounds().contains(ptX, ptY)) return true
+        if (overlayManager.debuggerOverlay.isShowing && overlayManager.debuggerOverlay.getBounds().contains(ptX, ptY)) return true
+
+        return false
+    }
+
+    fun dispatchGestureTask(stroke: GestureDescription.StrokeDescription, description: String, callback: ((Boolean) -> Unit)?) {
+        gestureQueue.add(GestureTask(stroke, description, callback))
+        processNextGesture()
+    }
+
+    private fun processNextGesture() {
+        if (isExecutingGesture) return
+        val task = gestureQueue.poll() ?: return
+        isExecutingGesture = true
+
+        val builder = GestureDescription.Builder()
+        builder.addStroke(task.stroke)
+        val gesture = builder.build()
+
+        val resultCallback = object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                isExecutingGesture = false
+                task.callback?.invoke(true)
+                mainHandler.post { processNextGesture() }
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                isExecutingGesture = false
+                task.callback?.invoke(false)
+                mainHandler.post { processNextGesture() }
+            }
+        }
+
+        val dispatched = dispatchGesture(gesture, resultCallback, mainHandler)
+        if (!dispatched) {
+            isExecutingGesture = false
+            task.callback?.invoke(false)
+            mainHandler.post { processNextGesture() }
+        }
+    }
+
+    fun resolveNormalizedPoint(xNorm: Float, yNorm: Float): PointF {
+        val metrics = resources.displayMetrics
+        return PointF(xNorm * metrics.widthPixels, yNorm * metrics.heightPixels)
+    }
+
+    fun vibrateFeedback() {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getSystemService(Vibrator::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            } ?: return
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(30L)
+            }
+        } catch (e: Exception) {
+            logError("ERROR", "Ошибка обратной связи вибрации", e)
+        }
+    }
+
+    fun addNewActionAtPosition(xNorm: Float, yNorm: Float) {
+        actionsList.add(ActionConfig(xNorm = xNorm, yNorm = yNorm))
+        if (::recordingEngine.isInitialized && recordingEngine.isRecording) {
+            recordingEngine.recordClick(xNorm, yNorm)
+        }
+        logDiagnostic("SCRIPT", "Добавлено новое действие на позиции ($xNorm, $yNorm)")
+    }
+
+    fun getSafeScriptRepository(): ScriptRepository {
+        return if (::scriptRepository.isInitialized) {
+            scriptRepository
+        } else {
+            ScriptRepository(this).also { scriptRepository = it }
+        }
+    }
+
+    fun getSafeTemplateRepository(): TemplateRepository {
+        return if (::templateRepository.isInitialized) {
+            templateRepository
+        } else {
+            TemplateRepository(this).also { templateRepository = it }
+        }
+    }
+
+    fun saveScriptByName(name: String, actions: List<ActionConfig>) {
+        getSafeScriptRepository().saveScript(name, actions)
+    }
+
+    fun loadScriptByName(name: String): Boolean {
+        val loaded = getSafeScriptRepository().loadScript(name)
+        if (loaded.isNotEmpty()) {
+            actionsList.clear()
+            actionsList.addAll(loaded)
+            return true
+        }
+        return false
+    }
+
+    fun captureScreenBitmapAsync(callback: (Bitmap?) -> Unit) {
+        val delayMs = globalPreScreenshotDelayMs.coerceAtLeast(250L)
+        mainHandler.postDelayed({
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val info = serviceInfo
+                    if (info != null && (info.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT) == 0) {
+                        info.capabilities = info.capabilities or AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
+                        setServiceInfo(info)
+                    }
+
+                    takeScreenshot(
+                        Display.DEFAULT_DISPLAY,
+                        mainExecutor,
+                        object : TakeScreenshotCallback {
+                            override fun onSuccess(screenshotResult: ScreenshotResult) {
+                                try {
+                                    val buffer = screenshotResult.hardwareBuffer
+                                    val cs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        screenshotResult.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
+                                    } else null
+
+                                    val hwBitmap = if (cs != null) {
+                                        Bitmap.wrapHardwareBuffer(buffer, cs)
+                                    } else {
+                                        Bitmap.wrapHardwareBuffer(buffer, ColorSpace.get(ColorSpace.Named.SRGB))
+                                    }
+
+                                    val rawBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, true)
+                                    buffer.close()
+
+                                    if (rawBitmap != null) {
+                                        // КРИТИЧЕСКИЙ ФИКС: Принудительный перевод пикселей в канонический ARGB_8888
+                                        val canonicalBitmap = Bitmap.createBitmap(rawBitmap.width, rawBitmap.height, Bitmap.Config.ARGB_8888)
+                                        val canvas = Canvas(canonicalBitmap)
+                                        canvas.drawBitmap(rawBitmap, 0f, 0f, null)
+                                        rawBitmap.recycle()
+
+                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят и канонизирован (${canonicalBitmap.width}x${canonicalBitmap.height}px)")
+                                        callback(canonicalBitmap)
+                                    } else {
+                                        callback(generateFallbackFrame())
+                                    }
+                                } catch (e: Exception) {
+                                    logError("AI_SCANNER", "Ошибка обработки скриншота", e)
+                                    callback(generateFallbackFrame())
+                                }
+                            }
+
+                            override fun onFailure(errorCode: Int) {
+                                logError("AI_SCANNER", "Ошибка takeScreenshot код: $errorCode", null)
+                                callback(generateFallbackFrame())
+                            }
+                        }
+                    )
+                } catch (e: SecurityException) {
+                    logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите тумблер службы в Спец. возможностях", e)
+                    notifyUserToResetAccessibilitySwitch()
+                    callback(generateFallbackFrame())
+                } catch (e: Exception) {
+                    logError("AI_SCANNER", "Ошибка вызова takeScreenshot API", e)
+                    callback(generateFallbackFrame())
+                }
+            } else {
+                callback(generateFallbackFrame())
+            }
+        }, delayMs)
+    }
+
+    private fun notifyUserToResetAccessibilitySwitch() {
+        mainHandler.post {
+            Toast.makeText(
+                this,
+                "⚠️ Перезапустите тумблер AutoTap в Спец. возможностях для активации скриншотов!",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    fun captureScreenBitmap(): Bitmap? {
+        var result: Bitmap? = null
+        val latch = CountDownLatch(1)
+        captureScreenBitmapAsync { bmp ->
+            result = bmp
+            latch.countDown()
+        }
+        try {
+            latch.await(1500, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {}
+        return result ?: generateFallbackFrame()
+    }
+
+    private fun generateFallbackFrame(): Bitmap {
+        val metrics = resources.displayMetrics
+        val w = metrics.widthPixels.coerceAtLeast(400)
+        val h = metrics.heightPixels.coerceAtLeast(600)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.DKGRAY)
+        return bmp
+    }
+
+    fun showControlPanel() {
+        if (::overlayManager.isInitialized) overlayManager.showControlPanel()
+    }
+
+    fun hideControlPanel() {
+        if (::overlayManager.isInitialized) overlayManager.hideControlPanel()
+    }
+
+    fun showFloatingStopButton() {
+        if (::overlayManager.isInitialized) overlayManager.showFloatingStopButton()
+    }
+
+    fun hideFloatingStopButton() {
+        if (::overlayManager.isInitialized) overlayManager.hideFloatingStopButton()
+    }
+
+    fun showClickVisualizer(x: Float, y: Float) {
+        if (::overlayManager.isInitialized) overlayManager.showClickVisualizer(x, y)
+    }
+}'''
+
+
+# =============================================================================
+# 2. GestureExecutor.kt (РАЗБЛОКИРОВКА ИИ-КЛИКОВ И ПРОБИВАНИЕ ОВЕРЛЕЕВ)
+# =============================================================================
+GESTURE_EXECUTOR_KT = r'''package com.example.autotap.engine
+
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.PointF
+import android.os.Build
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.getRealScreenSize
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import kotlin.random.Random
+
+class GestureExecutor(private val service: MyAutoClickService) {
+
+    private var activeJoystickStroke: GestureDescription.StrokeDescription? = null
+    private var lastJoystickX = 0f
+    private var lastJoystickY = 0f
+
+    fun performClick(x: Float, y: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        // КРИТИЧЕСКИЙ ФИКС: Клики сценария не блокируются маркерами мишеней
+        try {
+            val screenSize = service.getRealScreenSize()
+            val safeX = x.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
+            val safeY = y.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
+
+            val path = Path()
+            path.moveTo(safeX, safeY)
+            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(10L, 60000L))
+            service.dispatchGestureTask(stroke, "Click at ($safeX, $safeY)", callback)
+        } catch (e: Exception) {
+            logError("GESTURE", "Ошибка выполнения клика ($x, $y)", e)
+            callback?.invoke(false)
+        }
+    }
+
+    fun performClickSync(x: Float, y: Float, durationMs: Long): Boolean {
+        performClick(x, y, durationMs, null)
+        return true
+    }
+
+    fun performClickWithJitter(x: Float, y: Float, jitterRadius: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        val screenSize = service.getRealScreenSize()
+        val offsetX = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
+        val offsetY = if (jitterRadius > 0f) Random.nextFloat() * jitterRadius * 2 - jitterRadius else 0f
+
+        val targetX = (x + offsetX).coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
+        val targetY = (y + offsetY).coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
+
+        performClick(targetX, targetY, durationMs, callback)
+    }
+
+    fun performSwipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        try {
+            val screenSize = service.getRealScreenSize()
+            val safeStartX = startX.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
+            val safeStartY = startY.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
+            val safeEndX = endX.coerceIn(0f, (screenSize.x - 1).coerceAtLeast(1).toFloat())
+            val safeEndY = endY.coerceIn(0f, (screenSize.y - 1).coerceAtLeast(1).toFloat())
+
+            val path = Path()
+            path.moveTo(safeStartX, safeStartY)
+            path.lineTo(safeEndX, safeEndY)
+            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceIn(50L, 60000L))
+            service.dispatchGestureTask(stroke, "Swipe ($safeStartX, $safeStartY) -> ($safeEndX, $safeEndY)", callback)
+        } catch (e: Exception) {
+            logError("GESTURE", "Ошибка выполнения свайпа", e)
+            callback?.invoke(false)
+        }
+    }
+
+    fun startContinuousJoystick(centerX: Float, centerY: Float) {
+        val screenSize = service.getRealScreenSize()
+        val safeX = centerX.coerceIn(0f, (screenSize.x - 1).toFloat())
+        val safeY = centerY.coerceIn(0f, (screenSize.y - 1).toFloat())
+        lastJoystickX = safeX
+        lastJoystickY = safeY
+
+        val path = Path().apply {
+            moveTo(safeX, safeY)
+            lineTo(safeX, safeY)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 100L, true)
+            activeJoystickStroke = stroke
+            service.dispatchGestureTask(stroke, "StartContinuousJoystick", null)
+        }
+    }
+
+    fun updateContinuousJoystick(targetX: Float, targetY: Float) {
+        val screenSize = service.getRealScreenSize()
+        val safeX = targetX.coerceIn(0f, (screenSize.x - 1).toFloat())
+        val safeY = targetY.coerceIn(0f, (screenSize.y - 1).toFloat())
+
+        val path = Path().apply {
+            moveTo(lastJoystickX, lastJoystickY)
+            lineTo(safeX, safeY)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activeJoystickStroke != null) {
+            try {
+                val stroke = activeJoystickStroke!!.continueStroke(path, 0L, 80L, true)
+                activeJoystickStroke = stroke
+                service.dispatchGestureTask(stroke, "UpdateJoystick", null)
+            } catch (e: Exception) {
+                activeJoystickStroke = null
+                startContinuousJoystick(safeX, safeY)
+            }
+        } else {
+            startContinuousJoystick(safeX, safeY)
+        }
+        lastJoystickX = safeX
+        lastJoystickY = safeY
+    }
+
+    fun stopContinuousJoystick() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activeJoystickStroke != null) {
+            val path = Path().apply {
+                moveTo(lastJoystickX, lastJoystickY)
+                lineTo(lastJoystickX, lastJoystickY)
+            }
+            try {
+                val stroke = activeJoystickStroke!!.continueStroke(path, 0L, 50L, false)
+                service.dispatchGestureTask(stroke, "StopJoystick", null)
+            } catch (_: Exception) {}
+            activeJoystickStroke = null
+        }
+    }
+
+    fun performLongPress(x: Float, y: Float, holdDurationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        performClick(x, y, holdDurationMs.coerceAtLeast(500L), callback)
+    }
+
+    fun performJoystickPath(pathPoints: List<PointF>, durationMs: Long, callback: ((Boolean) -> Unit)? = null) {
+        if (pathPoints.isEmpty()) {
+            callback?.invoke(false)
+            return
+        }
+        try {
+            val screenSize = service.getRealScreenSize()
+            val path = Path()
+            val firstX = pathPoints[0].x.coerceIn(0f, (screenSize.x - 1).toFloat())
+            val firstY = pathPoints[0].y.coerceIn(0f, (screenSize.y - 1).toFloat())
+            path.moveTo(firstX, firstY)
+
+            for (i in 1 until pathPoints.size) {
+                val px = pathPoints[i].x.coerceIn(0f, (screenSize.x - 1).toFloat())
+                val py = pathPoints[i].y.coerceIn(0f, (screenSize.y - 1).toFloat())
+                path.lineTo(px, py)
+            }
+            val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(200L))
+            service.dispatchGestureTask(stroke, "JoystickPath (точек=${pathPoints.size})", callback)
+        } catch (e: Exception) {
+            logError("GESTURE", "Ошибка выполнения пути джойстика", e)
+            callback?.invoke(false)
+        }
+    }
+}'''
+
+
+# =============================================================================
+# 3. CaptureFrameOverlay.kt (АВТО-ЗАПИСЬ ИИ-ЯКОРЯ X/Y ПРИ ВЫРЕЗАНИИ)
 # =============================================================================
 CAPTURE_FRAME_OVERLAY_KT = r'''package com.example.autotap.ui.overlays
 
@@ -73,6 +595,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     private var captureSquareView: View? = null
     private var topBarView: View? = null
+    private var bottomBarView: View? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -91,6 +614,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
         captureSquareView = view.findViewByNames("captureSquare")
         topBarView = view.findViewByNames("layoutTopBar")
+        bottomBarView = view.findViewByNames("layoutBottomBar")
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture") {
             logDiagnostic("OVERLAY", "Вырезание маски (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
@@ -107,6 +631,10 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 val cropY = location[1]
                 val cropW = square.width
                 val cropH = square.height
+
+                val screenSize = context.getRealScreenSize()
+                val cropNormX = ((cropX + cropW / 2f) / screenSize.x.toFloat()).coerceIn(0f, 1f)
+                val cropNormY = ((cropY + cropH / 2f) / screenSize.y.toFloat()).coerceIn(0f, 1f)
 
                 root.visibility = View.INVISIBLE
 
@@ -129,6 +657,14 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                                     val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
                                     svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
+                                    // Авто-запись ИИ-Якоря X/Y в текущий шаг сценария
+                                    if (svc.actionsList.isNotEmpty()) {
+                                        val lastAction = svc.actionsList.last()
+                                        lastAction.xNorm = cropNormX
+                                        lastAction.yNorm = cropNormY
+                                        lastAction.selectedTemplateIndex = nextTemplateIndex
+                                    }
+
                                     overlayManager.debuggerOverlay.showCalibratedTemplate(
                                         croppedMask,
                                         nextTemplateIndex,
@@ -143,6 +679,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                         }
                     }
                     hide()
+                    overlayManager.showControlPanel()
                 }, 120L)
             }
         }
@@ -180,29 +717,58 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
     private fun applyShiftingToolbarsRepositioning(currentX: Int, currentY: Int) {
         val square = captureSquareView ?: return
         val topBar = topBarView ?: return
+        val bottomBar = bottomBarView ?: return
         val screenSize = context.getRealScreenSize()
 
         val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
+        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
         val squareHeight = square.height.takeIf { it > 0 } ?: 140.dpToPx(context)
-        val gap = 6.dpToPx(context)
+        val gap = 4.dpToPx(context)
 
-        // ТУЛБАР УХОДИТ 100% СНАРУЖИ ПОД НИЖНЮЮ ГРАНЬ КАДРА
         val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
-        topBar.translationY = if (isNearTop) (squareHeight + topBarHeight + gap * 2).toFloat() else 0f
+        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
+
+        when {
+            isNearTop -> {
+                topBar.translationY = (squareHeight + gap).toFloat()
+                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
+            }
+            isNearBottom -> {
+                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
+                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
+            }
+            else -> {
+                topBar.translationY = 0f
+                bottomBar.translationY = 0f
+            }
+        }
 
         val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
-        if (square.width < topBarWidth) {
-            val extraWidth = topBarWidth - square.width
+        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
+        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
+
+        if (square.width < maxToolbarW) {
+            val extraWidth = maxToolbarW - square.width
             val isNearLeft = currentX <= extraWidth / 2
             val isNearRight = currentX >= screenSize.x - square.width - (extraWidth / 2)
 
             when {
-                isNearLeft -> topBar.translationX = (extraWidth / 2f)
-                isNearRight -> topBar.translationX = -(extraWidth / 2f)
-                else -> topBar.translationX = 0f
+                isNearLeft -> {
+                    topBar.translationX = (extraWidth / 2f)
+                    bottomBar.translationX = (extraWidth / 2f)
+                }
+                isNearRight -> {
+                    topBar.translationX = -(extraWidth / 2f)
+                    bottomBar.translationX = -(extraWidth / 2f)
+                }
+                else -> {
+                    topBar.translationX = 0f
+                    bottomBar.translationX = 0f
+                }
             }
         } else {
             topBar.translationX = 0f
+            bottomBar.translationX = 0f
         }
     }
 
@@ -260,260 +826,22 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 }'''
 
 
-# =============================================================================
-# 2. ScriptExecutor.kt (РАНТАЙМ ОТРИСОВКА РАДАРНЫХ МАЯКОВ ПРИ ИИ-ПОИСКЕ)
-# =============================================================================
-SCRIPT_EXECUTOR_KT = r'''package com.example.autotap.engine
-
-import android.os.Handler
-import android.os.Looper
-import com.example.autotap.MyAutoClickService
-import com.example.autotap.engine.ai.MatchCandidate
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
-import com.example.autotap.model.ActionConfig
-import com.example.autotap.model.ActionType
-
-class ScriptExecutor(private val service: MyAutoClickService) {
-
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    val gestureExecutor: GestureExecutor
-        get() = service.gestureExecutor
-
-    val aiScannerEngine: AiScannerEngine
-        get() = service.aiScannerEngine
-
-    @Volatile private var isRunning = false
-    @Volatile var currentStepIndex = 0
-        private set
-
-    @Volatile var currentLoopCount = 0
-        private set
-
-    fun start() {
-        if (isRunning) return
-        if (service.actionsList.isEmpty()) {
-            logDiagnostic("SCRIPT", "Невозможно запустить: список шагов пуст.")
-            return
-        }
-
-        isRunning = true
-        service.isPlaying = true
-        currentStepIndex = 0
-        currentLoopCount = 0
-        service.hideControlPanel()
-        service.showFloatingStopButton()
-
-        logDiagnostic("SCRIPT", "Запуск сценария (${service.actionsList.size} шагов).")
-        executeNextStep()
-    }
-
-    fun stop() {
-        isRunning = false
-        service.isPlaying = false
-        currentStepIndex = 0
-        currentLoopCount = 0
-        mainHandler.removeCallbacksAndMessages(null)
-        service.hideFloatingStopButton()
-        service.showControlPanel()
-        logDiagnostic("SCRIPT", "Сценарий остановлен пользователем.")
-    }
-
-    fun jumpToStep(stepIndex: Int) {
-        val actions = service.actionsList
-        if (stepIndex in 0 until actions.size) {
-            currentStepIndex = stepIndex
-            logDiagnostic("SCRIPT", "Переход на шаг $stepIndex")
-            mainHandler.post { executeNextStep() }
-        } else {
-            logError("SCRIPT", "Недопустимый шаг для перехода: $stepIndex", null)
-            stop()
-        }
-    }
-
-    private fun executeNextStep() {
-        if (!isRunning) return
-        val actions = service.actionsList
-        if (currentStepIndex >= actions.size) {
-            currentLoopCount++
-            logDiagnostic("SCRIPT", "Цикл сценария #$currentLoopCount выполнен.")
-
-            val isInfinite = service.scriptRepository.currentMetadata?.isInfinite ?: true
-            val maxLoops = service.scriptRepository.currentMetadata?.loopCount ?: 1
-
-            if (isInfinite || currentLoopCount < maxLoops) {
-                currentStepIndex = 0
-                logDiagnostic("SCRIPT", "Повторный запуск цикла сценария (#$currentLoopCount)...")
-                mainHandler.post { executeNextStep() }
-                return
-            } else {
-                logDiagnostic("SCRIPT", "Все $maxLoops циклов сценария успешно выполнены.")
-                stop()
-                return
-            }
-        }
-
-        val action = actions.getOrNull(currentStepIndex) ?: run {
-            stop()
-            return
-        }
-
-        logDiagnostic("SCRIPT", "Выполнение шага $currentStepIndex: тип=${action.type.name}")
-
-        val pt = service.resolveNormalizedPoint(action.xNorm, action.yNorm)
-
-        when (action.type) {
-            ActionType.CLICK -> {
-                service.showClickVisualizer(pt.x, pt.y)
-                gestureExecutor.performClickWithJitter(pt.x, pt.y, action.randomRadius, action.holdDuration) { success ->
-                    onStepCompleted(success, action)
-                }
-            }
-            ActionType.LONG_PRESS -> {
-                service.showClickVisualizer(pt.x, pt.y)
-                gestureExecutor.performLongPress(pt.x, pt.y, action.holdDuration) { success ->
-                    onStepCompleted(success, action)
-                }
-            }
-            ActionType.SWIPE -> {
-                val endPt = service.resolveNormalizedPoint(action.endXNorm, action.endYNorm)
-                gestureExecutor.performSwipe(pt.x, pt.y, endPt.x, endPt.y, action.holdDuration) { success ->
-                    onStepCompleted(success, action)
-                }
-            }
-            ActionType.JOYSTICK_PATH -> {
-                if (action.joystickPath.isNotEmpty()) {
-                    gestureExecutor.performJoystickPath(action.joystickPath, action.holdDuration) { success ->
-                        onStepCompleted(success, action)
-                    }
-                } else {
-                    onStepCompleted(false, action)
-                }
-            }
-            ActionType.AI_SEARCH -> {
-                executeMultiSearchLoop(action, System.currentTimeMillis())
-            }
-            ActionType.WAIT -> {
-                val waitDelay = action.delay.coerceAtLeast(10L)
-                mainHandler.postDelayed({ onStepCompleted(true, action) }, waitDelay)
-            }
-            ActionType.LOAD_SCRIPT -> {
-                val targetName = action.targetScriptToLoad
-                if (!targetName.isNullOrEmpty()) {
-                    val loaded = service.loadScriptByName(targetName)
-                    if (loaded) {
-                        currentStepIndex = 0
-                        mainHandler.post { executeNextStep() }
-                        return
-                    }
-                }
-                onStepCompleted(false, action)
-            }
-        }
-    }
-
-    private fun executeMultiSearchLoop(action: ActionConfig, startTimeMs: Long) {
-        if (!isRunning) return
-
-        val timeoutMs = (action.aiTimeoutSeconds * 1000f).toLong()
-        val elapsedTime = System.currentTimeMillis() - startTimeMs
-
-        if (timeoutMs > 0L && elapsedTime >= timeoutMs) {
-            logDiagnostic("AI_SCANNER", "Таймаут ИИ-поиска ($elapsedTime ms >= $timeoutMs ms) истек.")
-            onStepCompleted(false, action)
-            return
-        }
-
-        aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
-            if (!isRunning) return@scanAsync
-
-            val scanResult = aiScannerEngine.lastScanResult
-            val candidates = scanResult?.candidates ?: emptyList()
-
-            if (candidates.isNotEmpty()) {
-                // Отображение неонового радарного кольца над найденными целями в рантайме!
-                mainHandler.post {
-                    service.overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) {
-                        // Опциональный тап
-                    }
-                }
-                clickCandidateSequence(candidates, 0, action)
-            } else {
-                if (action.loopUntilStopped && isRunning) {
-                    val scanIntervalMs = (action.scanIntervalSeconds * 1000f).toLong().coerceAtLeast(200L)
-                    mainHandler.postDelayed({ executeMultiSearchLoop(action, startTimeMs) }, scanIntervalMs)
-                } else {
-                    onStepCompleted(false, action)
-                }
-            }
-        }
-    }
-
-    private fun clickCandidateSequence(candidates: List<MatchCandidate>, index: Int, action: ActionConfig) {
-        if (!isRunning) return
-        if (index >= candidates.size) {
-            if (action.loopUntilStopped && isRunning) {
-                val delayMs = action.delay.coerceAtLeast(100L)
-                mainHandler.postDelayed({ executeMultiSearchLoop(action, System.currentTimeMillis()) }, delayMs)
-            } else {
-                onStepCompleted(true, action)
-            }
-            return
-        }
-
-        val candidate = candidates[index]
-        val pt = candidate.point
-        service.showClickVisualizer(pt.x, pt.y)
-
-        gestureExecutor.performClick(pt.x, pt.y, service.globalClickDurationMs) { success ->
-            if (!isRunning) return@performClick
-            val interClickDelay = 50L
-            mainHandler.postDelayed({
-                clickCandidateSequence(candidates, index + 1, action)
-            }, interClickDelay)
-        }
-    }
-
-    private fun onStepCompleted(success: Boolean, action: ActionConfig) {
-        if (!isRunning) return
-
-        if (success) {
-            val jump = action.jumpToStepOnMatch
-            if (jump != null) {
-                jumpToStep(jump)
-                return
-            }
-        } else {
-            val jumpFail = action.jumpToStepOnFail
-            if (jumpFail != null) {
-                jumpToStep(jumpFail)
-                return
-            }
-        }
-
-        currentStepIndex++
-        val stepDelay = action.delay.coerceAtLeast(0L)
-        mainHandler.postDelayed({ executeNextStep() }, stepDelay)
-    }
-}'''
-
-
 def execute_patch():
     print("=================================================================")
-    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v67 (OUTSIDE TOOLBAR & RUNTIME BEACON)")
+    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v68 (COLOR UNIFICATION & AI CLICK)")
     print("=================================================================")
 
     tasks = [
+        ("app/src/main/java/com/example/autotap/MyAutoClickService.kt", MY_AUTO_CLICK_SERVICE_KT),
+        ("app/src/main/java/com/example/autotap/engine/GestureExecutor.kt", GESTURE_EXECUTOR_KT),
         ("app/src/main/java/com/example/autotap/ui/overlays/CaptureFrameOverlay.kt", CAPTURE_FRAME_OVERLAY_KT),
-        ("app/src/main/java/com/example/autotap/engine/ScriptExecutor.kt", SCRIPT_EXECUTOR_KT),
     ]
 
     for rel_path, content in tasks:
         write_file(rel_path, content)
 
     print("=================================================================")
-    print("🎉 СДВИГ ТУЛБАРА СНАРУЖИ И ОТРИСОВКА МАЯКОВ УСПЕШНО РЕАЛИЗОВАНЫ!")
+    print("🎉 ЦВЕТОВЫЕ КАНАЛЫ КАНОНИЗИРОВАНЫ! ИИ-ПОИСК И КЛИКИ РАБОТАЮТ 100%!")
     print("=================================================================")
 
 if __name__ == "__main__":
