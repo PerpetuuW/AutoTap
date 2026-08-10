@@ -67,75 +67,96 @@ class TutorialEngine(private val service: MyAutoClickService) {
     fun startDefaultTutorial() {
         steps.clear()
         
-        // Последовательный порядок по кнопкам панели
+        // 💥 ПОЛНОЕ ПОКРЫТИЕ ВСЕХ 12 КНОПОК ПАНЕЛИ УПРАВЛЕНИЯ
         steps.add(
             TutorialStepConfig(
                 id = "step_1",
-                title = "Шаг 1 из 9: Обзор Панели",
-                message = "Добро пожаловать в AutoTap PRO! Это главная панель управления. Нажмите 'Далее'.",
+                title = "Шаг 1 из 12: Панель AutoTap PRO",
+                message = "Добро пожаловать! Это главная панель управления. Нажмите 'Далее' для обзора кнопок.",
                 autoAdvance = false
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_2",
-                title = "Шаг 2 из 9: Кнопка СТАРТ",
-                message = "Кнопка ► запускает и останавливает выполнение шагов кликера."
+                title = "Шаг 2 из 12: Кнопка СТАРТ (►)",
+                message = "Кнопка ► запускает и останавливает выполнение записанных шагов и ИИ-поиска."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_3",
-                title = "Шаг 3 из 9: Добавление Шагов",
-                message = "Кнопка + добавляет клики, свайпы и шаги ИИ-поиска."
+                title = "Шаг 3 из 12: Добавление Шагов (+)",
+                message = "Кнопка + добавляет новые клики, свайпы и шаги ИИ-поиска картинки."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_4",
-                title = "Шаг 4 из 9: Вырезание ИИ-Масок",
-                message = "Кнопка 📷 откроет прицел. Рамка вырежет точные картинки с экрана игры."
+                title = "Шаг 4 из 12: ИИ-Прицел (📷)",
+                message = "Кнопка 📷 открывает прицел вырезания точных шаблонов картинок с экрана игры."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_5",
-                title = "Шаг 5 из 9: Справка ?",
-                message = "Кнопка ? вызовет это обучение и подробную справку в любой момент."
+                title = "Шаг 5 из 12: Справка (?)",
+                message = "Кнопка ? вызываeт этот интерактивный туториал в любой момент."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_6",
-                title = "Шаг 6 из 9: Сворачивание Меню ≡",
-                message = "Кнопка ≡ скрывает панель в 1 строку или открывает нижнее меню."
+                title = "Шаг 6 из 12: Доп. Меню (≡)",
+                message = "Кнопка ≡ сворачивает панель в плавающую кнопку или открывает 2-ю строку кнопок."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_7",
-                title = "Шаг 7 из 9: Запись Кликов 🔴",
-                message = "Кнопка 🔴 включает живую запись ваших тачей по экрану."
+                title = "Шаг 7 из 12: Очистка (🗑)",
+                message = "Кнопка Корзины мгновенно удаляет все созданные мишени с экрана."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_8",
-                title = "Шаг 8 из 9: Включение Джойстика",
-                message = "Кнопка Джойстика откроет стик плавного управления движением."
+                title = "Шаг 8 из 12: Живая Запись (🔴)",
+                message = "Кнопка 🔴 включает рекордер ваших тачей и свайпов в реальном времени."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_9",
-                title = "Шаг 9 из 9: Сценарии 📁",
-                message = "Кнопка Папки открывает сохранение и бэкап сценариев."
+                title = "Шаг 9 из 12: Джойстик (🎯)",
+                message = "Кнопка Джойстика выводит плавающий стик для плавного управления персонажем."
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_10",
+                title = "Шаг 10 из 12: Сценарии (📁)",
+                message = "Кнопка Папки сохраняет сценарии в JSON и загружает ранее созданные цепочки."
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_11",
+                title = "Шаг 11 из 12: Индикатор Мишеней / Глаз (👁)",
+                message = "Кнопка Глаза скрывает/показывает мишени на экране. КРАСНЫЙ ФОН означает, что мишени активны!"
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_12",
+                title = "Шаг 12 из 12: Закрыть (✕)",
+                message = "Кнопка ✕ скрывает панель. Нажмите 'Завершить' для старта работы!"
             )
         )
 
         currentStepIndex = 0
         isTutorialActive = true
-        logDiagnostic("TUTORIAL", "Запущен последовательный туториал.")
+        logDiagnostic("TUTORIAL", "Запущен полный последовательный туториал из 12 шагов.")
         showCurrentStep()
     }
 
@@ -173,9 +194,12 @@ class TutorialEngine(private val service: MyAutoClickService) {
                 "step_4" -> "btnCapturePool"
                 "step_5" -> "btnHelpTutorial"
                 "step_6" -> "btnToggleMenu"
-                "step_7" -> "btnRecord"
-                "step_8" -> "btnToggleJoystick"
-                "step_9" -> "btnLoadScript"
+                "step_7" -> "btnClearAll"
+                "step_8" -> "btnRecord"
+                "step_9" -> "btnToggleJoystick"
+                "step_10" -> "btnLoadScript"
+                "step_11" -> "btnHideNumbers"
+                "step_12" -> "btnClose"
                 else -> ""
             }
 

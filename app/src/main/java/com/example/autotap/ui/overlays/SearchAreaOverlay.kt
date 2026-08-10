@@ -7,7 +7,6 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.LinearLayout
 import com.example.autotap.CoordConverter
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
@@ -15,13 +14,12 @@ import com.example.autotap.bindClickByNames
 import com.example.autotap.dpToPx
 import com.example.autotap.findViewByNames
 import com.example.autotap.getRealScreenSize
-import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
 import com.example.autotap.vibrateFeedback
-import kotlin.math.max
 
 class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
@@ -34,11 +32,11 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     private var topBarView: View? = null
 
     init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.MATCH_PARENT
         gravity = Gravity.TOP or Gravity.START
         layer = OverlayLayer.CAPTURE_LAYER
         priority = OverlayPriority.HIGH
-        width = WindowManager.LayoutParams.WRAP_CONTENT
-        height = WindowManager.LayoutParams.WRAP_CONTENT
     }
 
     override fun createView(): View {
@@ -71,7 +69,7 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
                     currentAction.searchAreaY = exactY
                     currentAction.searchAreaW = exactW
                     currentAction.searchAreaH = exactH
-                    logDiagnostic("AI_SCANNER", "Зона поиска сохранена: (" + exactX + ", " + exactY + ", " + exactW + "x" + exactH + "px), norm=" + rectNorm)
+                    StructuredLogger.logDiagnostic("AI_SCANNER", "Зона поиска сохранена: (" + exactX + ", " + exactY + ", " + exactW + "x" + exactH + "px), norm=" + rectNorm)
                 }
             }
             context.vibrateFeedback()
@@ -92,78 +90,80 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
                 }
             }
             context.vibrateFeedback()
-            logDiagnostic("AI_SCANNER", "Размер области поиска сброшен.")
+            StructuredLogger.logDiagnostic("AI_SCANNER", "Размер области поиска сброшен.")
         }
 
         view.bindClickByNames("btnCancelSearchArea", "btnCloseSearchArea") {
             hide()
         }
 
-        val moveHandle = view.findViewByNames("handleMoveSearchArea") ?: view
-        val topBar = topBarView ?: view
-        setupDragAndDrop(moveHandle)
-        setupDragAndDrop(topBar)
+        val topBar = topBarView
+        if (topBar != null) {
+            setupIndependentViewDrag(topBar)
+        }
 
         val frameView = viewSearchAreaFrameView
         if (frameView != null) {
-            setupDragAndDrop(frameView)
-        }
-
-        val resizeHandle = view.findViewByNames("handleResizeSearchArea")
-        if (resizeHandle != null && frameView != null) {
-            setupCornerResizeHandler(resizeHandle, frameView)
+            setupIndependentViewDrag(frameView)
+            val resizeHandle = view.findViewByNames("handleResizeSearchArea")
+            if (resizeHandle != null) {
+                setupCornerResizeHandler(resizeHandle, frameView)
+            }
         }
 
         return view
     }
 
-    override fun updatePosition(x: Int, y: Int) {
-        super.updatePosition(x, y)
-        updateDynamicToolbarDocking(x, y)
-    }
+    private fun setupIndependentViewDrag(targetView: View) {
+        var startTouchX = 0f
+        var startTouchY = 0f
+        var initialTranslationX = 0f
+        var initialTranslationY = 0f
 
-    private fun updateDynamicToolbarDocking(currentX: Int, currentY: Int) {
-        val frame = viewSearchAreaFrameView ?: return
-        val topBar = topBarView ?: return
-        val screenSize = context.getRealScreenSize()
+        targetView.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startTouchX = event.rawX
+                    startTouchY = event.rawY
+                    initialTranslationX = targetView.translationX
+                    initialTranslationY = targetView.translationY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - startTouchX
+                    val dy = event.rawY - startTouchY
 
-        val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
-        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 180.dpToPx(context)
-        val squareWidth = frame.width.takeIf { it > 0 } ?: currentWidthPx
-        val squareHeight = frame.height.takeIf { it > 0 } ?: currentHeightPx
-        val gap = 6.dpToPx(context)
-
-        if (currentY < (topBarHeight + gap)) {
-            topBar.translationY = (squareHeight + gap * 2).toFloat()
-        } else {
-            topBar.translationY = 0f
+                    targetView.translationX = initialTranslationX + dx
+                    targetView.translationY = initialTranslationY + dy
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    true
+                }
+                else -> false
+            }
         }
-
-        val idealX = currentX + (squareWidth - topBarWidth) / 2
-        val clampedX = idealX.coerceIn(0, (screenSize.x - topBarWidth).coerceAtLeast(0))
-        topBar.translationX = (clampedX - currentX).toFloat()
     }
 
     private fun setupCornerResizeHandler(resizeView: View, targetFrame: View) {
-        var startW = 0
-        var startH = 0
-        var touchX = 0f
-        var touchY = 0f
+        var lastTouchX = 0f
+        var lastTouchY = 0f
 
         resizeView.setOnTouchListener { _, event ->
             val screenSize = context.getRealScreenSize()
 
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = targetFrame.width.takeIf { it > 0 } ?: currentWidthPx
-                    startH = targetFrame.height.takeIf { it > 0 } ?: currentHeightPx
-                    touchX = event.rawX
-                    touchY = event.rawY
+                    lastTouchX = event.rawX
+                    lastTouchY = event.rawY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - touchX).toInt()
-                    val dy = (event.rawY - touchY).toInt()
+                    val dx = (event.rawX - lastTouchX).toInt()
+                    val dy = (event.rawY - lastTouchY).toInt()
+
+                    lastTouchX = event.rawX
+                    lastTouchY = event.rawY
 
                     val location = IntArray(2)
                     targetFrame.getLocationOnScreen(location)
@@ -173,8 +173,8 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
                     val maxW = (screenSize.x - windowX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
                     val maxH = (screenSize.y - windowY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
 
-                    val newW = (startW + dx).coerceIn(minSizePx, maxW)
-                    val newH = (startH + dy).coerceIn(minSizePx, maxH)
+                    val newW = (currentWidthPx + dx).coerceIn(minSizePx, maxW)
+                    val newH = (currentHeightPx + dy).coerceIn(minSizePx, maxH)
 
                     currentWidthPx = newW
                     currentHeightPx = newH
@@ -185,10 +185,6 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
                         lp.height = newH
                         targetFrame.layoutParams = lp
                         targetFrame.requestLayout()
-                    }
-                    val currentLp = layoutParams ?: params
-                    if (currentLp != null) {
-                        updateDynamicToolbarDocking(currentLp.x, currentLp.y)
                     }
                     true
                 }

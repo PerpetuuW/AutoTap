@@ -1,8 +1,10 @@
 package com.example.autotap
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -24,6 +26,8 @@ class MainActivity : AppCompatActivity() {
     lateinit var templateRepository: TemplateRepository
     lateinit var scriptRepository: ScriptRepository
     lateinit var actionEditorEngine: ActionEditorEngine
+
+    private val MEDIA_PROJECTION_REQUEST_CODE = 2001
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,7 +82,8 @@ class MainActivity : AppCompatActivity() {
         root.bindClickByNames("btnAccessibility") {
             try {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                StructuredLogger.logDiagnostic("UI", "Переход в системное меню Спец. возможности.")
+                Toast.makeText(this, "Выключите и включите тумблер 'AutoTap' для сброса прав!", Toast.LENGTH_LONG).show()
+                StructuredLogger.logDiagnostic("UI", "Переход в Спец. возможности для сброса прав.")
             } catch (e: Exception) {
                 StructuredLogger.logError("UI", "Ошибка перехода в Спец. возможности", e)
             }
@@ -98,6 +103,17 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 checkBatteryOptimization()
+            }
+        }
+
+        // 💥 ВНЕДРЕНИЕ АКТИВАЦИИ MEDIAPROJECTION ДВИЖКА (100% ГАРАНТИЯ СКРИНШОТОВ)
+        root.bindClickByNames("btnMediaProjection") {
+            try {
+                val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                startActivityForResult(projectionManager.createScreenCaptureIntent(), MEDIA_PROJECTION_REQUEST_CODE)
+                StructuredLogger.logDiagnostic("UI", "Запрос разрешения MediaProjection...")
+            } catch (e: Exception) {
+                StructuredLogger.logError("UI", "Ошибка вызова MediaProjectionManager", e)
             }
         }
 
@@ -131,6 +147,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateUIStatusIndicators()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == MEDIA_PROJECTION_REQUEST_CODE) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                try {
+                    val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                    val mediaProjection = projectionManager.getMediaProjection(resultCode, data)
+                    MyAutoClickService.initMediaProjection(this, mediaProjection)
+                    Toast.makeText(this, "🚀 Прямой Захват Кадра (MediaProjection) УСПЕШНО ВКЛЮЧЕН!", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    StructuredLogger.logError("UI", "Ошибка получения токена MediaProjection", e)
+                }
+            } else {
+                Toast.makeText(this, "Запрос MediaProjection отклонен пользователем.", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     override fun onResume() {
@@ -194,7 +228,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         (root.findViewByNames("btnAccessibility") as? Button)?.apply {
-            text = if (isServiceActive) "2. Спец. возможности: [ ВКЛ ]" else "2. Спец. возможности: [ ВЫКЛ ]"
+            text = if (isServiceActive) "2. Спец. возможности: [ ВКЛ ] (Сброс)" else "2. Спец. возможности: [ ВЫКЛ ]"
             setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5B5B"))
         }
 

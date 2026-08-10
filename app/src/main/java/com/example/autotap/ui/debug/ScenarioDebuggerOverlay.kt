@@ -94,7 +94,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
                 setOnClickListener {
                     if (currentTemplateIndex >= 0) {
                         MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(currentTemplateIndex)
-                        logDiagnostic("CALIBRATION", "Маска #" + currentTemplateIndex + " удалена в корзину из меню калибровки.")
+                        logDiagnostic("CALIBRATION", "Маска #" + currentTemplateIndex + " удалена в корзину.")
                     }
                     overlayManager.candidateOverlay.hide()
                     hide()
@@ -114,60 +114,63 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
     fun startLiveCalibration(templateIndex: Int, directBitmap: Bitmap? = null) {
         this.currentTemplateIndex = templateIndex
         this.detectedCandidate = null
-        show()
 
-        logDiagnostic("CALIBRATION", "Запуск калибровки для Маски #" + templateIndex)
         val svc = MyAutoClickService.instance ?: return
         val bitmap = directBitmap ?: svc.templateRepository.loadTemplate(templateIndex)
 
-        if (bitmap != null) {
+        if (bitmap == null) {
+            logError("CALIBRATION", "Не удалось загрузить Bitmap Маски #" + templateIndex, null)
+            Toast.makeText(context, " Ошибка загрузки Маски #" + templateIndex, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 💥 Сначала снимаем чистый кадр ДО показа оверлея калибровки!
+        svc.captureScreenBitmapAsync { frameBmp ->
+            show()
             ivPreview?.setImageBitmap(bitmap)
             ivPreview?.visibility = View.VISIBLE
-            statusText?.text = "Запрос снимка экрана для Маски #" + templateIndex + "...\nИдет сканирование..."
 
-            svc.captureScreenBitmapAsync { frameBmp ->
-                if (frameBmp != null) {
-                    logDiagnostic("CALIBRATION", "Снимок получен (" + frameBmp.width + "x" + frameBmp.height + "px). Поиск...")
-                    Thread {
-                        try {
-                            val testAction = ActionConfig(
-                                selectedTemplateIndex = templateIndex,
-                                similarityPercent = 55,
-                                customSearchArea = false
-                            )
-                            val scanResult = svc.aiScannerEngine.scan({ frameBmp }, testAction)
-                            val candidates = scanResult.candidates
+            if (frameBmp != null) {
+                logDiagnostic("CALIBRATION", "Чистый кадр получен (" + frameBmp.width + "x" + frameBmp.height + "px). Поиск совпадений...")
+                statusText?.text = "Сканирование экрана для Маски #" + templateIndex + "...\nПоиск..."
 
-                            mainHandler.post {
-                                if (candidates.isNotEmpty()) {
-                                    val top = candidates.first()
-                                    detectedCandidate = top
-                                    val percent = "" + (top.score * 100).toInt() + "%"
-                                    logDiagnostic("CALIBRATION", "🎯 ОБЪЕКТ НАЙДЕН! Точность: " + percent + " в точке (" + top.point.x + ", " + top.point.y + ")")
-                                    statusText?.text = "🎯 Объект НАЙДЕН (" + percent + ")!\nПодсвечен анимированным неоновым маяком."
+                Thread {
+                    try {
+                        val testAction = ActionConfig(
+                            selectedTemplateIndex = templateIndex,
+                            similarityPercent = 55,
+                            customSearchArea = false
+                        )
+                        val scanResult = svc.aiScannerEngine.scan({ frameBmp }, testAction)
+                        val candidates = scanResult.candidates
 
-                                    // 💥 Запуск подстветки маяком
-                                    overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) { confirmed ->
-                                        detectedCandidate = confirmed
-                                        logDiagnostic("CALIBRATION", "Пользователь подтвердил цель тапом: " + confirmed.point)
-                                        confirmSmartMaskGeneration()
-                                    }
-                                } else {
-                                    logDiagnostic("CALIBRATION", "🔍 Пробный поиск: объект с точностью выше 55% НЕ найден на кадре.")
-                                    statusText?.text = "Маска #" + templateIndex + " загружена.\nОбъект не найден на экране. Подтвердите создание."
+                        mainHandler.post {
+                            if (candidates.isNotEmpty()) {
+                                val top = candidates.first()
+                                detectedCandidate = top
+                                val percent = "" + (top.score * 100).toInt() + "%"
+                                logDiagnostic("CALIBRATION", "🎯 Найдено совпадений: " + candidates.size + ". Лучшее: " + percent + " в точке (" + top.point.x + ", " + top.point.y + ")")
+                                statusText?.text = "🎯 Найдено совпадений: " + candidates.size + " (" + percent + ")\nНажмите на нужный маяк на экране!"
+
+                                // 💥 Запуск подсвечивающих неоновых радарных колец
+                                overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) { confirmed ->
+                                    detectedCandidate = confirmed
+                                    logDiagnostic("CALIBRATION", "Пользователь выделил объект тапом по маяку: " + confirmed.point)
+                                    confirmSmartMaskGeneration()
                                 }
+                            } else {
+                                logDiagnostic("CALIBRATION", "⚠️ Совпадений с точностью > 55% не найдено.")
+                                statusText?.text = "Маска #" + templateIndex + " создана.\nОбъект не найден на экране. Подтвердите создание."
                             }
-                        } catch (e: Exception) {
-                            logError("CALIBRATION", "Ошибка тестового сканирования калибровки", e)
                         }
-                    }.start()
-                } else {
-                    logError("CALIBRATION", "Не удалось получить кадр при калибровке Маски #" + templateIndex, null)
-                }
+                    } catch (e: Exception) {
+                        logError("CALIBRATION", "Ошибка тестового сканирования калибровки", e)
+                    }
+                }.start()
+            } else {
+                logError("CALIBRATION", "Не удалось получить кадр при калибровке!", null)
+                statusText?.text = "❌ Ошибка доступа к экрану (Код 3).\nПерезапустите Спец. возможности!"
             }
-        } else {
-            logError("CALIBRATION", "Не удалось загрузить Bitmap Маски #" + templateIndex, null)
-            statusText?.text = "Ошибка загрузки маски #" + templateIndex
         }
     }
 
@@ -193,12 +196,12 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
                     lastAction.xNorm = (matchedCandidate.point.x / screenSize.x).coerceIn(0f, 1f)
                     lastAction.yNorm = (matchedCandidate.point.y / screenSize.y).coerceIn(0f, 1f)
                 }
-                logDiagnostic("CALIBRATION", "Обновлен шаг сценария: selectedTemplateIndex=" + currentTemplateIndex + ", similarityPercent=" + recSim)
+                logDiagnostic("CALIBRATION", "Обновлены параметры шага: selectedTemplateIndex=" + currentTemplateIndex + ", similarityPercent=" + recSim + ", pos=(" + lastAction.xNorm + ", " + lastAction.yNorm + ")")
             }
 
             Toast.makeText(
                 context,
-                "Маска #" + currentTemplateIndex + " откалибрована! Профиль: " + profile + " (Порог: " + recSim + "%)",
+                "Маска #" + currentTemplateIndex + " откалибрована! Профиль: " + profile + " (" + recSim + "%)",
                 Toast.LENGTH_LONG
             ).show()
         }

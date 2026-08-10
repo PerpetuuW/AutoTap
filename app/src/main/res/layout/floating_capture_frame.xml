@@ -1,100 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/layoutCaptureContainer"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:gravity="center_horizontal"
-    android:padding="0dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
     android:clipChildren="false"
-    android:clipToPadding="false"
-    android:elevation="18dp">
+    android:clipToPadding="false">
 
-    <!-- ТУЛБАР КНОПОК ПРИЦЕЛА -->
+    <!-- 1. ПЛАВАЮЩАЯ ПАНЕЛЬ КНОПЕК (АВТОНОМНАЯ, ВСЕГДА 100% ДОСТУПНАЯ) -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
-        android:layout_height="38dp"
+        android:layout_height="40dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="20dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
-        android:paddingStart="6dp"
-        android:paddingEnd="6dp"
-        android:layout_marginBottom="4dp">
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:elevation="24dp">
 
         <TextView
             android:id="@+id/handleMoveFrame"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:gravity="center"
-            android:text="⁝⁝ ДВИГАТЬ"
+            android:text="⁝⁝ ПАНЕЛЬ"
             android:textColor="#FFB703"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:textStyle="bold"
             android:paddingStart="4dp"
-            android:paddingEnd="6dp"
-            android:layout_marginEnd="4dp" />
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="6dp" />
 
         <ImageButton
             android:id="@+id/btnDoCapture"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:src="@drawable/ic_camera"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_primary"
-            android:padding="5dp"
+            android:padding="6dp"
             android:contentDescription="Capture"
-            android:layout_marginEnd="4dp" />
+            android:layout_marginEnd="6dp" />
 
         <Button
             android:id="@+id/btnCaptureSearchArea"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:text="Зона"
             android:textColor="#FFFFFF"
             android:backgroundTint="@color/accent_blue"
-            android:textSize="10sp"
-            android:padding="0dp"
-            android:layout_marginEnd="4dp" />
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:layout_marginEnd="6dp" />
 
         <ImageButton
             android:id="@+id/btnCancelCapture"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
-            android:padding="5dp"
+            android:padding="6dp"
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- ПОЛЕ ШАБЛОНА + ВЫНЕСЕННЫЙ РЕГУЛЯТОР РЕСАЙЗА -->
-    <RelativeLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:clipChildren="false"
-        android:clipToPadding="false"
-        android:paddingEnd="16dp"
-        android:paddingBottom="16dp">
+    <!-- 2. РАМКА ВЫРЕЗАНИЯ ШАБЛОНА (АВТОНОМНАЯ, ДВИГАЕТСЯ В ЛЮБУЮ ТОЧКУ ЭКРАНА 0..100%) -->
+    <FrameLayout
+        android:id="@+id/captureSquare"
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        android:layout_gravity="center"
+        android:background="@drawable/border_capture_square"
+        android:elevation="16dp">
 
-        <FrameLayout
-            android:id="@+id/captureSquare"
-            android:layout_width="160dp"
-            android:layout_height="160dp"
-            android:background="@drawable/border_capture_square" />
-
+        <!-- ВНУТРЕННИЙ РЕГУЛЯТОР РЕСАЙЗА -->
         <ImageView
             android:id="@+id/handleResize"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_below="@id/captureSquare"
-            android:layout_toEndOf="@id/captureSquare"
-            android:layout_marginTop="-12dp"
-            android:layout_marginStart="-12dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="bottom|end"
             android:src="@drawable/handle_manipulator_bg"
             android:padding="4dp"
             android:contentDescription="Resize Grip" />
-    </RelativeLayout>
-</LinearLayout>
+    </FrameLayout>
+</FrameLayout>

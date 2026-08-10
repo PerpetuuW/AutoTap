@@ -1,10 +1,14 @@
 package com.example.autotap.ui.base
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
+import android.view.View
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.dpToPx
 import com.example.autotap.getRealScreenSize
-import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.model.ActionType
 import com.example.autotap.ui.debug.ScenarioDebuggerOverlay
 import com.example.autotap.ui.overlays.AddActionDialog
@@ -33,6 +37,7 @@ class OverlayManager(val context: Context) {
     private val overlays = mutableMapOf<OverlayLayer, OverlayBase>()
     private val activeTargetMarkers = mutableListOf<TargetMarkerOverlay>()
     var areMarkersVisible = true
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     val controlPanel by lazy { ControlPanelOverlay(context, this) }
     val debuggerOverlay by lazy { ScenarioDebuggerOverlay(context, this) }
@@ -64,7 +69,7 @@ class OverlayManager(val context: Context) {
         register(OverlayLayer.DIALOG_LAYER, editActionDialog)
         register(OverlayLayer.SEARCH_AREA_LAYER, searchAreaOverlay)
         register(OverlayLayer.STOP_BUTTON_LAYER, floatingStopButton)
-        logDiagnostic("OVERLAY", "OverlayManager полностью инициализирован.")
+        StructuredLogger.logDiagnostic("OVERLAY", "OverlayManager полностью инициализирован.")
     }
 
     fun register(layer: OverlayLayer, overlay: OverlayBase) {
@@ -100,7 +105,28 @@ class OverlayManager(val context: Context) {
         clickVisualizer.showClickAt(x, y)
     }
 
-    // ДВИНЖОК ОБНОВЛЕНИЯ ВИЗУАЛЬНЫХ МИШЕНЕЙ НА ЭКРАНЕ
+    // 💥 ФИКС: Безопасный чистый захват кадра с ФИЗИЧЕСКИМ ИЗЪЯТИЕМ оверлеев из WindowManager
+    fun captureCleanScreen(service: MyAutoClickService, callback: (Bitmap?) -> Unit) {
+        val activeOverlays = overlays.values.filter { it.isShowing }.toList()
+        val activeMarkers = activeTargetMarkers.filter { it.isShowing }.toList()
+
+        StructuredLogger.logDiagnostic("SCREEN_CAPTURE", "Временное изъятие " + (activeOverlays.size + activeMarkers.size) + " оверлеев из WindowManager...")
+
+        activeOverlays.forEach { it.hide() }
+        activeMarkers.forEach { it.hide() }
+
+        mainHandler.postDelayed({
+            service.captureScreenBitmapAsync { bmp ->
+                StructuredLogger.logDiagnostic("SCREEN_CAPTURE", "Скриншот снят. Восстановление оверлеев обратно на экран.")
+                activeOverlays.forEach { it.show() }
+                if (areMarkersVisible) {
+                    updateTargetMarkers()
+                }
+                callback(bmp)
+            }
+        }, 120L)
+    }
+
     fun updateTargetMarkers() {
         activeTargetMarkers.forEach { it.hide() }
         activeTargetMarkers.clear()
@@ -130,7 +156,6 @@ class OverlayManager(val context: Context) {
                 activeTargetMarkers.add(endMarker)
             }
         }
-        logDiagnostic("OVERLAY", "Отображено мишеней на экране: ${activeTargetMarkers.size}")
     }
 
     fun toggleTargetMarkersVisibility() {

@@ -1,6 +1,8 @@
 package com.example.autotap
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityService.ScreenshotResult
+import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.res.Configuration
@@ -25,12 +27,11 @@ import com.example.autotap.engine.RecordingEngine
 import com.example.autotap.engine.ScriptExecutor
 import com.example.autotap.engine.TutorialEngine
 import com.example.autotap.logger.StructuredLogger
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
 import com.example.autotap.model.ActionConfig
 import com.example.autotap.ui.base.OverlayManager
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class MyAutoClickService : AccessibilityService() {
@@ -42,9 +43,10 @@ class MyAutoClickService : AccessibilityService() {
     val actionsList = mutableListOf<ActionConfig>()
     @Volatile var isPlaying = false
 
+    // 💥 ВОССТАНОВЛЕННЫЕ ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ
     var globalClickDurationMs: Long = 120L
     var globalSwipeDurationMs: Long = 300L
-    var globalPreScreenshotDelayMs: Long = 50L
+    var globalPreScreenshotDelayMs: Long = 250L
 
     lateinit var gestureExecutor: GestureExecutor
     lateinit var scriptExecutor: ScriptExecutor
@@ -56,6 +58,7 @@ class MyAutoClickService : AccessibilityService() {
     lateinit var overlayManager: OverlayManager
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val bgScannerExecutor = Executors.newSingleThreadExecutor()
     private val gestureQueue = ConcurrentLinkedQueue<GestureTask>()
     @Volatile private var isExecutingGesture = false
 
@@ -79,12 +82,12 @@ class MyAutoClickService : AccessibilityService() {
         aiScannerEngine = AiScannerEngine(this)
         overlayManager = OverlayManager(this)
 
-        logDiagnostic("SERVICE", "Служба Спец. возможностей подключена и инициализирована.")
+        StructuredLogger.logDiagnostic("SERVICE", "Служба Спец. возможностей подключена и инициализирована.")
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        logDiagnostic("SYSTEM", "Смена конфигурации экрана (поворот / ориентация).")
+        StructuredLogger.logDiagnostic("SYSTEM", "Смена конфигурации экрана.")
         if (::overlayManager.isInitialized) {
             overlayManager.onConfigurationChanged()
         }
@@ -93,17 +96,18 @@ class MyAutoClickService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {
-        logError("SERVICE", "Служба Accessibility прервана системой.", null)
+        StructuredLogger.logError("SERVICE", "Служба Accessibility прервана системой.", null)
         gestureQueue.clear()
         isExecutingGesture = false
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        logDiagnostic("SERVICE", "Служба Accessibility уничтожена.")
+        StructuredLogger.logDiagnostic("SERVICE", "Служба Accessibility уничтожена.")
         if (instance == this) {
             instance = null
         }
+        bgScannerExecutor.shutdown()
     }
 
     fun isOverlayArea(x: Float, y: Float): Boolean {
@@ -136,7 +140,7 @@ class MyAutoClickService : AccessibilityService() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
                 isExecutingGesture = false
-                logDiagnostic("GESTURE", "Жест успешно выполнен: " + task.description)
+                StructuredLogger.logDiagnostic("GESTURE", "Жест успешно выполнен: " + task.description)
                 task.callback?.invoke(true)
                 mainHandler.post { processNextGesture() }
             }
@@ -144,7 +148,7 @@ class MyAutoClickService : AccessibilityService() {
             override fun onCancelled(gestureDescription: GestureDescription?) {
                 super.onCancelled(gestureDescription)
                 isExecutingGesture = false
-                logError("GESTURE", "Жест отменен системой: " + task.description, null)
+                StructuredLogger.logError("GESTURE", "Жест отменен системой: " + task.description, null)
                 task.callback?.invoke(false)
                 mainHandler.post { processNextGesture() }
             }
@@ -153,7 +157,7 @@ class MyAutoClickService : AccessibilityService() {
         val dispatched = dispatchGesture(gesture, resultCallback, mainHandler)
         if (!dispatched) {
             isExecutingGesture = false
-            logError("GESTURE", "Не удалось отправить жест в ОС: " + task.description, null)
+            StructuredLogger.logError("GESTURE", "Не удалось отправить жест в ОС: " + task.description, null)
             task.callback?.invoke(false)
             mainHandler.post { processNextGesture() }
         }
@@ -164,7 +168,7 @@ class MyAutoClickService : AccessibilityService() {
         return PointF(xNorm * metrics.widthPixels, yNorm * metrics.heightPixels)
     }
 
-    fun vibrateFeedback() {
+    fun vibrateFeedback(durationMs: Long = 30L) {
         try {
             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 getSystemService(Vibrator::class.java)
@@ -174,13 +178,13 @@ class MyAutoClickService : AccessibilityService() {
             } ?: return
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(30L)
+                vibrator.vibrate(durationMs)
             }
         } catch (e: Exception) {
-            logError("ERROR", "Ошибка обратной связи вибрации", e)
+            StructuredLogger.logError("ERROR", "Ошибка обратной связи вибрации", e)
         }
     }
 
@@ -189,7 +193,7 @@ class MyAutoClickService : AccessibilityService() {
         if (::recordingEngine.isInitialized && recordingEngine.isRecording) {
             recordingEngine.recordClick(xNorm, yNorm)
         }
-        logDiagnostic("SCRIPT", "Добавлено новое действие на позиции (" + xNorm + ", " + yNorm + ")")
+        StructuredLogger.logDiagnostic("SCRIPT", "Добавлено новое действие на позиции (" + xNorm + ", " + yNorm + ")")
     }
 
     fun getSafeScriptRepository(): ScriptRepository {
@@ -222,91 +226,61 @@ class MyAutoClickService : AccessibilityService() {
         return false
     }
 
-    // 💥 КРИТИЧЕСКИЙ ФИКС: Безопасное снятие скриншота без блокировки ERROR_SCREENSHOT_SECURE_WINDOW
     fun captureScreenBitmapAsync(callback: (Bitmap?) -> Unit) {
-        logDiagnostic("SCREEN_CAPTURE", "Подготовка к снятию кадра... (Пауза: " + globalPreScreenshotDelayMs + "ms)")
-        val takeAction = Runnable {
+        val delay = globalPreScreenshotDelayMs.coerceAtLeast(100L)
+        StructuredLogger.logDiagnostic("SCREEN_CAPTURE", "Подготовка к снятию кадра (пауза " + delay + "ms)...")
+        mainHandler.postDelayed({
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
                     takeScreenshot(
                         Display.DEFAULT_DISPLAY,
-                        mainExecutor,
+                        bgScannerExecutor,
                         object : TakeScreenshotCallback {
                             override fun onSuccess(screenshotResult: ScreenshotResult) {
+                                val hwBuffer = screenshotResult.hardwareBuffer
                                 try {
-                                    val buffer = screenshotResult.hardwareBuffer
                                     val cs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                         screenshotResult.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
                                     } else null
 
                                     val hwBitmap = if (cs != null) {
-                                        Bitmap.wrapHardwareBuffer(buffer, cs)
+                                        Bitmap.wrapHardwareBuffer(hwBuffer, cs)
                                     } else {
-                                        Bitmap.wrapHardwareBuffer(buffer, ColorSpace.get(ColorSpace.Named.SRGB))
+                                        Bitmap.wrapHardwareBuffer(hwBuffer, ColorSpace.get(ColorSpace.Named.SRGB))
                                     }
 
-                                    val rawBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, true)
-                                    buffer.close()
+                                    val softwareBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
 
-                                    if (rawBitmap != null) {
-                                        val canonicalBitmap = Bitmap.createBitmap(rawBitmap.width, rawBitmap.height, Bitmap.Config.ARGB_8888)
-                                        val canvas = Canvas(canonicalBitmap)
-                                        canvas.drawBitmap(rawBitmap, 0f, 0f, null)
-                                        rawBitmap.recycle()
-
-                                        logDiagnostic("SCREEN_CAPTURE", "Скриншот успешно получен (" + canonicalBitmap.width + "x" + canonicalBitmap.height + "px)")
-                                        callback(canonicalBitmap)
+                                    if (softwareBitmap != null) {
+                                        StructuredLogger.logDiagnostic("SCREEN_CAPTURE", "Скриншот успешно получен (" + softwareBitmap.width + "x" + softwareBitmap.height + "px)")
+                                        callback(softwareBitmap)
                                     } else {
-                                        logError("SCREEN_CAPTURE", "Bitmap.wrapHardwareBuffer вернул NULL. Использование заглушки.", null)
-                                        callback(generateFallbackFrame())
+                                        StructuredLogger.logError("SCREEN_CAPTURE", "Bitmap.wrapHardwareBuffer = NULL", null)
+                                        callback(null)
                                     }
                                 } catch (e: Exception) {
-                                    logError("SCREEN_CAPTURE", "Ошибка конвертации HardwareBuffer в Bitmap", e)
-                                    callback(generateFallbackFrame())
+                                    StructuredLogger.logError("SCREEN_CAPTURE", "Ошибка конвертации HardwareBuffer", e)
+                                    callback(null)
+                                } finally {
+                                    hwBuffer.close()
                                 }
                             }
 
                             override fun onFailure(errorCode: Int) {
-                                val errorDetail = when (errorCode) {
-                                    1 -> "ERROR_SCREENSHOT_INVALID_DISPLAY (1)"
-                                    2 -> "ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR (2)"
-                                    3 -> "ERROR_SCREENSHOT_SECURE_WINDOW (3)"
-                                    else -> "НЕИЗВЕСТНАЯ ОШИБКА (" + errorCode + ")"
-                                }
-                                logError("SCREEN_CAPTURE", "Сбой takeScreenshot(): " + errorDetail, null)
-                                callback(generateFallbackFrame())
+                                StructuredLogger.logError("SCREEN_CAPTURE", "Сбой takeScreenshot(): код " + errorCode, null)
+                                callback(null)
                             }
                         }
                     )
-                } catch (e: SecurityException) {
-                    logError("SCREEN_CAPTURE", "SecurityException: недостаточно прав для скриншота.", e)
-                    notifyUserToResetAccessibilitySwitch()
-                    callback(generateFallbackFrame())
                 } catch (e: Exception) {
-                    logError("SCREEN_CAPTURE", "Исключение при вызове takeScreenshot()", e)
-                    callback(generateFallbackFrame())
+                    StructuredLogger.logError("SCREEN_CAPTURE", "Исключение при вызове takeScreenshot()", e)
+                    callback(null)
                 }
             } else {
-                logError("SCREEN_CAPTURE", "Android API " + Build.VERSION.SDK_INT + " < 30 (Android 11). Скриншоты недоступны.", null)
-                callback(generateFallbackFrame())
+                StructuredLogger.logError("SCREEN_CAPTURE", "Android API " + Build.VERSION.SDK_INT + " < 30.", null)
+                callback(null)
             }
-        }
-
-        if (globalPreScreenshotDelayMs > 0) {
-            mainHandler.postDelayed(takeAction, globalPreScreenshotDelayMs)
-        } else {
-            mainHandler.post(takeAction)
-        }
-    }
-
-    private fun notifyUserToResetAccessibilitySwitch() {
-        mainHandler.post {
-            Toast.makeText(
-                this,
-                "⚠️ Перезапустите тумблер AutoTap в Спец. возможностях для активации скриншотов!",
-                Toast.LENGTH_LONG
-            ).show()
-        }
+        }, delay)
     }
 
     fun captureScreenBitmap(): Bitmap? {
@@ -319,23 +293,12 @@ class MyAutoClickService : AccessibilityService() {
         try {
             val success = latch.await(3000, TimeUnit.MILLISECONDS)
             if (!success) {
-                logError("SCREEN_CAPTURE", "Таймаут CountDownLatch (>3000ms) при ожидании скриншота!", null)
+                StructuredLogger.logError("SCREEN_CAPTURE", "Таймаут CountDownLatch (>3000ms) при ожидании скриншота!", null)
             }
         } catch (e: Exception) {
-            logError("SCREEN_CAPTURE", "Прерывание ожидания CountDownLatch", e)
+            StructuredLogger.logError("SCREEN_CAPTURE", "Прерывание ожидания CountDownLatch", e)
         }
-        return result ?: generateFallbackFrame()
-    }
-
-    private fun generateFallbackFrame(): Bitmap {
-        logError("SCREEN_CAPTURE", "[ВНИМАНИЕ] Сгенерирован фолбэк-кадр (400x600px). ИИ-поиск на таком кадре не даст совпадений!", null)
-        val metrics = resources.displayMetrics
-        val w = metrics.widthPixels.coerceAtLeast(400)
-        val h = metrics.heightPixels.coerceAtLeast(600)
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        canvas.drawColor(Color.DKGRAY)
-        return bmp
+        return result
     }
 
     fun showControlPanel() {

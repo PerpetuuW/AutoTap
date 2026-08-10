@@ -114,6 +114,21 @@
                 android:backgroundTint="#21262D"
                 android:textSize="12sp"
                 android:padding="10dp"
+                android:gravity="start|center_vertical"
+                android:layout_marginBottom="10dp"/>
+
+            <!-- 🚀 КНОПКА АКТИВАЦИИ DUAL-ENGINE MEDIAPROJECTION -->
+            <Button
+                android:id="@+id/btnMediaProjection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="4. Включить Захват Кадра (MediaProjection 100%)"
+                android:textColor="#00F5D4"
+                android:textStyle="bold"
+                android:backgroundTint="#1F6FEB"
+                android:textSize="12sp"
+                android:padding="10dp"
                 android:gravity="start|center_vertical"/>
         </LinearLayout>
 
@@ -178,7 +193,7 @@
                     android:minHeight="44dp"
                     android:text="Импорт"
                     android:textColor="@color/text_white"
-                    android:backgroundTint="#21262D"
+                    android:backgroundTint="@color/21262D"
                     android:textSize="12sp"
                     android:padding="4dp"
                     android:gravity="center"/>

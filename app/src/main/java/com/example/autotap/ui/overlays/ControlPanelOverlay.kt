@@ -6,12 +6,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageButton
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.dpToPx
 import com.example.autotap.findViewByNames
-import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
@@ -24,6 +25,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
     private var btnPlayView: View? = null
     private var btnRecordView: View? = null
     private var btnJoystickView: View? = null
+    private var btnHideNumbersView: View? = null
 
     private var displayStage = 0
 
@@ -39,6 +41,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         btnPlayView = view.findViewByNames("btnPlay")
         btnRecordView = view.findViewByNames("btnRecord")
         btnJoystickView = view.findViewByNames("btnToggleJoystick")
+        btnHideNumbersView = view.findViewByNames("btnHideNumbers")
 
         view.bindClickByNames("btnToggleMenu") {
             cycleDisplayStage(view)
@@ -49,13 +52,13 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         }
 
         view.bindClickByNames("btnCapturePool") {
-            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона.")
+            StructuredLogger.logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона.")
             context.vibrateFeedback()
             overlayManager.captureFrameOverlay.show()
         }
 
         view.bindClickByNames("btnAdd") {
-            logDiagnostic("OVERLAY", "Открытие меню добавления действия.")
+            StructuredLogger.logDiagnostic("OVERLAY", "Открытие меню добавления действия.")
             context.vibrateFeedback()
             overlayManager.addActionDialog.show()
         }
@@ -90,12 +93,14 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                 svc.actionsList.clear()
                 overlayManager.updateTargetMarkers()
                 context.vibrateFeedback()
-                logDiagnostic("OVERLAY", "Очищены все шаги сценария и мишени.")
+                StructuredLogger.logDiagnostic("OVERLAY", "Очищены все шаги сценария и мишени.")
             }
         }
 
+        // 💥 ФИКС: Кнопка «Глаз» становится КРАСНОЙ только когда мишени СКРЫТЫ!
         view.bindClickByNames("btnHideNumbers") {
             overlayManager.toggleTargetMarkersVisibility()
+            updateToggleStates()
             context.vibrateFeedback()
         }
 
@@ -197,6 +202,18 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
             isSelected = isJoystickVisible
             text = if (isJoystickVisible) "[ ДЖОЙСТИК: ВКЛ ]" else "ДЖОЙСТИК"
             setTextColor(if (isJoystickVisible) Color.parseColor("#00E676") else Color.WHITE)
+        }
+
+        // 💥 ИНДИКАТОР ГЛАЗА: КРАСНЫЙ ФОН ТОЛЬКО ТОГДА, КОГДА МИШЕНИ СКРЫТЫ (areMarkersVisible == false)!
+        (btnHideNumbersView as? ImageButton)?.apply {
+            val areVisible = overlayManager.areMarkersVisible
+            if (!areVisible) {
+                setImageResource(R.drawable.ic_eye_off)
+                setBackgroundResource(R.drawable.btn_premium_record) // КРАСНЫЙ ФОН: ВНИМАНИЕ, МИШЕНИ СКРЫТЫ!
+            } else {
+                setImageResource(R.drawable.ic_eye)
+                setBackgroundResource(R.drawable.btn_premium_secondary) // ОБЫЧНЫЙ ТЕМНЫЙ ФОН: МИШЕНИ ВИДНЫ
+            }
         }
     }
 }

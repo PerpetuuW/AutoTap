@@ -11,10 +11,9 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.core.view.ViewCompat
-import com.example.autotap.createOverlayParams
+import com.example.autotap.dpToPx
 import com.example.autotap.getRealScreenSize
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
+import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.safeAddView
 import com.example.autotap.safeRemoveView
 import kotlin.math.abs
@@ -57,6 +56,16 @@ abstract class OverlayBase(
         throw UnsupportedOperationException("Оверлей должен переопределить layoutResId или createView()")
     }
 
+    // 💥 КРИТИЧЕСКИЙ ФИКС: Возвращен оригинальный тип TYPE_ACCESSIBILITY_OVERLAY!
+    private fun getOverlayType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    }
+
     open fun inflate() {
         if (rootView != null) return
         val view = createView()
@@ -66,14 +75,15 @@ abstract class OverlayBase(
         val targetX = if (width == WindowManager.LayoutParams.MATCH_PARENT) 0 else initialX
         val targetY = if (height == WindowManager.LayoutParams.MATCH_PARENT) 0 else initialY
 
-        val lp = createOverlayParams(
-            width = width,
-            height = height,
-            gravity = gravity,
-            flags = flags,
-            x = targetX,
-            y = targetY
+        val lp = WindowManager.LayoutParams(
+            width, height,
+            getOverlayType(),
+            flags,
+            PixelFormat.TRANSLUCENT
         ).apply {
+            this.gravity = this@OverlayBase.gravity
+            this.x = targetX
+            this.y = targetY
             if (this@OverlayBase.dimAmount > 0f && (flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
                 this.dimAmount = this@OverlayBase.dimAmount
             }
@@ -120,10 +130,10 @@ abstract class OverlayBase(
             val added = windowManager.safeAddView(view, lp)
             if (added) {
                 isShowing = true
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен.")
+                StructuredLogger.logDiagnostic("OVERLAY", "Оверлей " + javaClass.simpleName + " отображен.")
             }
         } catch (e: Exception) {
-            logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
+            StructuredLogger.logError("OVERLAY", "Ошибка при отображении " + javaClass.simpleName, e)
         }
     }
 
@@ -132,9 +142,9 @@ abstract class OverlayBase(
         if (isShowing) {
             try {
                 windowManager.safeRemoveView(view)
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} скрыт.")
+                StructuredLogger.logDiagnostic("OVERLAY", "Оверлей " + javaClass.simpleName + " скрыт.")
             } catch (e: Exception) {
-                logError("OVERLAY", "Ошибка при скрытии ${javaClass.simpleName}", e)
+                StructuredLogger.logError("OVERLAY", "Ошибка при скрытии " + javaClass.simpleName, e)
             }
             overlayView = null
             rootView = null
@@ -150,19 +160,13 @@ abstract class OverlayBase(
         }
         val screenSize = context.getRealScreenSize()
         val v = overlayView ?: rootView
-        
-        if (v != null && (v.width == 0 || v.height == 0)) {
-            v.measure(
-                View.MeasureSpec.makeMeasureSpec(screenSize.x, View.MeasureSpec.AT_MOST),
-                View.MeasureSpec.makeMeasureSpec(screenSize.y, View.MeasureSpec.AT_MOST)
-            )
-        }
 
         val viewW = v?.measuredWidth?.takeIf { it > 0 } ?: v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
         val viewH = v?.measuredHeight?.takeIf { it > 0 } ?: v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
 
         val maxX = (screenSize.x - viewW).coerceAtLeast(0)
         val maxY = (screenSize.y - viewH).coerceAtLeast(0)
+
         lp.x = lp.x.coerceIn(0, maxX)
         lp.y = lp.y.coerceIn(0, maxY)
     }
@@ -172,6 +176,7 @@ abstract class OverlayBase(
         if (width != WindowManager.LayoutParams.MATCH_PARENT) {
             val screenSize = context.getRealScreenSize()
             val v = overlayView ?: rootView
+
             val viewW = v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
             val viewH = v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
 
@@ -188,7 +193,7 @@ abstract class OverlayBase(
         try {
             windowManager.updateViewLayout(v, lp)
         } catch (e: Exception) {
-            logError("OVERLAY", "Ошибка обновления позиции $layer", e)
+            StructuredLogger.logError("OVERLAY", "Ошибка обновления позиции " + layer, e)
         }
     }
 
@@ -203,7 +208,7 @@ abstract class OverlayBase(
         try {
             windowManager.updateViewLayout(view, lp)
         } catch (e: Exception) {
-            logError("OVERLAY", "Ошибка обновления флага touchable", e)
+            StructuredLogger.logError("OVERLAY", "Ошибка обновления флага touchable", e)
         }
     }
 
@@ -227,7 +232,7 @@ abstract class OverlayBase(
                     startX = event.rawX
                     startY = event.rawY
                     isDragging = false
-                    true // ВОЗВРАЩАЕМ TRUE, ЧТОБЫ ОС ПЕРЕДАВАЛА ACTION_MOVE
+                    true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - startX).toInt()
@@ -245,7 +250,6 @@ abstract class OverlayBase(
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val wasDragging = isDragging
                     isDragging = false
                     true
                 }
