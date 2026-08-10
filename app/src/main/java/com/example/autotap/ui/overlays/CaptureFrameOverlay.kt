@@ -137,21 +137,23 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun updatePosition(x: Int, y: Int) {
         super.updatePosition(x, y)
-        applySmartEdgeFlipping(x, y)
+        applyShiftingToolbarsRepositioning(x, y)
     }
 
-    private fun applySmartEdgeFlipping(currentX: Int, currentY: Int) {
+    private fun applyShiftingToolbarsRepositioning(currentX: Int, currentY: Int) {
         val square = captureSquareView ?: return
         val topBar = topBarView ?: return
         val screenSize = context.getRealScreenSize()
 
         val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
-        val gap = 4.dpToPx(context)
+        val squareHeight = square.height.takeIf { it > 0 } ?: 140.dpToPx(context)
+        val gap = 6.dpToPx(context)
 
+        // ТУЛБАР УХОДИТ 100% СНАРУЖИ ПОД НИЖНЮЮ ГРАНЬ КАДРА
         val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
-        topBar.translationY = if (isNearTop) (square.height + gap).toFloat() else 0f
+        topBar.translationY = if (isNearTop) (squareHeight + topBarHeight + gap * 2).toFloat() else 0f
 
-        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 110.dpToPx(context)
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
         if (square.width < topBarWidth) {
             val extraWidth = topBarWidth - square.width
             val isNearLeft = currentX <= extraWidth / 2

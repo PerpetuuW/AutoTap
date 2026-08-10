@@ -167,6 +167,12 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             val candidates = scanResult?.candidates ?: emptyList()
 
             if (candidates.isNotEmpty()) {
+                // Отображение неонового радарного кольца над найденными целями в рантайме!
+                mainHandler.post {
+                    service.overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) {
+                        // Опциональный тап
+                    }
+                }
                 clickCandidateSequence(candidates, 0, action)
             } else {
                 if (action.loopUntilStopped && isRunning) {
