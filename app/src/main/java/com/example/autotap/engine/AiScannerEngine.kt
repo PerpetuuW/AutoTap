@@ -19,8 +19,8 @@ class AiScannerEngine(private val service: MyAutoClickService) {
 
     fun scanAsync(frameProvider: () -> Bitmap?, action: ActionConfig, callback: (PointF?) -> Unit) {
         if (isScanning) {
-            logDiagnostic("AI_SCANNER", "Пропуск: асинхронное сканирование уже выполняется.")
-            callback(null)
+            // КРИТИЧЕСКИЙ ФИКС: При занятом сканере НЕ вызываем callback(null),
+            // чтобы исключить рекурсивный зацикленный спам таймера!
             return
         }
         isScanning = true

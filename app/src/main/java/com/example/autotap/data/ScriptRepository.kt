@@ -32,6 +32,7 @@ class ScriptRepository(private val context: Context) {
                     put("delay", action.delay)
                     put("holdDuration", action.holdDuration)
                     put("similarityPercent", action.similarityPercent)
+                    put("aiTimeoutSeconds", action.aiTimeoutSeconds)
                     put("selectedTemplateIndex", action.selectedTemplateIndex)
                     put("customSearchArea", action.customSearchArea)
                     put("searchAreaX", action.searchAreaX)
@@ -86,6 +87,7 @@ class ScriptRepository(private val context: Context) {
                         delay = obj.optLong("delay", 500L),
                         holdDuration = obj.optLong("holdDuration", 100L),
                         similarityPercent = obj.optInt("similarityPercent", 85),
+                        aiTimeoutSeconds = obj.optDouble("aiTimeoutSeconds", 5.0).toFloat(),
                         selectedTemplateIndex = obj.optInt("selectedTemplateIndex", 0),
                         customSearchArea = obj.optBoolean("customSearchArea", false),
                         searchAreaX = obj.optInt("searchAreaX", 0),

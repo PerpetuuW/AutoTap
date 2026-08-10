@@ -1,8 +1,6 @@
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.BitmapFactory
-import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -10,7 +8,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
@@ -19,13 +17,11 @@ import com.example.autotap.findViewByNames
 import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.model.ActionConfig
-import com.example.autotap.model.ActionType
 import com.example.autotap.playNotificationAlert
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
-import java.io.File
 
 class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
@@ -38,9 +34,13 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     private var etEditDelayMs: EditText? = null
     private var etEditSimilarity: EditText? = null
     private var etEditAiTimeout: EditText? = null
+    private var etJumpOnMatch: EditText? = null
+    private var etJumpOnFail: EditText? = null
     private var btnToggleNotificationMode: Button? = null
     private var cbLoopUntilStopped: CheckBox? = null
     private var tvSelectedTemplatesSummary: TextView? = null
+    private var layoutTechnicalData: LinearLayout? = null
+    private var tvToggleTechnicalData: TextView? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -64,9 +64,13 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         etEditDelayMs = view.findViewByNames("etEditDelayMs") as? EditText
         etEditSimilarity = view.findViewByNames("etEditSimilarity") as? EditText
         etEditAiTimeout = view.findViewByNames("etEditAiTimeout") as? EditText
+        etJumpOnMatch = view.findViewByNames("etJumpOnMatch") as? EditText
+        etJumpOnFail = view.findViewByNames("etJumpOnFail") as? EditText
         btnToggleNotificationMode = view.findViewByNames("btnToggleNotificationMode") as? Button
         cbLoopUntilStopped = view.findViewByNames("cbLoopUntilStopped") as? CheckBox
         tvSelectedTemplatesSummary = view.findViewByNames("tvSelectedTemplatesSummary") as? TextView
+        layoutTechnicalData = view.findViewByNames("layoutTechnicalData") as? LinearLayout
+        tvToggleTechnicalData = view.findViewByNames("tvToggleTechnicalData") as? TextView
 
         val actions = MyAutoClickService.instance?.actionsList ?: emptyList()
         val stepAction = if (targetStepIndex in actions.indices) {
@@ -75,6 +79,24 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
         if (stepAction != null) {
             bindActionToUI(stepAction)
+        }
+
+        // Переключение видимости технических данных X/Y
+        tvToggleTechnicalData?.setOnClickListener {
+            val isVisible = layoutTechnicalData?.visibility == View.VISIBLE
+            layoutTechnicalData?.visibility = if (isVisible) View.GONE else View.VISIBLE
+            tvToggleTechnicalData?.text = if (isVisible) "► Показать технические данные (X/Y px)" else "▼ Скрыть технические данные"
+        }
+
+        view.bindClickByNames("btnCalibrateStepMask") {
+            val maskIndex = stepAction?.selectedTemplateIndex ?: 0
+            hide()
+            overlayManager.debuggerOverlay.startLiveCalibration(maskIndex)
+        }
+
+        view.bindClickByNames("btnOpenSearchArea") {
+            hide()
+            overlayManager.searchAreaOverlay.show()
         }
 
         view.bindClickByNames("btnOpenTemplatePicker") {
@@ -115,9 +137,14 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
                 action.delay = etEditDelayMs?.text?.toString()?.toLongOrNull() ?: action.delay
                 action.similarityPercent = etEditSimilarity?.text?.toString()?.toIntOrNull()?.coerceIn(10, 100) ?: action.similarityPercent
                 action.aiTimeoutSeconds = etEditAiTimeout?.text?.toString()?.toFloatOrNull()?.coerceAtLeast(0.1f) ?: action.aiTimeoutSeconds
+                
+                // Сохранение переходов и ветвления
+                action.jumpToStepOnMatch = etJumpOnMatch?.text?.toString()?.toIntOrNull()
+                action.jumpToStepOnFail = etJumpOnFail?.text?.toString()?.toIntOrNull()
+
                 action.loopUntilStopped = cbLoopUntilStopped?.isChecked ?: action.loopUntilStopped
             }
-            logDiagnostic("SCRIPT", "Изменения сохранены: X=${action?.xNorm}, Y=${action?.yNorm}, Timeout=${action?.aiTimeoutSeconds}s")
+            logDiagnostic("SCRIPT", "Изменения сохранены: JumpOnMatch=${action?.jumpToStepOnMatch}, JumpOnFail=${action?.jumpToStepOnFail}")
             hide()
         }
 
@@ -145,6 +172,10 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         etEditDelayMs?.setText(action.delay.toString())
         etEditSimilarity?.setText(action.similarityPercent.toString())
         etEditAiTimeout?.setText(action.aiTimeoutSeconds.toString())
+
+        etJumpOnMatch?.setText(action.jumpToStepOnMatch?.toString() ?: "")
+        etJumpOnFail?.setText(action.jumpToStepOnFail?.toString() ?: "")
+
         cbLoopUntilStopped?.isChecked = action.loopUntilStopped
         updateNotificationButtonText(action.notificationMode)
 
@@ -158,10 +189,10 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
     private fun updateNotificationButtonText(mode: Int) {
         val label = when (mode) {
-            1 -> "🔔 Оповещение: [ 📳 ВИБРО ]"
-            2 -> "🔔 Оповещение: [ 🔊 ЗВУК ]"
-            3 -> "🔔 Оповещение: [ 🔊+📳 ЗВУК + ВИБРО ]"
-            else -> "🔔 Оповещение: [ ВЫКЛ ]"
+            1 -> "Оповещение: [ 📳 ВИБРО ]"
+            2 -> "Оповещение: [ 🔊 ЗВУК ]"
+            3 -> "Оповещение: [ 🔊+📳 ЗВУК + ВИБРО ]"
+            else -> "Оповещение: [ ВЫКЛ ]"
         }
         btnToggleNotificationMode?.text = label
     }

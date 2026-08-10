@@ -24,115 +24,57 @@
             android:textStyle="bold"
             android:layout_marginBottom="12dp" />
 
-        <!-- 1. ПОДПИСЬ: Координаты X и Y -->
+        <!-- 1. ИИ-МАСКИ И КАЛИБРОВКА -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Экранные координаты клика / ИИ-Якоря (X и Y px):"
+            android:text="ИИ-Маски и Калибровка:"
             android:textColor="#58A6FF"
             android:textSize="12sp"
             android:textStyle="bold"
-            android:layout_marginBottom="4dp"/>
+            android:layout_marginBottom="6dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="10dp">
+            android:layout_marginBottom="6dp">
 
-            <LinearLayout
+            <Button
+                android:id="@+id/btnOpenTemplatePicker"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Координата X (px)"
-                    android:textColor="@color/text_gray"
-                    android:textSize="10sp"/>
-                <EditText
-                    android:id="@+id/etEditX"
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:hint="X (px)"
-                    android:inputType="number"
-                    android:textColor="@color/text_white"
-                    android:textColorHint="@color/text_gray"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="8dp" />
-            </LinearLayout>
+                android:layout_height="42dp"
+                android:text="Галерея масок"
+                android:textColor="@color/text_white"
+                android:backgroundTint="@color/accent_blue"
+                android:textStyle="bold"
+                android:textSize="11sp"/>
 
             <View
                 android:layout_width="8dp"
                 android:layout_height="match_parent"/>
 
-            <LinearLayout
+            <Button
+                android:id="@+id/btnCalibrateStepMask"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Координата Y (px)"
-                    android:textColor="@color/text_gray"
-                    android:textSize="10sp"/>
-                <EditText
-                    android:id="@+id/etEditY"
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:hint="Y (px)"
-                    android:inputType="number"
-                    android:textColor="@color/text_white"
-                    android:textColorHint="@color/text_gray"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="8dp" />
-            </LinearLayout>
+                android:layout_height="42dp"
+                android:text="Калибровать"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="11sp"/>
         </LinearLayout>
 
-        <!-- 2. ПОДПИСЬ: Пауза / Задержка -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Пауза перед кликом (миллисекунды):"
-            android:textColor="#58A6FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="2dp"/>
-
-        <EditText
-            android:id="@+id/etEditDelayMs"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:hint="Задержка (мс)"
-            android:inputType="number"
-            android:textColor="@color/text_white"
-            android:textColorHint="@color/text_gray"
-            android:background="@drawable/drag_handle_bg"
-            android:padding="8dp"
-            android:layout_marginBottom="12dp" />
-
-        <!-- 3. ВЫБОР МАСОК И ТАЙМАУТ ПОИСКА -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Параметры ИИ-Мультипоиска и Таймаута:"
-            android:textColor="#58A6FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp"/>
-
         <Button
-            android:id="@+id/btnOpenTemplatePicker"
+            android:id="@+id/btnOpenSearchArea"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:text="Открыть галерею масок с превью"
+            android:layout_height="40dp"
+            android:text="Задать Зону Поиска ИИ на экране"
             android:textColor="@color/text_white"
-            android:backgroundTint="@color/accent_blue"
-            android:textStyle="bold"
-            android:textSize="12sp"
-            android:layout_marginBottom="4dp"/>
+            android:backgroundTint="#21262D"
+            android:textSize="11sp"
+            android:layout_marginBottom="6dp"/>
 
         <TextView
             android:id="@+id/tvSelectedTemplatesSummary"
@@ -141,7 +83,17 @@
             android:text="Выбранные маски: #0"
             android:textColor="#00F5D4"
             android:textSize="11sp"
-            android:layout_marginBottom="10dp"/>
+            android:layout_marginBottom="12dp"/>
+
+        <!-- 2. ТАЙМАУТЫ И ЗАДЕРЖКИ -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Пауза и Таймаут поиска:"
+            android:textColor="#58A6FF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -157,14 +109,14 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Точность совпадения %"
+                    android:text="Пауза перед шагом (мс)"
                     android:textColor="@color/text_gray"
                     android:textSize="10sp"/>
                 <EditText
-                    android:id="@+id/etEditSimilarity"
+                    android:id="@+id/etEditDelayMs"
                     android:layout_width="match_parent"
                     android:layout_height="40dp"
-                    android:hint="85"
+                    android:hint="500"
                     android:inputType="number"
                     android:textColor="@color/text_white"
                     android:background="@drawable/drag_handle_bg"
@@ -198,6 +150,97 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- 3. ВЕТВЛЕНИЕ СЦЕНАРИЯ (ПОЛЕЗНОЕ УПРАВЛЕНИЕ) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ветвление сценария (Переходы по условию):"
+            android:textColor="#58A6FF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="При успехе -> Шаг №"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etJumpOnMatch"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:hint="След."
+                    android:inputType="number"
+                    android:textColor="@color/text_white"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="match_parent"/>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="При неудаче -> Шаг №"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etJumpOnFail"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:hint="След."
+                    android:inputType="number"
+                    android:textColor="@color/text_white"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Точность совпадения %:"
+                android:textColor="@color/text_gray"
+                android:textSize="11sp"
+                android:layout_marginEnd="8dp"/>
+
+            <EditText
+                android:id="@+id/etEditSimilarity"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:hint="85"
+                android:inputType="number"
+                android:textColor="@color/text_white"
+                android:background="@drawable/drag_handle_bg"
+                android:padding="8dp" />
+        </LinearLayout>
+
         <CheckBox
             android:id="@+id/cbLoopUntilStopped"
             android:layout_width="wrap_content"
@@ -205,7 +248,7 @@
             android:text="Непрерывный мультипоиск до остановки"
             android:textColor="@color/text_white"
             android:textSize="12sp"
-            android:layout_marginBottom="12dp" />
+            android:layout_marginBottom="10dp" />
 
         <Button
             android:id="@+id/btnToggleNotificationMode"
@@ -227,7 +270,53 @@
             android:textColorHint="@color/text_gray"
             android:background="@drawable/drag_handle_bg"
             android:padding="8dp"
-            android:layout_marginBottom="14dp" />
+            android:layout_marginBottom="12dp" />
+
+        <!-- 4. СВОРАЧИВАЕМЫЕ ТЕХНИЧЕСКИЕ ДАННЫЕ (X и Y px) -->
+        <TextView
+            android:id="@+id/tvToggleTechnicalData"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="► Показать технические данные (X/Y px)"
+            android:textColor="@color/text_gray"
+            android:textSize="11sp"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp"/>
+
+        <LinearLayout
+            android:id="@+id/layoutTechnicalData"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            android:layout_marginBottom="14dp">
+
+            <EditText
+                android:id="@+id/etEditX"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="38dp"
+                android:hint="X px"
+                android:inputType="number"
+                android:textColor="@color/text_gray"
+                android:background="@drawable/drag_handle_bg"
+                android:padding="6dp" />
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="match_parent"/>
+
+            <EditText
+                android:id="@+id/etEditY"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="38dp"
+                android:hint="Y px"
+                android:inputType="number"
+                android:textColor="@color/text_gray"
+                android:background="@drawable/drag_handle_bg"
+                android:padding="6dp" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/layoutEditButtons"

@@ -26,6 +26,14 @@ class TemplateRepository(private val context: Context) {
         return index
     }
 
+    fun getLatestAvailableTemplateIndex(): Int {
+        val files = context.filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") }
+        if (files.isNullOrEmpty()) return 0
+        return files.mapNotNull { file ->
+            file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull()
+        }.maxOrNull() ?: 0
+    }
+
     fun saveTemplate(index: Int, bitmap: Bitmap): Boolean {
         return try {
             val file = File(context.filesDir, "template_$index.png")
@@ -33,7 +41,6 @@ class TemplateRepository(private val context: Context) {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
 
-            // ЗАПИСЬ МЕТАДАННЫХ РАЗРЕШЕНИЯ И DPI ИСХОДНОГО УСТРОЙСТВА
             val metrics = context.resources.displayMetrics
             val metaObj = JSONObject().apply {
                 put("sourceWidth", metrics.widthPixels)
@@ -61,16 +68,22 @@ class TemplateRepository(private val context: Context) {
             return cached
         }
         return try {
-            val file = File(context.filesDir, "template_$index.png")
+            var file = File(context.filesDir, "template_$index.png")
+            var targetIndex = index
+
+            // Авто-фолбэк на имеющуюся маску, если запрошенный файл отсутствует
             if (!file.exists()) {
-                logDiagnostic("AI_SCANNER", "Маска $index не найдена на диске.")
-                return null
+                val fallbackIndex = getLatestAvailableTemplateIndex()
+                file = File(context.filesDir, "template_$fallbackIndex.png")
+                targetIndex = fallbackIndex
+                logDiagnostic("AI_SCANNER", "Маска $index не найдена. Выполнен авто-фолбэк на имеющуюся маску #$fallbackIndex")
             }
+
+            if (!file.exists()) return null
             val rawBitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
 
-            // АВТО-РЕСАЙЗ ПО DPI И РАЗРЕШЕНИЮ ТЕКУЩЕГО ЭКРАНА ПРИ ИМПОРТЕ/ЗАГРУЗКЕ
             val metrics = context.resources.displayMetrics
-            val metaFile = File(context.filesDir, "template_${index}_meta.json")
+            val metaFile = File(context.filesDir, "template_${targetIndex}_meta.json")
 
             val finalBitmap = if (metaFile.exists()) {
                 try {
@@ -85,16 +98,14 @@ class TemplateRepository(private val context: Context) {
                     if (abs(avgScale - 1.0f) > 0.04f) {
                         val targetW = (rawBitmap.width * avgScale).toInt().coerceAtLeast(4)
                         val targetH = (rawBitmap.height * avgScale).toInt().coerceAtLeast(4)
-                        logDiagnostic("AI_SCANNER", "Авто-ресайз маски #$index под текущий экран: scale=${"%.2f".format(avgScale)} (${rawBitmap.width}x${rawBitmap.height} -> ${targetW}x${targetH}px)")
                         Bitmap.createScaledBitmap(rawBitmap, targetW, targetH, true)
                     } else rawBitmap
                 } catch (_: Exception) { rawBitmap }
             } else rawBitmap
 
-            bitmapCache[index] = finalBitmap
+            bitmapCache[targetIndex] = finalBitmap
             val calibrated = calibrator.calibrate(finalBitmap)
-            calibratedMaskCache[index] = calibrated
-            logDiagnostic("AI_SCANNER", "Маска $index успешно загружена и калибрована.")
+            calibratedMaskCache[targetIndex] = calibrated
             finalBitmap
         } catch (e: Exception) {
             logError("AI_SCANNER", "Ошибка загрузки маски $index", e)
@@ -132,10 +143,10 @@ class TemplateRepository(private val context: Context) {
 
                 File(context.filesDir, "template_${index}_meta.json").delete()
 
-                bitmapCache.remove(index)?.recycle()
+                bitmapCache.remove(index)
                 calibratedMaskCache.remove(index)
 
-                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину с высвобождением ОЗУ.")
+                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину.")
                 true
             } else false
         } catch (e: Exception) {

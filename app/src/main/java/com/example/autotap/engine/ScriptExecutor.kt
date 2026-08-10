@@ -127,7 +127,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                 }
             }
             ActionType.AI_SEARCH -> {
-                executeMultiSearchLoop(action)
+                executeMultiSearchLoop(action, System.currentTimeMillis())
             }
             ActionType.WAIT -> {
                 val waitDelay = action.delay.coerceAtLeast(10L)
@@ -148,8 +148,17 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         }
     }
 
-    private fun executeMultiSearchLoop(action: ActionConfig) {
+    private fun executeMultiSearchLoop(action: ActionConfig, startTimeMs: Long) {
         if (!isRunning) return
+
+        val timeoutMs = (action.aiTimeoutSeconds * 1000f).toLong()
+        val elapsedTime = System.currentTimeMillis() - startTimeMs
+
+        if (timeoutMs > 0L && elapsedTime >= timeoutMs) {
+            logDiagnostic("AI_SCANNER", "Таймаут ИИ-поиска ($elapsedTime ms >= $timeoutMs ms) истек.")
+            onStepCompleted(false, action)
+            return
+        }
 
         aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
             if (!isRunning) return@scanAsync
@@ -158,15 +167,11 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             val candidates = scanResult?.candidates ?: emptyList()
 
             if (candidates.isNotEmpty()) {
-                service.overlayManager.debuggerOverlay.showCandidates(candidates)
-
-                // ПРОКЛИКИВАЕМ ВСЕ НАЙДЕННЫЕ ЦЕЛИ НА ЭКРАНЕ ПОСЛЕДОВАТЕЛЬНО
                 clickCandidateSequence(candidates, 0, action)
             } else {
-                service.overlayManager.debuggerOverlay.showNoMatch()
                 if (action.loopUntilStopped && isRunning) {
-                    val scanIntervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(100L)
-                    mainHandler.postDelayed({ executeMultiSearchLoop(action) }, scanIntervalMs)
+                    val scanIntervalMs = (action.scanIntervalSeconds * 1000f).toLong().coerceAtLeast(200L)
+                    mainHandler.postDelayed({ executeMultiSearchLoop(action, startTimeMs) }, scanIntervalMs)
                 } else {
                     onStepCompleted(false, action)
                 }
@@ -179,7 +184,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         if (index >= candidates.size) {
             if (action.loopUntilStopped && isRunning) {
                 val delayMs = action.delay.coerceAtLeast(100L)
-                mainHandler.postDelayed({ executeMultiSearchLoop(action) }, delayMs)
+                mainHandler.postDelayed({ executeMultiSearchLoop(action, System.currentTimeMillis()) }, delayMs)
             } else {
                 onStepCompleted(true, action)
             }

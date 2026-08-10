@@ -48,7 +48,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             setPadding(24, 16, 24, 16)
 
             val tv = TextView(context).apply {
-                text = "Калибровка ИИ-Маски"
+                text = "🎯 Калибровка ИИ-Маски"
                 setTextColor(Color.parseColor("#00F5D4"))
                 textSize = 14f
                 setTypeface(null, Typeface.BOLD)
@@ -105,12 +105,12 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         return root
     }
 
-    fun startLiveCalibration(templateIndex: Int) {
+    fun startLiveCalibration(templateIndex: Int, directBitmap: Bitmap? = null) {
         this.currentTemplateIndex = templateIndex
         show()
 
         val svc = MyAutoClickService.instance ?: return
-        val bitmap = svc.templateRepository.loadTemplate(templateIndex)
+        val bitmap = directBitmap ?: svc.templateRepository.loadTemplate(templateIndex)
 
         if (bitmap != null) {
             ivPreview?.setImageBitmap(bitmap)
@@ -139,7 +139,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
     }
 
     fun showCalibratedTemplate(bitmap: Bitmap, templateIndex: Int, profileName: String, widthPx: Int, heightPx: Int) {
-        startLiveCalibration(templateIndex)
+        startLiveCalibration(templateIndex, bitmap)
     }
 
     fun showCandidates(candidates: List<MatchCandidate>) {

@@ -36,6 +36,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     private var captureSquareView: View? = null
     private var topBarView: View? = null
+    private var bottomBarView: View? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -54,6 +55,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
         captureSquareView = view.findViewByNames("captureSquare")
         topBarView = view.findViewByNames("layoutTopBar")
+        bottomBarView = view.findViewByNames("layoutBottomBar")
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture") {
             logDiagnostic("OVERLAY", "Вырезание маски (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
@@ -92,8 +94,16 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                                     val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
                                     svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
-                                    // ЗАПУСК ЖИВОЙ КАЛИБРОВКИ И ПОДТВЕРЖДЕНИЯ ОБЪЕКТА
-                                    overlayManager.debuggerOverlay.startLiveCalibration(nextTemplateIndex)
+                                    val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
+                                    if (calibrated != null) {
+                                        overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                            croppedMask,
+                                            nextTemplateIndex,
+                                            calibrated.metadata.profile.name,
+                                            safeW,
+                                            safeH
+                                        )
+                                    }
                                 } catch (e: Exception) {
                                     logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
                                 }
@@ -101,6 +111,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                         }
                     }
                     hide()
+                    overlayManager.showControlPanel()
                 }, 120L)
             }
         }
@@ -115,10 +126,15 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
+        // ПРЯМАЯ ПРИВЯЗКА ПЕРЕТАСКИВАНИЯ К ЗНАЧКУ handleMoveFrame И ПЛАШКАМ
+        val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
         val topBar = topBarView ?: view
+        val bottomBar = bottomBarView ?: view
         val square = captureSquareView ?: view
 
+        setupDragAndDrop(moveHandle)
         setupDragAndDrop(topBar)
+        setupDragAndDrop(bottomBar)
         setupDragAndDrop(square)
 
         val resizeHandle = view.findViewByNames("handleResize")
@@ -131,33 +147,64 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override fun updatePosition(x: Int, y: Int) {
         super.updatePosition(x, y)
-        applySmartEdgeFlipping(x, y)
+        applyShiftingToolbarsRepositioning(x, y)
     }
 
-    private fun applySmartEdgeFlipping(currentX: Int, currentY: Int) {
+    private fun applyShiftingToolbarsRepositioning(currentX: Int, currentY: Int) {
         val square = captureSquareView ?: return
         val topBar = topBarView ?: return
+        val bottomBar = bottomBarView ?: return
         val screenSize = context.getRealScreenSize()
 
         val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
+        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
+        val squareHeight = square.height.takeIf { it > 0 } ?: 140.dpToPx(context)
         val gap = 4.dpToPx(context)
 
         val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
-        topBar.translationY = if (isNearTop) (square.height + gap).toFloat() else 0f
+        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
 
-        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 110.dpToPx(context)
-        if (square.width < topBarWidth) {
-            val extraWidth = topBarWidth - square.width
+        when {
+            isNearTop -> {
+                topBar.translationY = (squareHeight + gap).toFloat()
+                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
+            }
+            isNearBottom -> {
+                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
+                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
+            }
+            else -> {
+                topBar.translationY = 0f
+                bottomBar.translationY = 0f
+            }
+        }
+
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
+        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
+        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
+
+        if (square.width < maxToolbarW) {
+            val extraWidth = maxToolbarW - square.width
             val isNearLeft = currentX <= extraWidth / 2
             val isNearRight = currentX >= screenSize.x - square.width - (extraWidth / 2)
 
             when {
-                isNearLeft -> topBar.translationX = (extraWidth / 2f)
-                isNearRight -> topBar.translationX = -(extraWidth / 2f)
-                else -> topBar.translationX = 0f
+                isNearLeft -> {
+                    topBar.translationX = (extraWidth / 2f)
+                    bottomBar.translationX = (extraWidth / 2f)
+                }
+                isNearRight -> {
+                    topBar.translationX = -(extraWidth / 2f)
+                    bottomBar.translationX = -(extraWidth / 2f)
+                }
+                else -> {
+                    topBar.translationX = 0f
+                    bottomBar.translationX = 0f
+                }
             }
         } else {
             topBar.translationX = 0f
+            bottomBar.translationX = 0f
         }
     }
 
@@ -188,8 +235,8 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     val windowX = location[0]
                     val windowY = location[1]
 
-                    val maxW = (screenSize.x - windowX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
-                    val maxH = (screenSize.y - windowY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxW = (screenSize.x - windowX - 8.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - windowY - 80.dpToPx(context)).coerceAtLeast(minSizePx)
 
                     currentFrameWidthPx = (startW + dx).coerceIn(minSizePx, maxW)
                     currentFrameHeightPx = (startH + dy).coerceIn(minSizePx, maxH)

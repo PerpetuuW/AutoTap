@@ -16,6 +16,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import com.example.autotap.logger.StructuredLogger
+import kotlin.math.max
+import kotlin.math.min
 
 object CoordConverter {
     fun toNormalizedPoint(pt: PointF, widthPx: Int, heightPx: Int): PointF {
@@ -31,20 +33,32 @@ object CoordConverter {
     fun toNormalizedRect(rect: Rect, widthPx: Int, heightPx: Int): RectF {
         val w = widthPx.coerceAtLeast(1).toFloat()
         val h = heightPx.coerceAtLeast(1).toFloat()
+
+        // Защита от инверсии граней (left > right или top > bottom)
+        val left = min(rect.left, rect.right).toFloat()
+        val right = max(rect.left, rect.right).toFloat()
+        val top = min(rect.top, rect.bottom).toFloat()
+        val bottom = max(rect.top, rect.bottom).toFloat()
+
         return RectF(
-            (rect.left / w).coerceIn(0f, 1f),
-            (rect.top / h).coerceIn(0f, 1f),
-            (rect.right / w).coerceIn(0f, 1f),
-            (rect.bottom / h).coerceIn(0f, 1f)
+            (left / w).coerceIn(0f, 1f),
+            (top / h).coerceIn(0f, 1f),
+            (right / w).coerceIn(0f, 1f),
+            (bottom / h).coerceIn(0f, 1f)
         )
     }
 
     fun toPxRect(rectNorm: RectF, widthPx: Int, heightPx: Int): Rect {
+        val left = min(rectNorm.left, rectNorm.right)
+        val right = max(rectNorm.left, rectNorm.right)
+        val top = min(rectNorm.top, rectNorm.bottom)
+        val bottom = max(rectNorm.top, rectNorm.bottom)
+
         return Rect(
-            (rectNorm.left * widthPx).toInt(),
-            (rectNorm.top * heightPx).toInt(),
-            (rectNorm.right * widthPx).toInt(),
-            (rectNorm.bottom * heightPx).toInt()
+            (left * widthPx).toInt(),
+            (top * heightPx).toInt(),
+            (right * widthPx).toInt(),
+            (bottom * heightPx).toInt()
         )
     }
 }
@@ -182,10 +196,10 @@ fun Context.vibrateFeedback() {
 
 fun Context.playNotificationAlert(mode: Int) {
     try {
-        if (mode == 1 || mode == 3) { // VIBRO
+        if (mode == 1 || mode == 3) {
             vibrateFeedback()
         }
-        if (mode == 2 || mode == 3) { // SOUND
+        if (mode == 2 || mode == 3) {
             val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
             toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 200)
         }

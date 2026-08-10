@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import com.example.autotap.R
@@ -62,6 +63,7 @@ class LogViewerActivity : AppCompatActivity() {
         if (file != null && file.exists()) {
             file.writeText("")
             logDiagnostic("LOGS", "Лог-файл очищен по btnClearLogs.")
+            Toast.makeText(this, "Лог-файл очищен", Toast.LENGTH_SHORT).show()
         }
         refreshLogs()
     }
@@ -81,9 +83,14 @@ class LogViewerActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(intent, "Поделиться error_log.txt"))
+            // Флаг чтения Uri принудительно продублирован на chooser интент
+            val chooser = Intent.createChooser(intent, "Поделиться error_log.txt").apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(chooser)
         } catch (e: Exception) {
             logError("LOGS", "Ошибка отправки файла логов", e)
+            Toast.makeText(this, "Ошибка отправки лог-файла", Toast.LENGTH_SHORT).show()
         }
     }
 }

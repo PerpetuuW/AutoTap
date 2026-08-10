@@ -3,7 +3,7 @@
 
 """
 ===============================================================================
-AUTOTAP PRO v61 - OUTSIDE RESIZE GRIP, AI TIMEOUT & INTERACTIVE BEACON CONFIRMATION
+AUTOTAP PRO v63 - EMOJI STRIPPING, HANDLE DRAG FIX & SCANNER ASYNC LOCK FIX
 ===============================================================================
 """
 
@@ -33,55 +33,515 @@ def write_file(rel_path, content):
 
 
 # =============================================================================
-# 1. ActionConfig.kt (ДОБАВЛЕНИЕ ПОЛЯ AI TIMEOUT)
+# 1. AiScannerEngine.kt (УСТРАНЕНИЕ ЗАЦИКЛИВАНИЯ "Пропуск: асинхронное...")
 # =============================================================================
-ACTION_CONFIG_KT = r'''package com.example.autotap.model
+AI_SCANNER_ENGINE_KT = r'''package com.example.autotap.engine
 
+import android.graphics.Bitmap
 import android.graphics.PointF
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.engine.ai.AiScanResult
+import com.example.autotap.engine.ai.MatchCandidate
+import com.example.autotap.engine.ai.TemplateMatcher
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.model.ActionConfig
 
-enum class ActionType {
-    CLICK, SWIPE, LONG_PRESS, AI_SEARCH, WAIT, LOAD_SCRIPT, JOYSTICK_PATH
-}
+class AiScannerEngine(private val service: MyAutoClickService) {
 
-data class ActionConfig(
-    var type: ActionType = ActionType.CLICK,
-    var xNorm: Float = 0.5f,
-    var yNorm: Float = 0.5f,
-    var endXNorm: Float = 0.5f,
-    var endYNorm: Float = 0.5f,
-    var randomRadius: Float = 0f,
-    var delay: Long = 500L,
-    var holdDuration: Long = 100L,
-    var selectedTemplateIndex: Int = 0,
-    var multiTemplateIndices: List<Int> = emptyList(),
-    var similarityPercent: Int = 85,
-    var scanIntervalSeconds: Float = 0.1f,
-    var aiTimeoutSeconds: Float = 5.0f, // Таймаут поиска в секундах
-    var clickAiTarget: Boolean = false,
-    var loopUntilStopped: Boolean = true,
-    var jumpToStepOnMatch: Int? = null,
-    var jumpToStepOnFail: Int? = null,
-    var targetScriptToLoad: String? = null,
-    var customSearchArea: Boolean = false,
-    var searchAreaX: Int = 0,
-    var searchAreaY: Int = 0,
-    var searchAreaW: Int = 0,
-    var searchAreaH: Int = 0,
-    var shapeOnlyMode: Boolean = false,
-    var autoTuningMode: Boolean = true,
-    var hybridCascadeMode: Boolean = true,
-    var multiScaleSearch: Boolean = true,
-    var joystickPath: List<PointF> = emptyList(),
-    var swipePath: List<PointF> = emptyList(),
-    var longPressDuration: Long = 500L,
-    var clickOffsetX: Int = 0,
-    var clickOffsetY: Int = 0,
-    var notificationMode: Int = 0
-)'''
+    private val templateMatcher by lazy { TemplateMatcher(service.templateRepository) }
+    @Volatile private var isScanning = false
+    @Volatile var lastScanResult: AiScanResult? = null
+        private set
+
+    fun scanAsync(frameProvider: () -> Bitmap?, action: ActionConfig, callback: (PointF?) -> Unit) {
+        if (isScanning) {
+            // КРИТИЧЕСКИЙ ФИКС: При занятом сканере НЕ вызываем callback(null),
+            // чтобы исключить рекурсивный зацикленный спам таймера!
+            return
+        }
+        isScanning = true
+        Thread {
+            try {
+                val result = scan(frameProvider, action)
+                lastScanResult = result
+                callback(result.point)
+            } catch (e: Exception) {
+                logError("AI_SCANNER", "Ошибка в scanAsync", e)
+                callback(null)
+            } finally {
+                isScanning = false
+            }
+        }.start()
+    }
+
+    fun scan(frameProvider: () -> Bitmap?, action: ActionConfig): AiScanResult {
+        val frame = frameProvider()
+        if (frame == null) {
+            logDiagnostic("AI_SCANNER", "Снимок экрана недоступен.")
+            return AiScanResult(null, emptyList())
+        }
+
+        val candidates = if (action.multiTemplateIndices.isNotEmpty()) {
+            templateMatcher.matchMultiTemplate(frame, action)
+        } else {
+            templateMatcher.matchSingleTemplate(frame, action)
+        }
+
+        if (candidates.isEmpty()) {
+            logDiagnostic("AI_SCANNER", "Совпадений по маскам не найдено.")
+            return AiScanResult(null, emptyList())
+        }
+
+        val bestCandidate = candidates.first()
+        logDiagnostic("AI_SCANNER", "ИИ нашел целей: ${candidates.size}. Высший шаблон #${bestCandidate.templateIndex} (score=${"%.2f".format(bestCandidate.score)}) в $bestCandidate")
+        return AiScanResult(bestCandidate.point, candidates)
+    }
+}'''
 
 
 # =============================================================================
-# 2. floating_capture_frame.xml (РУЧКА РЕСАЙЗА ВЫНЕСЕНА ЗА ПРЕДЕЛЫ КАДРА)
+# 2. TemplateRepository.kt (АВТО-ФОЛБЭК НА СУЩЕСТВУЮЩУЮ МАСКУ ПРИ ОТСУТСТВИИ ФАЙЛА)
+# =============================================================================
+TEMPLATE_REPOSITORY_KT = r'''package com.example.autotap.data
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import com.example.autotap.engine.ai.CalibratedMask
+import com.example.autotap.engine.ai.MaskCalibrator
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
+
+class TemplateRepository(private val context: Context) {
+
+    private val bitmapCache = ConcurrentHashMap<Int, Bitmap>()
+    private val calibratedMaskCache = ConcurrentHashMap<Int, CalibratedMask>()
+    private val calibrator = MaskCalibrator()
+
+    fun getNextFreeTemplateIndex(): Int {
+        var index = 0
+        while (File(context.filesDir, "template_$index.png").exists()) {
+            index++
+        }
+        return index
+    }
+
+    fun getLatestAvailableTemplateIndex(): Int {
+        val files = context.filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") }
+        if (files.isNullOrEmpty()) return 0
+        return files.mapNotNull { file ->
+            file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull()
+        }.maxOrNull() ?: 0
+    }
+
+    fun saveTemplate(index: Int, bitmap: Bitmap): Boolean {
+        return try {
+            val file = File(context.filesDir, "template_$index.png")
+            file.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            val metrics = context.resources.displayMetrics
+            val metaObj = JSONObject().apply {
+                put("sourceWidth", metrics.widthPixels)
+                put("sourceHeight", metrics.heightPixels)
+                put("sourceDpi", metrics.densityDpi)
+            }
+            File(context.filesDir, "template_${index}_meta.json").writeText(metaObj.toString())
+
+            bitmapCache[index] = bitmap
+
+            val calibrated = calibrator.calibrate(bitmap)
+            calibratedMaskCache[index] = calibrated
+
+            logDiagnostic("AI_SCANNER", "Маска #$index сохранена с метаданными экрана (${metrics.widthPixels}x${metrics.heightPixels}, ${metrics.densityDpi} DPI).")
+            true
+        } catch (e: Exception) {
+            logError("AI_SCANNER", "Ошибка сохранения и калибровки маски $index", e)
+            false
+        }
+    }
+
+    fun loadTemplate(index: Int): Bitmap? {
+        val cached = bitmapCache[index]
+        if (cached != null && !cached.isRecycled) {
+            return cached
+        }
+        return try {
+            var file = File(context.filesDir, "template_$index.png")
+            var targetIndex = index
+
+            // Авто-фолбэк на имеющуюся маску, если запрошенный файл отсутствует
+            if (!file.exists()) {
+                val fallbackIndex = getLatestAvailableTemplateIndex()
+                file = File(context.filesDir, "template_$fallbackIndex.png")
+                targetIndex = fallbackIndex
+                logDiagnostic("AI_SCANNER", "Маска $index не найдена. Выполнен авто-фолбэк на имеющуюся маску #$fallbackIndex")
+            }
+
+            if (!file.exists()) return null
+            val rawBitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+
+            val metrics = context.resources.displayMetrics
+            val metaFile = File(context.filesDir, "template_${targetIndex}_meta.json")
+
+            val finalBitmap = if (metaFile.exists()) {
+                try {
+                    val metaJson = JSONObject(metaFile.readText())
+                    val srcW = metaJson.optInt("sourceWidth", metrics.widthPixels)
+                    val srcH = metaJson.optInt("sourceHeight", metrics.heightPixels)
+
+                    val scaleX = metrics.widthPixels.toFloat() / srcW.coerceAtLeast(1)
+                    val scaleY = metrics.heightPixels.toFloat() / srcH.coerceAtLeast(1)
+                    val avgScale = (scaleX + scaleY) / 2f
+
+                    if (abs(avgScale - 1.0f) > 0.04f) {
+                        val targetW = (rawBitmap.width * avgScale).toInt().coerceAtLeast(4)
+                        val targetH = (rawBitmap.height * avgScale).toInt().coerceAtLeast(4)
+                        Bitmap.createScaledBitmap(rawBitmap, targetW, targetH, true)
+                    } else rawBitmap
+                } catch (_: Exception) { rawBitmap }
+            } else rawBitmap
+
+            bitmapCache[targetIndex] = finalBitmap
+            val calibrated = calibrator.calibrate(finalBitmap)
+            calibratedMaskCache[targetIndex] = calibrated
+            finalBitmap
+        } catch (e: Exception) {
+            logError("AI_SCANNER", "Ошибка загрузки маски $index", e)
+            null
+        }
+    }
+
+    fun loadCalibratedMask(index: Int): CalibratedMask? {
+        val cached = calibratedMaskCache[index]
+        if (cached != null && !cached.original.isRecycled) {
+            return cached
+        }
+        val bitmap = loadTemplate(index) ?: return null
+        val calibrated = calibrator.calibrate(bitmap)
+        calibratedMaskCache[index] = calibrated
+        return calibrated
+    }
+
+    fun recalibrateTemplate(index: Int): CalibratedMask? {
+        val bitmap = loadTemplate(index) ?: return null
+        val calibrated = calibrator.calibrate(bitmap)
+        calibratedMaskCache[index] = calibrated
+        logDiagnostic("AI_SCANNER", "Принудительная калибровка маски #$index успешно выполнена.")
+        return calibrated
+    }
+
+    fun moveTemplateToTrash(index: Int): Boolean {
+        return try {
+            val file = File(context.filesDir, "template_$index.png")
+            if (file.exists()) {
+                val trashDir = File(context.filesDir, "trash")
+                trashDir.mkdirs()
+                val trashFile = File(trashDir, "template_$index.png")
+                file.renameTo(trashFile)
+
+                File(context.filesDir, "template_${index}_meta.json").delete()
+
+                bitmapCache.remove(index)
+                calibratedMaskCache.remove(index)
+
+                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину.")
+                true
+            } else false
+        } catch (e: Exception) {
+            logError("AI_SCANNER", "Ошибка перемещения маски $index в корзину", e)
+            false
+        }
+    }
+
+    fun restoreTemplateFromTrash(index: Int): Boolean {
+        return try {
+            val trashFile = File(File(context.filesDir, "trash"), "template_$index.png")
+            if (trashFile.exists()) {
+                val targetFile = File(context.filesDir, "template_$index.png")
+                trashFile.renameTo(targetFile)
+                loadTemplate(index)
+                logDiagnostic("AI_SCANNER", "Маска #$index восстановлена из корзины.")
+                true
+            } else false
+        } catch (e: Exception) {
+            logError("AI_SCANNER", "Ошибка восстановления маски $index из корзины", e)
+            false
+        }
+    }
+}'''
+
+
+# =============================================================================
+# 3. CaptureFrameOverlay.kt (ПЕРЕТАСКИВАНИЕ ЗА ЗНАЧОК handleMoveFrame)
+# =============================================================================
+CAPTURE_FRAME_OVERLAY_KT = r'''package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.LinearLayout
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.dpToPx
+import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.logger.logError
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+import kotlin.math.max
+
+class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager, OverlayLayer.CAPTURE_LAYER, OverlayPriority.HIGH) {
+
+    override val layoutResId: Int = R.layout.floating_capture_frame
+
+    private val minSizePx = 20.dpToPx(context)
+    private var currentFrameWidthPx = 140.dpToPx(context)
+    private var currentFrameHeightPx = 140.dpToPx(context)
+
+    private var captureSquareView: View? = null
+    private var topBarView: View? = null
+    private var bottomBarView: View? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    init {
+        gravity = Gravity.TOP or Gravity.START
+        val metrics = context.resources.displayMetrics
+        initialX = (metrics.widthPixels - currentFrameWidthPx) / 2
+        initialY = (metrics.heightPixels - currentFrameHeightPx) / 2
+        width = WindowManager.LayoutParams.WRAP_CONTENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(layoutResId, null)
+
+        captureSquareView = view.findViewByNames("captureSquare")
+        topBarView = view.findViewByNames("layoutTopBar")
+        bottomBarView = view.findViewByNames("layoutBottomBar")
+
+        view.bindClickByNames("btnDoCapture", "btn_do_capture") {
+            logDiagnostic("OVERLAY", "Вырезание маски (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
+            context.vibrateFeedback()
+
+            val svc = MyAutoClickService.instance
+            val square = captureSquareView
+            val root = rootView
+
+            if (svc != null && square != null && root != null) {
+                val location = IntArray(2)
+                square.getLocationOnScreen(location)
+                val cropX = location[0]
+                val cropY = location[1]
+                val cropW = square.width
+                val cropH = square.height
+
+                root.visibility = View.INVISIBLE
+
+                mainHandler.postDelayed({
+                    svc.captureScreenBitmapAsync { fullBitmap ->
+                        root.visibility = View.VISIBLE
+                        if (fullBitmap != null && fullBitmap.width > 10 && fullBitmap.height > 10) {
+                            val safeX = cropX.coerceIn(0, (fullBitmap.width - 10).coerceAtLeast(0))
+                            val safeY = cropY.coerceIn(0, (fullBitmap.height - 10).coerceAtLeast(0))
+
+                            val maxAllowedW = fullBitmap.width - safeX
+                            val maxAllowedH = fullBitmap.height - safeY
+                            val safeW = cropW.coerceIn(5, maxAllowedW)
+                            val safeH = cropH.coerceIn(5, maxAllowedH)
+
+                            val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
+
+                            if (safeW > 5 && safeH > 5) {
+                                try {
+                                    val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
+                                    svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+
+                                    val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
+                                    if (calibrated != null) {
+                                        overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                            croppedMask,
+                                            nextTemplateIndex,
+                                            calibrated.metadata.profile.name,
+                                            safeW,
+                                            safeH
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
+                                }
+                            }
+                        }
+                    }
+                    hide()
+                    overlayManager.showControlPanel()
+                }, 120L)
+            }
+        }
+
+        view.bindClickByNames("btnCancelCapture") {
+            hide()
+            overlayManager.showControlPanel()
+        }
+
+        view.bindClickByNames("btnCaptureSearchArea") {
+            overlayManager.searchAreaOverlay.show()
+            hide()
+        }
+
+        // ПРЯМАЯ ПРИВЯЗКА ПЕРЕТАСКИВАНИЯ К ЗНАЧКУ handleMoveFrame И ПЛАШКАМ
+        val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
+        val topBar = topBarView ?: view
+        val bottomBar = bottomBarView ?: view
+        val square = captureSquareView ?: view
+
+        setupDragAndDrop(moveHandle)
+        setupDragAndDrop(topBar)
+        setupDragAndDrop(bottomBar)
+        setupDragAndDrop(square)
+
+        val resizeHandle = view.findViewByNames("handleResize")
+        if (resizeHandle != null && captureSquareView != null) {
+            setupCornerResizeHandler(resizeHandle, captureSquareView!!)
+        }
+
+        return view
+    }
+
+    override fun updatePosition(x: Int, y: Int) {
+        super.updatePosition(x, y)
+        applyShiftingToolbarsRepositioning(x, y)
+    }
+
+    private fun applyShiftingToolbarsRepositioning(currentX: Int, currentY: Int) {
+        val square = captureSquareView ?: return
+        val topBar = topBarView ?: return
+        val bottomBar = bottomBarView ?: return
+        val screenSize = context.getRealScreenSize()
+
+        val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
+        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
+        val squareHeight = square.height.takeIf { it > 0 } ?: 140.dpToPx(context)
+        val gap = 4.dpToPx(context)
+
+        val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
+        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
+
+        when {
+            isNearTop -> {
+                topBar.translationY = (squareHeight + gap).toFloat()
+                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
+            }
+            isNearBottom -> {
+                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
+                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
+            }
+            else -> {
+                topBar.translationY = 0f
+                bottomBar.translationY = 0f
+            }
+        }
+
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
+        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
+        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
+
+        if (square.width < maxToolbarW) {
+            val extraWidth = maxToolbarW - square.width
+            val isNearLeft = currentX <= extraWidth / 2
+            val isNearRight = currentX >= screenSize.x - square.width - (extraWidth / 2)
+
+            when {
+                isNearLeft -> {
+                    topBar.translationX = (extraWidth / 2f)
+                    bottomBar.translationX = (extraWidth / 2f)
+                }
+                isNearRight -> {
+                    topBar.translationX = -(extraWidth / 2f)
+                    bottomBar.translationX = -(extraWidth / 2f)
+                }
+                else -> {
+                    topBar.translationX = 0f
+                    bottomBar.translationX = 0f
+                }
+            }
+        } else {
+            topBar.translationX = 0f
+            bottomBar.translationX = 0f
+        }
+    }
+
+    private fun setupCornerResizeHandler(resizeView: View, targetSquare: View) {
+        var startW = 0
+        var startH = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        resizeView.setOnTouchListener { _, event ->
+            val root = rootView ?: return@setOnTouchListener false
+            val screenSize = context.getRealScreenSize()
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startW = targetSquare.width
+                    startH = targetSquare.height
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+
+                    val location = IntArray(2)
+                    root.getLocationOnScreen(location)
+                    val windowX = location[0]
+                    val windowY = location[1]
+
+                    val maxW = (screenSize.x - windowX - 8.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - windowY - 80.dpToPx(context)).coerceAtLeast(minSizePx)
+
+                    currentFrameWidthPx = (startW + dx).coerceIn(minSizePx, maxW)
+                    currentFrameHeightPx = (startH + dy).coerceIn(minSizePx, maxH)
+
+                    val lp = targetSquare.layoutParams
+                    if (lp != null) {
+                        lp.width = currentFrameWidthPx
+                        lp.height = currentFrameHeightPx
+                        targetSquare.layoutParams = lp
+                        targetSquare.requestLayout()
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+}'''
+
+
+# =============================================================================
+# 4. floating_capture_frame.xml (ОЧИСТКА ОТ ЭМОДЗИ)
 # =============================================================================
 CAPTURE_FRAME_XML = r'''<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -93,7 +553,7 @@ CAPTURE_FRAME_XML = r'''<?xml version="1.0" encoding="utf-8"?>
     android:padding="0dp"
     android:elevation="18dp">
 
-    <!-- 1. ВЕРХНИЙ ТУЛБАР -->
+    <!-- ВЕРХНИЙ ТУЛБАР -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
@@ -107,8 +567,8 @@ CAPTURE_FRAME_XML = r'''<?xml version="1.0" encoding="utf-8"?>
 
         <ImageButton
             android:id="@+id/btnDoCapture"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:src="@drawable/ic_camera"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_primary"
@@ -118,21 +578,21 @@ CAPTURE_FRAME_XML = r'''<?xml version="1.0" encoding="utf-8"?>
 
         <Button
             android:id="@+id/btnCaptureSearchArea"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:text="📐"
+            android:text="Зона"
             android:textColor="#FFFFFF"
             android:backgroundTint="@color/accent_blue"
-            android:textSize="12sp"
+            android:textSize="10sp"
             android:padding="0dp"
             android:layout_marginEnd="4dp" />
 
         <ImageButton
             android:id="@+id/btnCancelCapture"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
@@ -140,18 +600,18 @@ CAPTURE_FRAME_XML = r'''<?xml version="1.0" encoding="utf-8"?>
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- 2. ПОЛНОСТЬЮ ЧИСТЫЙ ВНУТРЕННИЙ КАДР ПРИЦЕЛА -->
+    <!-- РАМКА ПРИЦЕЛА -->
     <FrameLayout
         android:id="@+id/captureSquare"
         android:layout_width="160dp"
         android:layout_height="160dp"
         android:background="@drawable/border_capture_square" />
 
-    <!-- 3. НИЖНИЙ ТУЛБАР С ВЫНЕСЕННОЙ РУЧКОЙ РЕСАЙЗА -->
+    <!-- НИЖНЯЯ ПЛАШКА ДВИЖЕНИЯ -->
     <LinearLayout
         android:id="@+id/layoutBottomBar"
         android:layout_width="wrap_content"
-        android:layout_height="32dp"
+        android:layout_height="28dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
@@ -164,17 +624,16 @@ CAPTURE_FRAME_XML = r'''<?xml version="1.0" encoding="utf-8"?>
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:gravity="center"
-            android:text="✥ ДВИГАТЬ"
+            android:text="ДВИГАТЬ"
             android:textColor="#FFB703"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:layout_marginEnd="8dp" />
+            android:layout_marginEnd="6dp" />
 
-        <!-- Ручка изменения размера вынесена за пределы кадра! -->
         <ImageView
             android:id="@+id/handleResize"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
             android:src="@drawable/handle_manipulator_bg"
             android:padding="2dp"
             android:contentDescription="Resize Grip" />
@@ -182,619 +641,23 @@ CAPTURE_FRAME_XML = r'''<?xml version="1.0" encoding="utf-8"?>
 </LinearLayout>'''
 
 
-# =============================================================================
-# 3. floating_edit_dialog.xml (ПОЛЕ НАСТРОЙКИ ТАЙМАУТА ПОИСКА)
-# =============================================================================
-EDIT_DIALOG_XML = r'''<?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#CC000000"
-    android:padding="16dp">
-
-    <LinearLayout
-        android:id="@+id/layoutEditCard"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:background="@drawable/panel_background"
-        android:padding="16dp"
-        android:elevation="22dp">
-
-        <TextView
-            android:id="@+id/tvEditTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Настройка шага сценария"
-            android:textColor="#00F5D4"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="12dp" />
-
-        <!-- 1. ПОДПИСЬ: Координаты X и Y -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Экранные координаты клика / ИИ-Якоря (X и Y px):"
-            android:textColor="#58A6FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="10dp">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Координата X (px)"
-                    android:textColor="@color/text_gray"
-                    android:textSize="10sp"/>
-                <EditText
-                    android:id="@+id/etEditX"
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:hint="X (px)"
-                    android:inputType="number"
-                    android:textColor="@color/text_white"
-                    android:textColorHint="@color/text_gray"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="8dp"
-                android:layout_height="match_parent"/>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Координата Y (px)"
-                    android:textColor="@color/text_gray"
-                    android:textSize="10sp"/>
-                <EditText
-                    android:id="@+id/etEditY"
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:hint="Y (px)"
-                    android:inputType="number"
-                    android:textColor="@color/text_white"
-                    android:textColorHint="@color/text_gray"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="8dp" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- 2. ПОДПИСЬ: Пауза / Задержка -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Пауза перед кликом (миллисекунды):"
-            android:textColor="#58A6FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="2dp"/>
-
-        <EditText
-            android:id="@+id/etEditDelayMs"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:hint="Задержка (мс)"
-            android:inputType="number"
-            android:textColor="@color/text_white"
-            android:textColorHint="@color/text_gray"
-            android:background="@drawable/drag_handle_bg"
-            android:padding="8dp"
-            android:layout_marginBottom="12dp" />
-
-        <!-- 3. ВЫБОР МАСОК И ТАЙМАУТ ПОИСКА -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Параметры ИИ-Мультипоиска и Таймаута:"
-            android:textColor="#58A6FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp"/>
-
-        <Button
-            android:id="@+id/btnOpenTemplatePicker"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:text="Открыть галерею масок с превью"
-            android:textColor="@color/text_white"
-            android:backgroundTint="@color/accent_blue"
-            android:textStyle="bold"
-            android:textSize="12sp"
-            android:layout_marginBottom="4dp"/>
-
-        <TextView
-            android:id="@+id/tvSelectedTemplatesSummary"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Выбранные маски: #0"
-            android:textColor="#00F5D4"
-            android:textSize="11sp"
-            android:layout_marginBottom="10dp"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="10dp">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Точность совпадения %"
-                    android:textColor="@color/text_gray"
-                    android:textSize="10sp"/>
-                <EditText
-                    android:id="@+id/etEditSimilarity"
-                    android:layout_width="match_parent"
-                    android:layout_height="40dp"
-                    android:hint="85"
-                    android:inputType="number"
-                    android:textColor="@color/text_white"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="8dp"
-                android:layout_height="match_parent"/>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Таймаут поиска (сек)"
-                    android:textColor="@color/text_gray"
-                    android:textSize="10sp"/>
-                <EditText
-                    android:id="@+id/etEditAiTimeout"
-                    android:layout_width="match_parent"
-                    android:layout_height="40dp"
-                    android:hint="5.0"
-                    android:inputType="numberDecimal"
-                    android:textColor="@color/text_white"
-                    android:background="@drawable/drag_handle_bg"
-                    android:padding="8dp" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <CheckBox
-            android:id="@+id/cbLoopUntilStopped"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Непрерывный мультипоиск до остановки"
-            android:textColor="@color/text_white"
-            android:textSize="12sp"
-            android:layout_marginBottom="12dp" />
-
-        <Button
-            android:id="@+id/btnToggleNotificationMode"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:text="Оповещение: [ ВЫКЛ ]"
-            android:textColor="@color/text_white"
-            android:backgroundTint="#21262D"
-            android:textSize="12sp"
-            android:layout_marginBottom="10dp" />
-
-        <EditText
-            android:id="@+id/etEditComment"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:hint="Заметка к шагу"
-            android:inputType="text"
-            android:textColor="@color/text_white"
-            android:textColorHint="@color/text_gray"
-            android:background="@drawable/drag_handle_bg"
-            android:padding="8dp"
-            android:layout_marginBottom="14dp" />
-
-        <LinearLayout
-            android:id="@+id/layoutEditButtons"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btnEditApply"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="46dp"
-                android:text="Сохранить"
-                android:textColor="@color/text_white"
-                android:backgroundTint="@color/accent_blue"
-                android:textStyle="bold" />
-
-            <View
-                android:layout_width="8dp"
-                android:layout_height="match_parent"/>
-
-            <Button
-                android:id="@+id/btnEditDelete"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="46dp"
-                android:text="Удалить"
-                android:textColor="@color/red_close_text"
-                android:backgroundTint="@color/red_close"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btnEditClose"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:text="Отмена"
-            android:textColor="@color/text_white"
-            android:backgroundTint="@color/bg_dark_blue"
-            android:layout_marginTop="10dp" />
-    </LinearLayout>
-</ScrollView>'''
-
-
-# =============================================================================
-# 4. EditActionDialog.kt (СЧИТЫВАНИЕ ТАЙМАУТА ПОИСКА)
-# =============================================================================
-EDIT_ACTION_DIALOG_KT = r'''package com.example.autotap.ui.overlays
-
-import android.content.Context
-import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.view.Gravity
-import android.view.LayoutInflater
-import android.view.View
-import android.view.WindowManager
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.ImageView
-import android.widget.TextView
-import com.example.autotap.MyAutoClickService
-import com.example.autotap.R
-import com.example.autotap.bindClickByNames
-import com.example.autotap.findViewByNames
-import com.example.autotap.getRealScreenSize
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.model.ActionConfig
-import com.example.autotap.model.ActionType
-import com.example.autotap.playNotificationAlert
-import com.example.autotap.ui.base.OverlayBase
-import com.example.autotap.ui.base.OverlayLayer
-import com.example.autotap.ui.base.OverlayManager
-import com.example.autotap.ui.base.OverlayPriority
-import java.io.File
-
-class EditActionDialog(context: Context, overlayManager: OverlayManager) :
-    OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
-
-    override val layoutResId: Int = R.layout.floating_edit_dialog
-
-    private var targetStepIndex: Int = -1
-    private var etEditX: EditText? = null
-    private var etEditY: EditText? = null
-    private var etEditDelayMs: EditText? = null
-    private var etEditSimilarity: EditText? = null
-    private var etEditAiTimeout: EditText? = null
-    private var btnToggleNotificationMode: Button? = null
-    private var cbLoopUntilStopped: CheckBox? = null
-    private var tvSelectedTemplatesSummary: TextView? = null
-
-    init {
-        width = WindowManager.LayoutParams.MATCH_PARENT
-        height = WindowManager.LayoutParams.WRAP_CONTENT
-        gravity = Gravity.CENTER
-        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        dimAmount = 0.6f
-    }
-
-    fun setTargetStepIndex(index: Int) {
-        this.targetStepIndex = index
-    }
-
-    override fun createView(): View {
-        val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(layoutResId, null)
-
-        etEditX = view.findViewByNames("etEditX") as? EditText
-        etEditY = view.findViewByNames("etEditY") as? EditText
-        etEditDelayMs = view.findViewByNames("etEditDelayMs") as? EditText
-        etEditSimilarity = view.findViewByNames("etEditSimilarity") as? EditText
-        etEditAiTimeout = view.findViewByNames("etEditAiTimeout") as? EditText
-        btnToggleNotificationMode = view.findViewByNames("btnToggleNotificationMode") as? Button
-        cbLoopUntilStopped = view.findViewByNames("cbLoopUntilStopped") as? CheckBox
-        tvSelectedTemplatesSummary = view.findViewByNames("tvSelectedTemplatesSummary") as? TextView
-
-        val actions = MyAutoClickService.instance?.actionsList ?: emptyList()
-        val stepAction = if (targetStepIndex in actions.indices) {
-            actions[targetStepIndex]
-        } else actions.lastOrNull()
-
-        if (stepAction != null) {
-            bindActionToUI(stepAction)
-        }
-
-        view.bindClickByNames("btnOpenTemplatePicker") {
-            val currentList = if (stepAction?.multiTemplateIndices?.isNotEmpty() == true) {
-                stepAction.multiTemplateIndices
-            } else listOf(stepAction?.selectedTemplateIndex ?: 0)
-
-            overlayManager.templatePickerDialog.showPicker(currentList) { selected ->
-                if (selected.isNotEmpty() && stepAction != null) {
-                    stepAction.multiTemplateIndices = selected
-                    stepAction.selectedTemplateIndex = selected[0]
-                    updateSummaryText(selected)
-                }
-            }
-        }
-
-        view.bindClickByNames("btnToggleNotificationMode") {
-            val action = stepAction ?: return@bindClickByNames
-            action.notificationMode = (action.notificationMode + 1) % 4
-            updateNotificationButtonText(action.notificationMode)
-            context.playNotificationAlert(action.notificationMode)
-        }
-
-        view.bindClickByNames("btnEditApply", "btnSave") {
-            val action = stepAction
-            val screenSize = context.getRealScreenSize()
-            if (action != null) {
-                val inputX = etEditX?.text?.toString()?.toFloatOrNull()
-                val inputY = etEditY?.text?.toString()?.toFloatOrNull()
-
-                if (inputX != null) {
-                    action.xNorm = if (inputX > 1.0f) (inputX / screenSize.x).coerceIn(0f, 1f) else inputX.coerceIn(0f, 1f)
-                }
-                if (inputY != null) {
-                    action.yNorm = if (inputY > 1.0f) (inputY / screenSize.y).coerceIn(0f, 1f) else inputY.coerceIn(0f, 1f)
-                }
-
-                action.delay = etEditDelayMs?.text?.toString()?.toLongOrNull() ?: action.delay
-                action.similarityPercent = etEditSimilarity?.text?.toString()?.toIntOrNull()?.coerceIn(10, 100) ?: action.similarityPercent
-                action.aiTimeoutSeconds = etEditAiTimeout?.text?.toString()?.toFloatOrNull()?.coerceAtLeast(0.1f) ?: action.aiTimeoutSeconds
-                action.loopUntilStopped = cbLoopUntilStopped?.isChecked ?: action.loopUntilStopped
-            }
-            logDiagnostic("SCRIPT", "Изменения сохранены: X=${action?.xNorm}, Y=${action?.yNorm}, Timeout=${action?.aiTimeoutSeconds}s")
-            hide()
-        }
-
-        view.bindClickByNames("btnEditDelete", "btnDeleteAction") {
-            val list = MyAutoClickService.instance?.actionsList
-            if (list != null && list.isNotEmpty()) {
-                val removeIdx = if (targetStepIndex in list.indices) targetStepIndex else list.size - 1
-                list.removeAt(removeIdx)
-            }
-            hide()
-        }
-
-        view.bindClickByNames("btnEditClose", "btnCancel") {
-            hide()
-        }
-
-        return view
-    }
-
-    private fun bindActionToUI(action: ActionConfig) {
-        val screenSize = context.getRealScreenSize()
-        etEditX?.setText((action.xNorm * screenSize.x).toInt().toString())
-        etEditY?.setText((action.yNorm * screenSize.y).toInt().toString())
-
-        etEditDelayMs?.setText(action.delay.toString())
-        etEditSimilarity?.setText(action.similarityPercent.toString())
-        etEditAiTimeout?.setText(action.aiTimeoutSeconds.toString())
-        cbLoopUntilStopped?.isChecked = action.loopUntilStopped
-        updateNotificationButtonText(action.notificationMode)
-
-        val list = if (action.multiTemplateIndices.isNotEmpty()) action.multiTemplateIndices else listOf(action.selectedTemplateIndex)
-        updateSummaryText(list)
-    }
-
-    private fun updateSummaryText(indices: List<Int>) {
-        tvSelectedTemplatesSummary?.text = "Выбранные маски (${indices.size}): #" + indices.joinToString(", #")
-    }
-
-    private fun updateNotificationButtonText(mode: Int) {
-        val label = when (mode) {
-            1 -> "🔔 Оповещение: [ 📳 ВИБРО ]"
-            2 -> "🔔 Оповещение: [ 🔊 ЗВУК ]"
-            3 -> "🔔 Оповещение: [ 🔊+📳 ЗВУК + ВИБРО ]"
-            else -> "🔔 Оповещение: [ ВЫКЛ ]"
-        }
-        btnToggleNotificationMode?.text = label
-    }
-}'''
-
-
-# =============================================================================
-# 5. CandidateSelectionOverlay.kt (ИНТЕРАКТИВНОЕ ПОДТВЕРЖДЕНИЕ ТАПОМ ПО ЭКРАНУ)
-# =============================================================================
-CANDIDATE_SELECTION_OVERLAY_KT = r'''package com.example.autotap.ui.overlays
-
-import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
-import android.os.Handler
-import android.os.Looper
-import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.WindowManager
-import com.example.autotap.engine.ai.MatchCandidate
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.ui.base.OverlayBase
-import com.example.autotap.ui.base.OverlayLayer
-import com.example.autotap.ui.base.OverlayManager
-import com.example.autotap.ui.base.OverlayPriority
-
-class CandidateSelectionOverlay(context: Context, overlayManager: OverlayManager) :
-    OverlayBase(context, overlayManager, OverlayLayer.CANDIDATE_LAYER, OverlayPriority.HIGH) {
-
-    private var activeCandidates = emptyList<MatchCandidate>()
-    private var onCandidateConfirmed: ((MatchCandidate) -> Unit)? = null
-
-    init {
-        width = WindowManager.LayoutParams.MATCH_PARENT
-        height = WindowManager.LayoutParams.MATCH_PARENT
-        gravity = Gravity.TOP or Gravity.START
-    }
-
-    override fun createView(): View {
-        return BeaconRadarCustomView(context)
-    }
-
-    fun showRadarBeaconCandidates(
-        candidates: List<MatchCandidate>,
-        callback: (MatchCandidate) -> Unit
-    ) {
-        this.activeCandidates = candidates
-        this.onCandidateConfirmed = callback
-        show()
-        (overlayView as? BeaconRadarCustomView)?.setCandidates(candidates)
-    }
-
-    private inner class BeaconRadarCustomView(context: Context) : View(context) {
-
-        private var candidateList = emptyList<MatchCandidate>()
-        private var pulseRadius = 0f
-        private var isIncreasing = true
-        private val mainHandler = Handler(Looper.getMainLooper())
-
-        private val pulseRunnable = object : Runnable {
-            override fun run() {
-                if (isIncreasing) {
-                    pulseRadius += 2.0f
-                    if (pulseRadius >= 16f) isIncreasing = false
-                } else {
-                    pulseRadius -= 2.0f
-                    if (pulseRadius <= 0f) isIncreasing = true
-                }
-                invalidate()
-                mainHandler.postDelayed(this, 30L)
-            }
-        }
-
-        private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#FF00F5D4")
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-        }
-
-        private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#8000E5FF")
-            style = Paint.Style.STROKE
-            strokeWidth = 4f
-        }
-
-        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 32f
-            isFakeBoldText = true
-        }
-
-        init {
-            mainHandler.post(pulseRunnable)
-        }
-
-        fun setCandidates(list: List<MatchCandidate>) {
-            this.candidateList = list
-            invalidate()
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            for ((index, c) in candidateList.withIndex()) {
-                val bbox = c.boundingBox
-                val rectF = RectF(bbox)
-
-                // Пульсирующий неоновый маяк вокруг найденной цели
-                canvas.drawRoundRect(rectF, 12f, 12f, borderPaint)
-
-                val pulseRect = RectF(
-                    rectF.left - pulseRadius,
-                    rectF.top - pulseRadius,
-                    rectF.right + pulseRadius,
-                    rectF.bottom + pulseRadius
-                )
-                canvas.drawRoundRect(pulseRect, 16f, 16f, pulsePaint)
-
-                val scorePercent = "${(c.score * 100).toInt()}%"
-                canvas.drawText("🎯 #${index + 1} ($scorePercent)", rectF.left, (rectF.top - 12f).coerceAtLeast(40f), textPaint)
-            }
-        }
-
-        override fun onTouchEvent(event: MotionEvent): Boolean {
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val touchX = event.rawX
-                val touchY = event.rawY
-
-                // Тап по маяку на экране = Подтверждение выбора цели!
-                for (c in candidateList) {
-                    if (c.boundingBox.contains(touchX.toInt(), touchY.toInt())) {
-                        logDiagnostic("AI_SCANNER", "Пользователь подтвердил цель тапом по экрану: ${c.point}")
-                        onCandidateConfirmed?.invoke(c)
-                        hide()
-                        return true
-                    }
-                }
-            }
-            return super.onTouchEvent(event)
-        }
-
-        override fun onDetachedFromWindow() {
-            super.onDetachedFromWindow()
-            mainHandler.removeCallbacks(pulseRunnable)
-        }
-    }
-}'''
-
-
 def execute_patch():
     print("=================================================================")
-    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v61 (OUTSIDE GRIP & RADAR BEACON)")
+    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v63 (EMOJI REMOVAL & SCANNER UNLOCK)")
     print("=================================================================")
 
     tasks = [
-        ("app/src/main/java/com/example/autotap/model/ActionConfig.kt", ACTION_CONFIG_KT),
+        ("app/src/main/java/com/example/autotap/engine/AiScannerEngine.kt", AI_SCANNER_ENGINE_KT),
+        ("app/src/main/java/com/example/autotap/data/TemplateRepository.kt", TEMPLATE_REPOSITORY_KT),
+        ("app/src/main/java/com/example/autotap/ui/overlays/CaptureFrameOverlay.kt", CAPTURE_FRAME_OVERLAY_KT),
         ("app/src/main/res/layout/floating_capture_frame.xml", CAPTURE_FRAME_XML),
-        ("app/src/main/res/layout/floating_edit_dialog.xml", EDIT_DIALOG_XML),
-        ("app/src/main/java/com/example/autotap/ui/overlays/EditActionDialog.kt", EDIT_ACTION_DIALOG_KT),
-        ("app/src/main/java/com/example/autotap/ui/overlays/CandidateSelectionOverlay.kt", CANDIDATE_SELECTION_OVERLAY_KT),
     ]
 
     for rel_path, content in tasks:
         write_file(rel_path, content)
 
     print("=================================================================")
-    print("🎉 ВСЕ УЛУЧШЕНИЯ УСПЕШНО ПРИМЕНЕНЫ К ПРОЕКТУ!")
+    print("🎉 ВСЕ ОШИБКИ И ЗАЦИКЛИВАНИЯ УСПЕШНО УСТРАНЕНЫ!")
     print("=================================================================")
 
 if __name__ == "__main__":
