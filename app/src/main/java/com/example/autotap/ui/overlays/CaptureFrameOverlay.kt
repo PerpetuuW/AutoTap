@@ -94,16 +94,13 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                                     val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
                                     svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
-                                    val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
-                                    if (calibrated != null) {
-                                        overlayManager.debuggerOverlay.showCalibratedTemplate(
-                                            croppedMask,
-                                            nextTemplateIndex,
-                                            calibrated.metadata.profile.name,
-                                            safeW,
-                                            safeH
-                                        )
-                                    }
+                                    overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                        croppedMask,
+                                        nextTemplateIndex,
+                                        "MEDIUM",
+                                        safeW,
+                                        safeH
+                                    )
                                 } catch (e: Exception) {
                                     logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
                                 }
@@ -111,7 +108,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                         }
                     }
                     hide()
-                    overlayManager.showControlPanel()
                 }, 120L)
             }
         }
@@ -126,20 +122,16 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        // ПРЯМАЯ ПРИВЯЗКА ПЕРЕТАСКИВАНИЯ К ЗНАЧКУ handleMoveFrame И ПЛАШКАМ
         val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
         val topBar = topBarView ?: view
-        val bottomBar = bottomBarView ?: view
-        val square = captureSquareView ?: view
 
         setupDragAndDrop(moveHandle)
         setupDragAndDrop(topBar)
-        setupDragAndDrop(bottomBar)
-        setupDragAndDrop(square)
 
         val resizeHandle = view.findViewByNames("handleResize")
-        if (resizeHandle != null && captureSquareView != null) {
-            setupCornerResizeHandler(resizeHandle, captureSquareView!!)
+        val sq = captureSquareView
+        if (resizeHandle != null && sq != null) {
+            setupCornerResizeHandler(resizeHandle, sq)
         }
 
         return view
@@ -215,13 +207,12 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         var touchY = 0f
 
         resizeView.setOnTouchListener { _, event ->
-            val root = rootView ?: return@setOnTouchListener false
             val screenSize = context.getRealScreenSize()
 
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = targetSquare.width
-                    startH = targetSquare.height
+                    startW = targetSquare.width.takeIf { it > 0 } ?: currentFrameWidthPx
+                    startH = targetSquare.height.takeIf { it > 0 } ?: currentFrameHeightPx
                     touchX = event.rawX
                     touchY = event.rawY
                     true
@@ -231,23 +222,29 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     val dy = (event.rawY - touchY).toInt()
 
                     val location = IntArray(2)
-                    root.getLocationOnScreen(location)
-                    val windowX = location[0]
-                    val windowY = location[1]
+                    targetSquare.getLocationOnScreen(location)
+                    val squareX = location[0]
+                    val squareY = location[1]
 
-                    val maxW = (screenSize.x - windowX - 8.dpToPx(context)).coerceAtLeast(minSizePx)
-                    val maxH = (screenSize.y - windowY - 80.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxW = (screenSize.x - squareX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - squareY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
 
-                    currentFrameWidthPx = (startW + dx).coerceIn(minSizePx, maxW)
-                    currentFrameHeightPx = (startH + dy).coerceIn(minSizePx, maxH)
+                    val newW = (startW + dx).coerceIn(minSizePx, maxW)
+                    val newH = (startH + dy).coerceIn(minSizePx, maxH)
+
+                    currentFrameWidthPx = newW
+                    currentFrameHeightPx = newH
 
                     val lp = targetSquare.layoutParams
                     if (lp != null) {
-                        lp.width = currentFrameWidthPx
-                        lp.height = currentFrameHeightPx
+                        lp.width = newW
+                        lp.height = newH
                         targetSquare.layoutParams = lp
                         targetSquare.requestLayout()
                     }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     true
                 }
                 else -> false

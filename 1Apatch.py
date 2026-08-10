@@ -3,7 +3,7 @@
 
 """
 ===============================================================================
-AUTOTAP PRO v63 - EMOJI STRIPPING, HANDLE DRAG FIX & SCANNER ASYNC LOCK FIX
+AUTOTAP PRO v66 - CAPTURE FRAME OVERLAY VARIABLE NAME FIX (sqLp -> lp)
 ===============================================================================
 """
 
@@ -33,253 +33,7 @@ def write_file(rel_path, content):
 
 
 # =============================================================================
-# 1. AiScannerEngine.kt (УСТРАНЕНИЕ ЗАЦИКЛИВАНИЯ "Пропуск: асинхронное...")
-# =============================================================================
-AI_SCANNER_ENGINE_KT = r'''package com.example.autotap.engine
-
-import android.graphics.Bitmap
-import android.graphics.PointF
-import com.example.autotap.MyAutoClickService
-import com.example.autotap.engine.ai.AiScanResult
-import com.example.autotap.engine.ai.MatchCandidate
-import com.example.autotap.engine.ai.TemplateMatcher
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
-import com.example.autotap.model.ActionConfig
-
-class AiScannerEngine(private val service: MyAutoClickService) {
-
-    private val templateMatcher by lazy { TemplateMatcher(service.templateRepository) }
-    @Volatile private var isScanning = false
-    @Volatile var lastScanResult: AiScanResult? = null
-        private set
-
-    fun scanAsync(frameProvider: () -> Bitmap?, action: ActionConfig, callback: (PointF?) -> Unit) {
-        if (isScanning) {
-            // КРИТИЧЕСКИЙ ФИКС: При занятом сканере НЕ вызываем callback(null),
-            // чтобы исключить рекурсивный зацикленный спам таймера!
-            return
-        }
-        isScanning = true
-        Thread {
-            try {
-                val result = scan(frameProvider, action)
-                lastScanResult = result
-                callback(result.point)
-            } catch (e: Exception) {
-                logError("AI_SCANNER", "Ошибка в scanAsync", e)
-                callback(null)
-            } finally {
-                isScanning = false
-            }
-        }.start()
-    }
-
-    fun scan(frameProvider: () -> Bitmap?, action: ActionConfig): AiScanResult {
-        val frame = frameProvider()
-        if (frame == null) {
-            logDiagnostic("AI_SCANNER", "Снимок экрана недоступен.")
-            return AiScanResult(null, emptyList())
-        }
-
-        val candidates = if (action.multiTemplateIndices.isNotEmpty()) {
-            templateMatcher.matchMultiTemplate(frame, action)
-        } else {
-            templateMatcher.matchSingleTemplate(frame, action)
-        }
-
-        if (candidates.isEmpty()) {
-            logDiagnostic("AI_SCANNER", "Совпадений по маскам не найдено.")
-            return AiScanResult(null, emptyList())
-        }
-
-        val bestCandidate = candidates.first()
-        logDiagnostic("AI_SCANNER", "ИИ нашел целей: ${candidates.size}. Высший шаблон #${bestCandidate.templateIndex} (score=${"%.2f".format(bestCandidate.score)}) в $bestCandidate")
-        return AiScanResult(bestCandidate.point, candidates)
-    }
-}'''
-
-
-# =============================================================================
-# 2. TemplateRepository.kt (АВТО-ФОЛБЭК НА СУЩЕСТВУЮЩУЮ МАСКУ ПРИ ОТСУТСТВИИ ФАЙЛА)
-# =============================================================================
-TEMPLATE_REPOSITORY_KT = r'''package com.example.autotap.data
-
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import com.example.autotap.engine.ai.CalibratedMask
-import com.example.autotap.engine.ai.MaskCalibrator
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
-import org.json.JSONObject
-import java.io.File
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.abs
-
-class TemplateRepository(private val context: Context) {
-
-    private val bitmapCache = ConcurrentHashMap<Int, Bitmap>()
-    private val calibratedMaskCache = ConcurrentHashMap<Int, CalibratedMask>()
-    private val calibrator = MaskCalibrator()
-
-    fun getNextFreeTemplateIndex(): Int {
-        var index = 0
-        while (File(context.filesDir, "template_$index.png").exists()) {
-            index++
-        }
-        return index
-    }
-
-    fun getLatestAvailableTemplateIndex(): Int {
-        val files = context.filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") }
-        if (files.isNullOrEmpty()) return 0
-        return files.mapNotNull { file ->
-            file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull()
-        }.maxOrNull() ?: 0
-    }
-
-    fun saveTemplate(index: Int, bitmap: Bitmap): Boolean {
-        return try {
-            val file = File(context.filesDir, "template_$index.png")
-            file.outputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
-
-            val metrics = context.resources.displayMetrics
-            val metaObj = JSONObject().apply {
-                put("sourceWidth", metrics.widthPixels)
-                put("sourceHeight", metrics.heightPixels)
-                put("sourceDpi", metrics.densityDpi)
-            }
-            File(context.filesDir, "template_${index}_meta.json").writeText(metaObj.toString())
-
-            bitmapCache[index] = bitmap
-
-            val calibrated = calibrator.calibrate(bitmap)
-            calibratedMaskCache[index] = calibrated
-
-            logDiagnostic("AI_SCANNER", "Маска #$index сохранена с метаданными экрана (${metrics.widthPixels}x${metrics.heightPixels}, ${metrics.densityDpi} DPI).")
-            true
-        } catch (e: Exception) {
-            logError("AI_SCANNER", "Ошибка сохранения и калибровки маски $index", e)
-            false
-        }
-    }
-
-    fun loadTemplate(index: Int): Bitmap? {
-        val cached = bitmapCache[index]
-        if (cached != null && !cached.isRecycled) {
-            return cached
-        }
-        return try {
-            var file = File(context.filesDir, "template_$index.png")
-            var targetIndex = index
-
-            // Авто-фолбэк на имеющуюся маску, если запрошенный файл отсутствует
-            if (!file.exists()) {
-                val fallbackIndex = getLatestAvailableTemplateIndex()
-                file = File(context.filesDir, "template_$fallbackIndex.png")
-                targetIndex = fallbackIndex
-                logDiagnostic("AI_SCANNER", "Маска $index не найдена. Выполнен авто-фолбэк на имеющуюся маску #$fallbackIndex")
-            }
-
-            if (!file.exists()) return null
-            val rawBitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
-
-            val metrics = context.resources.displayMetrics
-            val metaFile = File(context.filesDir, "template_${targetIndex}_meta.json")
-
-            val finalBitmap = if (metaFile.exists()) {
-                try {
-                    val metaJson = JSONObject(metaFile.readText())
-                    val srcW = metaJson.optInt("sourceWidth", metrics.widthPixels)
-                    val srcH = metaJson.optInt("sourceHeight", metrics.heightPixels)
-
-                    val scaleX = metrics.widthPixels.toFloat() / srcW.coerceAtLeast(1)
-                    val scaleY = metrics.heightPixels.toFloat() / srcH.coerceAtLeast(1)
-                    val avgScale = (scaleX + scaleY) / 2f
-
-                    if (abs(avgScale - 1.0f) > 0.04f) {
-                        val targetW = (rawBitmap.width * avgScale).toInt().coerceAtLeast(4)
-                        val targetH = (rawBitmap.height * avgScale).toInt().coerceAtLeast(4)
-                        Bitmap.createScaledBitmap(rawBitmap, targetW, targetH, true)
-                    } else rawBitmap
-                } catch (_: Exception) { rawBitmap }
-            } else rawBitmap
-
-            bitmapCache[targetIndex] = finalBitmap
-            val calibrated = calibrator.calibrate(finalBitmap)
-            calibratedMaskCache[targetIndex] = calibrated
-            finalBitmap
-        } catch (e: Exception) {
-            logError("AI_SCANNER", "Ошибка загрузки маски $index", e)
-            null
-        }
-    }
-
-    fun loadCalibratedMask(index: Int): CalibratedMask? {
-        val cached = calibratedMaskCache[index]
-        if (cached != null && !cached.original.isRecycled) {
-            return cached
-        }
-        val bitmap = loadTemplate(index) ?: return null
-        val calibrated = calibrator.calibrate(bitmap)
-        calibratedMaskCache[index] = calibrated
-        return calibrated
-    }
-
-    fun recalibrateTemplate(index: Int): CalibratedMask? {
-        val bitmap = loadTemplate(index) ?: return null
-        val calibrated = calibrator.calibrate(bitmap)
-        calibratedMaskCache[index] = calibrated
-        logDiagnostic("AI_SCANNER", "Принудительная калибровка маски #$index успешно выполнена.")
-        return calibrated
-    }
-
-    fun moveTemplateToTrash(index: Int): Boolean {
-        return try {
-            val file = File(context.filesDir, "template_$index.png")
-            if (file.exists()) {
-                val trashDir = File(context.filesDir, "trash")
-                trashDir.mkdirs()
-                val trashFile = File(trashDir, "template_$index.png")
-                file.renameTo(trashFile)
-
-                File(context.filesDir, "template_${index}_meta.json").delete()
-
-                bitmapCache.remove(index)
-                calibratedMaskCache.remove(index)
-
-                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину.")
-                true
-            } else false
-        } catch (e: Exception) {
-            logError("AI_SCANNER", "Ошибка перемещения маски $index в корзину", e)
-            false
-        }
-    }
-
-    fun restoreTemplateFromTrash(index: Int): Boolean {
-        return try {
-            val trashFile = File(File(context.filesDir, "trash"), "template_$index.png")
-            if (trashFile.exists()) {
-                val targetFile = File(context.filesDir, "template_$index.png")
-                trashFile.renameTo(targetFile)
-                loadTemplate(index)
-                logDiagnostic("AI_SCANNER", "Маска #$index восстановлена из корзины.")
-                true
-            } else false
-        } catch (e: Exception) {
-            logError("AI_SCANNER", "Ошибка восстановления маски $index из корзины", e)
-            false
-        }
-    }
-}'''
-
-
-# =============================================================================
-# 3. CaptureFrameOverlay.kt (ПЕРЕТАСКИВАНИЕ ЗА ЗНАЧОК handleMoveFrame)
+# CaptureFrameOverlay.kt (ИСПРАВЛЕНИЕ ОШИБКИ Naming lp В REPAIR HANDLER)
 # =============================================================================
 CAPTURE_FRAME_OVERLAY_KT = r'''package com.example.autotap.ui.overlays
 
@@ -377,16 +131,13 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                                     val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
                                     svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
-                                    val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
-                                    if (calibrated != null) {
-                                        overlayManager.debuggerOverlay.showCalibratedTemplate(
-                                            croppedMask,
-                                            nextTemplateIndex,
-                                            calibrated.metadata.profile.name,
-                                            safeW,
-                                            safeH
-                                        )
-                                    }
+                                    overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                        croppedMask,
+                                        nextTemplateIndex,
+                                        "MEDIUM",
+                                        safeW,
+                                        safeH
+                                    )
                                 } catch (e: Exception) {
                                     logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
                                 }
@@ -394,7 +145,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                         }
                     }
                     hide()
-                    overlayManager.showControlPanel()
                 }, 120L)
             }
         }
@@ -409,20 +159,16 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        // ПРЯМАЯ ПРИВЯЗКА ПЕРЕТАСКИВАНИЯ К ЗНАЧКУ handleMoveFrame И ПЛАШКАМ
         val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
         val topBar = topBarView ?: view
-        val bottomBar = bottomBarView ?: view
-        val square = captureSquareView ?: view
 
         setupDragAndDrop(moveHandle)
         setupDragAndDrop(topBar)
-        setupDragAndDrop(bottomBar)
-        setupDragAndDrop(square)
 
         val resizeHandle = view.findViewByNames("handleResize")
-        if (resizeHandle != null && captureSquareView != null) {
-            setupCornerResizeHandler(resizeHandle, captureSquareView!!)
+        val sq = captureSquareView
+        if (resizeHandle != null && sq != null) {
+            setupCornerResizeHandler(resizeHandle, sq)
         }
 
         return view
@@ -498,13 +244,12 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         var touchY = 0f
 
         resizeView.setOnTouchListener { _, event ->
-            val root = rootView ?: return@setOnTouchListener false
             val screenSize = context.getRealScreenSize()
 
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = targetSquare.width
-                    startH = targetSquare.height
+                    startW = targetSquare.width.takeIf { it > 0 } ?: currentFrameWidthPx
+                    startH = targetSquare.height.takeIf { it > 0 } ?: currentFrameHeightPx
                     touchX = event.rawX
                     touchY = event.rawY
                     true
@@ -514,23 +259,29 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     val dy = (event.rawY - touchY).toInt()
 
                     val location = IntArray(2)
-                    root.getLocationOnScreen(location)
-                    val windowX = location[0]
-                    val windowY = location[1]
+                    targetSquare.getLocationOnScreen(location)
+                    val squareX = location[0]
+                    val squareY = location[1]
 
-                    val maxW = (screenSize.x - windowX - 8.dpToPx(context)).coerceAtLeast(minSizePx)
-                    val maxH = (screenSize.y - windowY - 80.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxW = (screenSize.x - squareX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - squareY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
 
-                    currentFrameWidthPx = (startW + dx).coerceIn(minSizePx, maxW)
-                    currentFrameHeightPx = (startH + dy).coerceIn(minSizePx, maxH)
+                    val newW = (startW + dx).coerceIn(minSizePx, maxW)
+                    val newH = (startH + dy).coerceIn(minSizePx, maxH)
+
+                    currentFrameWidthPx = newW
+                    currentFrameHeightPx = newH
 
                     val lp = targetSquare.layoutParams
                     if (lp != null) {
-                        lp.width = currentFrameWidthPx
-                        lp.height = currentFrameHeightPx
+                        lp.width = newW
+                        lp.height = newH
                         targetSquare.layoutParams = lp
                         targetSquare.requestLayout()
                     }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     true
                 }
                 else -> false
@@ -540,124 +291,20 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 }'''
 
 
-# =============================================================================
-# 4. floating_capture_frame.xml (ОЧИСТКА ОТ ЭМОДЗИ)
-# =============================================================================
-CAPTURE_FRAME_XML = r'''<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/layoutCaptureContainer"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:gravity="center_horizontal"
-    android:padding="0dp"
-    android:elevation="18dp">
-
-    <!-- ВЕРХНИЙ ТУЛБАР -->
-    <LinearLayout
-        android:id="@+id/layoutTopBar"
-        android:layout_width="wrap_content"
-        android:layout_height="38dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/drag_handle_bg"
-        android:paddingStart="6dp"
-        android:paddingEnd="6dp"
-        android:layout_marginBottom="2dp">
-
-        <ImageButton
-            android:id="@+id/btnDoCapture"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:src="@drawable/ic_camera"
-            android:scaleType="centerInside"
-            android:background="@drawable/btn_premium_primary"
-            android:padding="5dp"
-            android:contentDescription="Capture"
-            android:layout_marginEnd="4dp" />
-
-        <Button
-            android:id="@+id/btnCaptureSearchArea"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="Зона"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="@color/accent_blue"
-            android:textSize="10sp"
-            android:padding="0dp"
-            android:layout_marginEnd="4dp" />
-
-        <ImageButton
-            android:id="@+id/btnCancelCapture"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:src="@drawable/ic_close"
-            android:scaleType="centerInside"
-            android:background="@drawable/btn_premium_record"
-            android:padding="5dp"
-            android:contentDescription="Close" />
-    </LinearLayout>
-
-    <!-- РАМКА ПРИЦЕЛА -->
-    <FrameLayout
-        android:id="@+id/captureSquare"
-        android:layout_width="160dp"
-        android:layout_height="160dp"
-        android:background="@drawable/border_capture_square" />
-
-    <!-- НИЖНЯЯ ПЛАШКА ДВИЖЕНИЯ -->
-    <LinearLayout
-        android:id="@+id/layoutBottomBar"
-        android:layout_width="wrap_content"
-        android:layout_height="28dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/drag_handle_bg"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:layout_marginTop="2dp">
-
-        <TextView
-            android:id="@+id/handleMoveFrame"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="ДВИГАТЬ"
-            android:textColor="#FFB703"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:layout_marginEnd="6dp" />
-
-        <ImageView
-            android:id="@+id/handleResize"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:src="@drawable/handle_manipulator_bg"
-            android:padding="2dp"
-            android:contentDescription="Resize Grip" />
-    </LinearLayout>
-</LinearLayout>'''
-
-
 def execute_patch():
     print("=================================================================")
-    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v63 (EMOJI REMOVAL & SCANNER UNLOCK)")
+    print("🚀 СТАРТ ПАТЧИНГА AUTOTAP PRO v66 (CaptureFrameOverlay.kt FIX)")
     print("=================================================================")
 
     tasks = [
-        ("app/src/main/java/com/example/autotap/engine/AiScannerEngine.kt", AI_SCANNER_ENGINE_KT),
-        ("app/src/main/java/com/example/autotap/data/TemplateRepository.kt", TEMPLATE_REPOSITORY_KT),
         ("app/src/main/java/com/example/autotap/ui/overlays/CaptureFrameOverlay.kt", CAPTURE_FRAME_OVERLAY_KT),
-        ("app/src/main/res/layout/floating_capture_frame.xml", CAPTURE_FRAME_XML),
     ]
 
     for rel_path, content in tasks:
         write_file(rel_path, content)
 
     print("=================================================================")
-    print("🎉 ВСЕ ОШИБКИ И ЗАЦИКЛИВАНИЯ УСПЕШНО УСТРАНЕНЫ!")
+    print("🎉 ИМЯ ПЕРЕМЕННОЙ lp В CaptureFrameOverlay.kt ИСПРАВЛЕНО!")
     print("=================================================================")
 
 if __name__ == "__main__":

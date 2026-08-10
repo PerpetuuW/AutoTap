@@ -101,8 +101,10 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        val handle = view.findViewByNames("handleMoveSearchArea", "layoutSearchBottomBar") ?: view
-        setupDragAndDrop(handle)
+        val moveHandle = view.findViewByNames("handleMoveSearchArea") ?: view
+        val topBar = topBarView ?: view
+        setupDragAndDrop(moveHandle)
+        setupDragAndDrop(topBar)
 
         val resizeHandle = view.findViewByNames("handleResizeSearchArea")
         val frameView = viewSearchAreaFrameView
@@ -147,12 +149,29 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
             }
         }
 
-        val rightMarginPx = 16.dpToPx(context)
-        val squareRightOnScreen = currentX + frame.width
-        if (squareRightOnScreen >= screenSize.x - rightMarginPx) {
-            val shiftLeft = (squareRightOnScreen - screenSize.x + rightMarginPx).coerceAtLeast(0)
-            topBar.translationX = -shiftLeft.toFloat()
-            bottomBar.translationX = -shiftLeft.toFloat()
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
+        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
+        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
+
+        if (frame.width < maxToolbarW) {
+            val extraWidth = maxToolbarW - frame.width
+            val isNearLeft = currentX <= extraWidth / 2
+            val isNearRight = currentX >= screenSize.x - frame.width - (extraWidth / 2)
+
+            when {
+                isNearLeft -> {
+                    topBar.translationX = (extraWidth / 2f)
+                    bottomBar.translationX = (extraWidth / 2f)
+                }
+                isNearRight -> {
+                    topBar.translationX = -(extraWidth / 2f)
+                    bottomBar.translationX = -(extraWidth / 2f)
+                }
+                else -> {
+                    topBar.translationX = 0f
+                    bottomBar.translationX = 0f
+                }
+            }
         } else {
             topBar.translationX = 0f
             bottomBar.translationX = 0f
@@ -166,13 +185,12 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
         var touchY = 0f
 
         resizeView.setOnTouchListener { _, event ->
-            val root = rootView ?: return@setOnTouchListener false
             val screenSize = context.getRealScreenSize()
 
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = targetFrame.width
-                    startH = targetFrame.height
+                    startW = targetFrame.width.takeIf { it > 0 } ?: currentWidthPx
+                    startH = targetFrame.height.takeIf { it > 0 } ?: currentHeightPx
                     touchX = event.rawX
                     touchY = event.rawY
                     true
@@ -182,23 +200,29 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
                     val dy = (event.rawY - touchY).toInt()
 
                     val location = IntArray(2)
-                    root.getLocationOnScreen(location)
+                    targetFrame.getLocationOnScreen(location)
                     val windowX = location[0]
                     val windowY = location[1]
 
-                    val maxW = (screenSize.x - windowX - 8.dpToPx(context)).coerceAtLeast(minSizePx)
-                    val maxH = (screenSize.y - windowY - 80.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxW = (screenSize.x - windowX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - windowY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
 
-                    currentWidthPx = (startW + dx).coerceIn(minSizePx, maxW)
-                    currentHeightPx = (startH + dy).coerceIn(minSizePx, maxH)
+                    val newW = (startW + dx).coerceIn(minSizePx, maxW)
+                    val newH = (startH + dy).coerceIn(minSizePx, maxH)
+
+                    currentWidthPx = newW
+                    currentHeightPx = newH
 
                     val lp = targetFrame.layoutParams
                     if (lp != null) {
-                        lp.width = currentWidthPx
-                        lp.height = currentHeightPx
+                        lp.width = newW
+                        lp.height = newH
                         targetFrame.layoutParams = lp
                         targetFrame.requestLayout()
                     }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     true
                 }
                 else -> false

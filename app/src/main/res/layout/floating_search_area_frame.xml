@@ -26,10 +26,10 @@
             android:layout_height="32dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:text="✅ Задать зону"
+            android:text="Задать зону"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/accent_blue"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:textStyle="bold"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
@@ -41,12 +41,12 @@
             android:layout_height="32dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:text="🌐 Сброс"
+            android:text="Сброс"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/bg_dark_blue"
-            android:textSize="10sp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
+            android:textSize="11sp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:layout_marginEnd="4dp" />
 
         <ImageButton
@@ -60,7 +60,7 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- ЗОНА ПОИСКА -->
+    <!-- ЗОНА ПОИСКА С УГЛОВОЙ РУЧКОЙ РЕСАЙЗА -->
     <FrameLayout
         android:id="@+id/viewSearchAreaFrame"
         android:layout_width="220dp"
@@ -77,7 +77,7 @@
             android:paddingEnd="8dp"
             android:paddingTop="4dp"
             android:paddingBottom="4dp"
-            android:text="📐 Зона поиска ИИ"
+            android:text="Зона поиска ИИ"
             android:textColor="@color/gold_accent"
             android:textSize="12sp"
             android:textStyle="bold" />
@@ -92,7 +92,7 @@
             android:contentDescription="Resize Search Area" />
     </FrameLayout>
 
-    <!-- НИЖНИЙ ТУЛБАР -->
+    <!-- НИЖНИЙ ТУЛБАР ПЕРЕМЕЩЕНИЯ -->
     <LinearLayout
         android:id="@+id/layoutSearchBottomBar"
         android:layout_width="wrap_content"
@@ -109,7 +109,7 @@
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:gravity="center"
-            android:text="✥ ДВИГАТЬ ЗОНУ"
+            android:text="ДВИГАТЬ ЗОНУ"
             android:textColor="@color/electric_cyan"
             android:textSize="10sp"
             android:textStyle="bold" />

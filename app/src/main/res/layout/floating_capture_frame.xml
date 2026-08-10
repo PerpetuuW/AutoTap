@@ -55,14 +55,14 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- РАМКА ПРИЦЕЛА -->
+    <!-- 100% ЧИСТЫЙ ВНУТРЕННИЙ КАДР БЕЗ ИКОНОК ВНУТРИ -->
     <FrameLayout
         android:id="@+id/captureSquare"
         android:layout_width="160dp"
         android:layout_height="160dp"
         android:background="@drawable/border_capture_square" />
 
-    <!-- НИЖНЯЯ ПЛАШКА ДВИЖЕНИЯ -->
+    <!-- НИЖНЯЯ ПЛАШКА С ВЫНЕСЕННЫМ ЗНАЧКОМ РЕСАЙЗА -->
     <LinearLayout
         android:id="@+id/layoutBottomBar"
         android:layout_width="wrap_content"
@@ -83,12 +83,13 @@
             android:textColor="#FFB703"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:layout_marginEnd="6dp" />
+            android:layout_marginEnd="8dp" />
 
+        <!-- Значок изменения размера вынесен ЗА ПРЕДЕЛЫ поля! -->
         <ImageView
             android:id="@+id/handleResize"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
             android:src="@drawable/handle_manipulator_bg"
             android:padding="2dp"
             android:contentDescription="Resize Grip" />

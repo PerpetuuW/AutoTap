@@ -274,7 +274,7 @@ class AutoTapFullSystemTest {
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data
-                android:name="android.accessibilityservice.accessibilityservice"
+                android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
@@ -361,6 +361,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import com.example.autotap.logger.StructuredLogger
+import kotlin.math.max
+import kotlin.math.min
 
 object CoordConverter {
     fun toNormalizedPoint(pt: PointF, widthPx: Int, heightPx: Int): PointF {
@@ -376,20 +378,32 @@ object CoordConverter {
     fun toNormalizedRect(rect: Rect, widthPx: Int, heightPx: Int): RectF {
         val w = widthPx.coerceAtLeast(1).toFloat()
         val h = heightPx.coerceAtLeast(1).toFloat()
+
+        // Защита от инверсии граней (left > right или top > bottom)
+        val left = min(rect.left, rect.right).toFloat()
+        val right = max(rect.left, rect.right).toFloat()
+        val top = min(rect.top, rect.bottom).toFloat()
+        val bottom = max(rect.top, rect.bottom).toFloat()
+
         return RectF(
-            (rect.left / w).coerceIn(0f, 1f),
-            (rect.top / h).coerceIn(0f, 1f),
-            (rect.right / w).coerceIn(0f, 1f),
-            (rect.bottom / h).coerceIn(0f, 1f)
+            (left / w).coerceIn(0f, 1f),
+            (top / h).coerceIn(0f, 1f),
+            (right / w).coerceIn(0f, 1f),
+            (bottom / h).coerceIn(0f, 1f)
         )
     }
 
     fun toPxRect(rectNorm: RectF, widthPx: Int, heightPx: Int): Rect {
+        val left = min(rectNorm.left, rectNorm.right)
+        val right = max(rectNorm.left, rectNorm.right)
+        val top = min(rectNorm.top, rectNorm.bottom)
+        val bottom = max(rectNorm.top, rectNorm.bottom)
+
         return Rect(
-            (rectNorm.left * widthPx).toInt(),
-            (rectNorm.top * heightPx).toInt(),
-            (rectNorm.right * widthPx).toInt(),
-            (rectNorm.bottom * heightPx).toInt()
+            (left * widthPx).toInt(),
+            (top * heightPx).toInt(),
+            (right * widthPx).toInt(),
+            (bottom * heightPx).toInt()
         )
     }
 }
@@ -527,10 +541,10 @@ fun Context.vibrateFeedback() {
 
 fun Context.playNotificationAlert(mode: Int) {
     try {
-        if (mode == 1 || mode == 3) { // VIBRO
+        if (mode == 1 || mode == 3) {
             vibrateFeedback()
         }
-        if (mode == 2 || mode == 3) { // SOUND
+        if (mode == 2 || mode == 3) {
             val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
             toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 200)
         }
@@ -575,7 +589,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.text.TextUtils
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -745,7 +758,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
             Toast.makeText(
                 this,
-                "Прокрутите В САМЫЙ НИЗ экрана (или 3 точки вверху) -> нажмите 'Разрешить ограниченные настройки'",
+                "Прокрутите в самый низ (или 3 точки вверху) -> 'Разрешить ограниченные настройки'",
                 Toast.LENGTH_LONG
             ).show()
             logDiagnostic("UI", "Открыто меню снятия ограничений Restricted Settings.")
@@ -760,23 +773,17 @@ class MainActivity : AppCompatActivity() {
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
 
         (root.findViewByNames("btnAppDetails") as? Button)?.apply {
-            text = "1. Ограниченные настройки (в самом низу)"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            text = "1. Ограниченные настройки (MIUI / Android 13+)"
         }
 
         (root.findViewByNames("btnAccessibility") as? Button)?.apply {
             text = if (isServiceActive) "2. Спец. возможности: [ ВКЛ ]" else "2. Спец. возможности: [ ВЫКЛ ]"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+            setTextColor(if (isServiceActive) Color.parseColor("#00E676") else Color.parseColor("#FF5B5B"))
         }
 
         (root.findViewByNames("btnOverlay") as? Button)?.apply {
             text = if (hasOverlay) "3. Поверх других приложений: [ ВКЛ ]" else "3. Поверх других приложений: [ ВЫКЛ ]"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+            setTextColor(if (hasOverlay) Color.parseColor("#00E676") else Color.parseColor("#FF5B5B"))
         }
 
         (root.findViewByNames("btnPermissionsHelp") as? Button)?.apply {
@@ -806,6 +813,7 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorSpace
 import android.graphics.PointF
 import android.os.Build
 import android.os.Handler
@@ -877,7 +885,7 @@ class MyAutoClickService : AccessibilityService() {
         aiScannerEngine = AiScannerEngine(this)
         overlayManager = OverlayManager(this)
 
-        logDiagnostic("OVERLAY", "MyAutoClickService v40 полностью инициализирован.")
+        logDiagnostic("OVERLAY", "MyAutoClickService полностью инициализирован.")
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -888,10 +896,7 @@ class MyAutoClickService : AccessibilityService() {
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val type = event?.eventType ?: return
-        logDiagnostic("GESTURE", "Событие Accessibility: $type")
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {
         logError("ERROR", "Служба Accessibility прервана системой.", null)
@@ -1020,7 +1025,7 @@ class MyAutoClickService : AccessibilityService() {
     }
 
     fun captureScreenBitmapAsync(callback: (Bitmap?) -> Unit) {
-        val delayMs = globalPreScreenshotDelayMs.coerceAtLeast(0L)
+        val delayMs = globalPreScreenshotDelayMs.coerceAtLeast(250L)
         mainHandler.postDelayed({
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
@@ -1029,11 +1034,31 @@ class MyAutoClickService : AccessibilityService() {
                         mainExecutor,
                         object : TakeScreenshotCallback {
                             override fun onSuccess(screenshotResult: ScreenshotResult) {
-                                val buffer = screenshotResult.hardwareBuffer
-                                val bitmap = Bitmap.wrapHardwareBuffer(buffer, screenshotResult.colorSpace)
-                                    ?.copy(Bitmap.Config.ARGB_8888, true)
-                                buffer.close()
-                                callback(bitmap)
+                                try {
+                                    val buffer = screenshotResult.hardwareBuffer
+                                    val cs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        screenshotResult.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
+                                    } else null
+
+                                    val hwBitmap = if (cs != null) {
+                                        Bitmap.wrapHardwareBuffer(buffer, cs)
+                                    } else {
+                                        Bitmap.wrapHardwareBuffer(buffer, ColorSpace.get(ColorSpace.Named.SRGB))
+                                    }
+
+                                    val finalBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, true)
+                                    buffer.close()
+
+                                    if (finalBitmap != null) {
+                                        logDiagnostic("AI_SCANNER", "Скриншот успешно снят (${finalBitmap.width}x${finalBitmap.height}px)")
+                                        callback(finalBitmap)
+                                    } else {
+                                        callback(generateFallbackFrame())
+                                    }
+                                } catch (e: Exception) {
+                                    logError("AI_SCANNER", "Ошибка обработки скриншота", e)
+                                    callback(generateFallbackFrame())
+                                }
                             }
 
                             override fun onFailure(errorCode: Int) {
@@ -1044,9 +1069,7 @@ class MyAutoClickService : AccessibilityService() {
                     )
                 } catch (e: SecurityException) {
                     logError("AI_SCANNER", "SecurityException takeScreenshot: выключите и включите службу AutoTap в Спец. возможностях", e)
-                    mainHandler.post {
-                        Toast.makeText(this@MyAutoClickService, "Перезапустите тумблер AutoTap в Спец. возможностях для снятия скриншотов!", Toast.LENGTH_LONG).show()
-                    }
+                    notifyUserToResetAccessibilitySwitch()
                     callback(generateFallbackFrame())
                 } catch (e: Exception) {
                     logError("AI_SCANNER", "Ошибка вызова takeScreenshot API", e)
@@ -1056,6 +1079,16 @@ class MyAutoClickService : AccessibilityService() {
                 callback(generateFallbackFrame())
             }
         }, delayMs)
+    }
+
+    private fun notifyUserToResetAccessibilitySwitch() {
+        mainHandler.post {
+            Toast.makeText(
+                this,
+                "⚠️ Перезапустите тумблер AutoTap в Спец. возможностях для активации скриншотов!",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     fun captureScreenBitmap(): Bitmap? {
@@ -1185,6 +1218,7 @@ class ScriptRepository(private val context: Context) {
                     put("delay", action.delay)
                     put("holdDuration", action.holdDuration)
                     put("similarityPercent", action.similarityPercent)
+                    put("aiTimeoutSeconds", action.aiTimeoutSeconds)
                     put("selectedTemplateIndex", action.selectedTemplateIndex)
                     put("customSearchArea", action.customSearchArea)
                     put("searchAreaX", action.searchAreaX)
@@ -1239,6 +1273,7 @@ class ScriptRepository(private val context: Context) {
                         delay = obj.optLong("delay", 500L),
                         holdDuration = obj.optLong("holdDuration", 100L),
                         similarityPercent = obj.optInt("similarityPercent", 85),
+                        aiTimeoutSeconds = obj.optDouble("aiTimeoutSeconds", 5.0).toFloat(),
                         selectedTemplateIndex = obj.optInt("selectedTemplateIndex", 0),
                         customSearchArea = obj.optBoolean("customSearchArea", false),
                         searchAreaX = obj.optInt("searchAreaX", 0),
@@ -1290,6 +1325,14 @@ class TemplateRepository(private val context: Context) {
         return index
     }
 
+    fun getLatestAvailableTemplateIndex(): Int {
+        val files = context.filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") }
+        if (files.isNullOrEmpty()) return 0
+        return files.mapNotNull { file ->
+            file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull()
+        }.maxOrNull() ?: 0
+    }
+
     fun saveTemplate(index: Int, bitmap: Bitmap): Boolean {
         return try {
             val file = File(context.filesDir, "template_$index.png")
@@ -1297,7 +1340,6 @@ class TemplateRepository(private val context: Context) {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
 
-            // ЗАПИСЬ МЕТАДАННЫХ РАЗРЕШЕНИЯ И DPI ИСХОДНОГО УСТРОЙСТВА
             val metrics = context.resources.displayMetrics
             val metaObj = JSONObject().apply {
                 put("sourceWidth", metrics.widthPixels)
@@ -1325,16 +1367,22 @@ class TemplateRepository(private val context: Context) {
             return cached
         }
         return try {
-            val file = File(context.filesDir, "template_$index.png")
+            var file = File(context.filesDir, "template_$index.png")
+            var targetIndex = index
+
+            // Авто-фолбэк на имеющуюся маску, если запрошенный файл отсутствует
             if (!file.exists()) {
-                logDiagnostic("AI_SCANNER", "Маска $index не найдена на диске.")
-                return null
+                val fallbackIndex = getLatestAvailableTemplateIndex()
+                file = File(context.filesDir, "template_$fallbackIndex.png")
+                targetIndex = fallbackIndex
+                logDiagnostic("AI_SCANNER", "Маска $index не найдена. Выполнен авто-фолбэк на имеющуюся маску #$fallbackIndex")
             }
+
+            if (!file.exists()) return null
             val rawBitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
 
-            // АВТО-РЕСАЙЗ ПО DPI И РАЗРЕШЕНИЮ ТЕКУЩЕГО ЭКРАНА ПРИ ИМПОРТЕ/ЗАГРУЗКЕ
             val metrics = context.resources.displayMetrics
-            val metaFile = File(context.filesDir, "template_${index}_meta.json")
+            val metaFile = File(context.filesDir, "template_${targetIndex}_meta.json")
 
             val finalBitmap = if (metaFile.exists()) {
                 try {
@@ -1349,16 +1397,14 @@ class TemplateRepository(private val context: Context) {
                     if (abs(avgScale - 1.0f) > 0.04f) {
                         val targetW = (rawBitmap.width * avgScale).toInt().coerceAtLeast(4)
                         val targetH = (rawBitmap.height * avgScale).toInt().coerceAtLeast(4)
-                        logDiagnostic("AI_SCANNER", "Авто-ресайз маски #$index под текущий экран: scale=${"%.2f".format(avgScale)} (${rawBitmap.width}x${rawBitmap.height} -> ${targetW}x${targetH}px)")
                         Bitmap.createScaledBitmap(rawBitmap, targetW, targetH, true)
                     } else rawBitmap
                 } catch (_: Exception) { rawBitmap }
             } else rawBitmap
 
-            bitmapCache[index] = finalBitmap
+            bitmapCache[targetIndex] = finalBitmap
             val calibrated = calibrator.calibrate(finalBitmap)
-            calibratedMaskCache[index] = calibrated
-            logDiagnostic("AI_SCANNER", "Маска $index успешно загружена и калибрована.")
+            calibratedMaskCache[targetIndex] = calibrated
             finalBitmap
         } catch (e: Exception) {
             logError("AI_SCANNER", "Ошибка загрузки маски $index", e)
@@ -1396,10 +1442,10 @@ class TemplateRepository(private val context: Context) {
 
                 File(context.filesDir, "template_${index}_meta.json").delete()
 
-                bitmapCache.remove(index)?.recycle()
+                bitmapCache.remove(index)
                 calibratedMaskCache.remove(index)
 
-                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину с высвобождением ОЗУ.")
+                logDiagnostic("AI_SCANNER", "Маска #$index перемещена в корзину.")
                 true
             } else false
         } catch (e: Exception) {
@@ -1470,8 +1516,8 @@ class AiScannerEngine(private val service: MyAutoClickService) {
 
     fun scanAsync(frameProvider: () -> Bitmap?, action: ActionConfig, callback: (PointF?) -> Unit) {
         if (isScanning) {
-            logDiagnostic("AI_SCANNER", "Пропуск: асинхронное сканирование уже выполняется.")
-            callback(null)
+            // КРИТИЧЕСКИЙ ФИКС: При занятом сканере НЕ вызываем callback(null),
+            // чтобы исключить рекурсивный зацикленный спам таймера!
             return
         }
         isScanning = true
@@ -1984,7 +2030,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
                 }
             }
             ActionType.AI_SEARCH -> {
-                executeMultiSearchLoop(action)
+                executeMultiSearchLoop(action, System.currentTimeMillis())
             }
             ActionType.WAIT -> {
                 val waitDelay = action.delay.coerceAtLeast(10L)
@@ -2005,8 +2051,17 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         }
     }
 
-    private fun executeMultiSearchLoop(action: ActionConfig) {
+    private fun executeMultiSearchLoop(action: ActionConfig, startTimeMs: Long) {
         if (!isRunning) return
+
+        val timeoutMs = (action.aiTimeoutSeconds * 1000f).toLong()
+        val elapsedTime = System.currentTimeMillis() - startTimeMs
+
+        if (timeoutMs > 0L && elapsedTime >= timeoutMs) {
+            logDiagnostic("AI_SCANNER", "Таймаут ИИ-поиска ($elapsedTime ms >= $timeoutMs ms) истек.")
+            onStepCompleted(false, action)
+            return
+        }
 
         aiScannerEngine.scanAsync({ service.captureScreenBitmap() }, action) { foundPoint ->
             if (!isRunning) return@scanAsync
@@ -2015,15 +2070,11 @@ class ScriptExecutor(private val service: MyAutoClickService) {
             val candidates = scanResult?.candidates ?: emptyList()
 
             if (candidates.isNotEmpty()) {
-                service.overlayManager.debuggerOverlay.showCandidates(candidates)
-
-                // ПРОКЛИКИВАЕМ ВСЕ НАЙДЕННЫЕ ЦЕЛИ НА ЭКРАНЕ ПОСЛЕДОВАТЕЛЬНО
                 clickCandidateSequence(candidates, 0, action)
             } else {
-                service.overlayManager.debuggerOverlay.showNoMatch()
                 if (action.loopUntilStopped && isRunning) {
-                    val scanIntervalMs = (action.scanIntervalSeconds * 1000L).toLong().coerceAtLeast(100L)
-                    mainHandler.postDelayed({ executeMultiSearchLoop(action) }, scanIntervalMs)
+                    val scanIntervalMs = (action.scanIntervalSeconds * 1000f).toLong().coerceAtLeast(200L)
+                    mainHandler.postDelayed({ executeMultiSearchLoop(action, startTimeMs) }, scanIntervalMs)
                 } else {
                     onStepCompleted(false, action)
                 }
@@ -2036,7 +2087,7 @@ class ScriptExecutor(private val service: MyAutoClickService) {
         if (index >= candidates.size) {
             if (action.loopUntilStopped && isRunning) {
                 val delayMs = action.delay.coerceAtLeast(100L)
-                mainHandler.postDelayed({ executeMultiSearchLoop(action) }, delayMs)
+                mainHandler.postDelayed({ executeMultiSearchLoop(action, System.currentTimeMillis()) }, delayMs)
             } else {
                 onStepCompleted(true, action)
             }
@@ -2087,6 +2138,7 @@ package com.example.autotap.engine
 import android.graphics.Rect
 import android.view.View
 import com.example.autotap.MyAutoClickService
+import com.example.autotap.dpToPx
 import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.model.TutorialStepConfig
@@ -2099,29 +2151,62 @@ class TutorialEngine(private val service: MyAutoClickService) {
     private var currentStepIndex = 0
     private val steps = mutableListOf<TutorialStepConfig>()
 
-    private fun getControlPanelChildBounds(service: MyAutoClickService, childIdName: String): Rect {
+    private fun getControlPanelChildBounds(
+        service: MyAutoClickService,
+        childIdName: String,
+        callback: (Rect) -> Unit
+    ) {
         val panel = service.overlayManager.controlPanel
-        val panelView = panel.overlayView ?: return Rect(100, 200, 500, 400)
-        val lp = panel.layoutParams ?: return Rect(100, 200, 500, 400)
-        val child = panelView.findViewByNames(childIdName)
+        val panelView = panel.overlayView
 
-        return if (child != null && child.width > 0 && child.height > 0) {
-            val childX = lp.x + child.left
-            val childY = lp.y + child.top
-            Rect(childX, childY, childX + child.width, childY + child.height)
-        } else {
-            val w = if (panelView.width > 0) panelView.width else 300
-            val h = if (panelView.height > 0) panelView.height else 150
-            Rect(lp.x, lp.y, lp.x + w, lp.y + h)
+        if (panelView == null) {
+            callback(Rect(100, 200, 500, 400))
+            return
+        }
+
+        val mainRow = panelView.findViewByNames("layoutMainRow")
+        val subMenu = panelView.findViewByNames("layoutSubMenu")
+
+        if (mainRow != null) mainRow.visibility = View.VISIBLE
+        if (subMenu != null) subMenu.visibility = View.VISIBLE
+
+        panelView.measure(
+            View.MeasureSpec.makeMeasureSpec(service.resources.displayMetrics.widthPixels, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(service.resources.displayMetrics.heightPixels, View.MeasureSpec.AT_MOST)
+        )
+
+        panelView.post {
+            val child = panelView.findViewByNames(childIdName)
+            val paddingPx = 6.dpToPx(service)
+
+            if (child != null && child.width > 0 && child.height > 0) {
+                val location = IntArray(2)
+                child.getLocationOnScreen(location)
+                val rect = Rect(
+                    location[0] - paddingPx,
+                    location[1] - paddingPx,
+                    location[0] + child.width + paddingPx,
+                    location[1] + child.height + paddingPx
+                )
+                callback(rect)
+            } else {
+                val location = IntArray(2)
+                panelView.getLocationOnScreen(location)
+                val w = if (panelView.width > 0) panelView.width else 300
+                val h = if (panelView.height > 0) panelView.height else 150
+                callback(Rect(location[0], location[1], location[0] + w, location[1] + h))
+            }
         }
     }
 
     fun startDefaultTutorial() {
         steps.clear()
+        
+        // Последовательный порядок по кнопкам панели
         steps.add(
             TutorialStepConfig(
                 id = "step_1",
-                title = "Шаг 1 из 8: Обзор Панели",
+                title = "Шаг 1 из 9: Обзор Панели",
                 message = "Добро пожаловать в AutoTap PRO! Это главная панель управления. Нажмите 'Далее'.",
                 autoAdvance = false
             )
@@ -2129,56 +2214,63 @@ class TutorialEngine(private val service: MyAutoClickService) {
         steps.add(
             TutorialStepConfig(
                 id = "step_2",
-                title = "Шаг 2 из 8: Сворачивание Панели",
-                message = "Нажмите на кнопку ≡, чтобы скрыть панель в 1 строку или в плавающий шарик."
+                title = "Шаг 2 из 9: Кнопка СТАРТ",
+                message = "Кнопка ► запускает и останавливает выполнение шагов кликера."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_3",
-                title = "Шаг 3 из 8: Вырезание ИИ-Масок",
-                message = "Кнопка 📷 откроет прицел. Рамка вырежет точные пиксели с экрана игры."
+                title = "Шаг 3 из 9: Добавление Шагов",
+                message = "Кнопка + добавляет клики, свайпы и шаги ИИ-поиска."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_4",
-                title = "Шаг 4 из 8: Мультипоиск",
-                message = "ИИ ищет шаблоны одновременно на скорости 60 FPS и нажимает на найденные цели."
+                title = "Шаг 4 из 9: Вырезание ИИ-Масок",
+                message = "Кнопка 📷 откроет прицел. Рамка вырежет точные картинки с экрана игры."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_5",
-                title = "Шаг 5 из 8: Запись Джойстика",
-                message = "Джойстик передает плавное удержание (continueStroke) и одновременно пишет путь."
+                title = "Шаг 5 из 9: Справка ?",
+                message = "Кнопка ? вызовет это обучение и подробную справку в любой момент."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_6",
-                title = "Шаг 6 из 8: Защита от Само-кликов",
-                message = "Во время жестов панели невидимы для кликов благодаря Anti-Self-Click Guard."
+                title = "Шаг 6 из 9: Сворачивание Меню ≡",
+                message = "Кнопка ≡ скрывает панель в 1 строку или открывает нижнее меню."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_7",
-                title = "Шаг 7 из 8: Просмотр Логов",
-                message = "Все события пишутся в диалоговое окно логов с миллисекундами и поддержкой бэкапов."
+                title = "Шаг 7 из 9: Запись Кликов 🔴",
+                message = "Кнопка 🔴 включает живую запись ваших тачей по экрану."
             )
         )
         steps.add(
             TutorialStepConfig(
                 id = "step_8",
-                title = "Шаг 8 из 8: Готово!",
-                message = "Поздравляем! Обучение завершено. Нажмите 'Завершить'."
+                title = "Шаг 8 из 9: Включение Джойстика",
+                message = "Кнопка Джойстика откроет стик плавного управления движением."
+            )
+        )
+        steps.add(
+            TutorialStepConfig(
+                id = "step_9",
+                title = "Шаг 9 из 9: Сценарии 📁",
+                message = "Кнопка Папки открывает сохранение и бэкап сценариев."
             )
         )
 
         currentStepIndex = 0
         isTutorialActive = true
-        logDiagnostic("TUTORIAL", "Запущен курс обучения с снайперской подсветкой кнопок.")
+        logDiagnostic("TUTORIAL", "Запущен последовательный туториал.")
         showCurrentStep()
     }
 
@@ -2186,7 +2278,6 @@ class TutorialEngine(private val service: MyAutoClickService) {
         if (!isTutorialActive) return
         currentStepIndex++
         if (currentStepIndex >= steps.size) {
-            logDiagnostic("TUTORIAL", "Обучение полностью завершено.")
             stopTutorial()
             return
         }
@@ -2197,7 +2288,6 @@ class TutorialEngine(private val service: MyAutoClickService) {
         if (!isTutorialActive) return
         if (currentStepIndex > 0) {
             currentStepIndex--
-            logDiagnostic("TUTORIAL", "Возврат на шаг $currentStepIndex")
             showCurrentStep()
         }
     }
@@ -2206,30 +2296,44 @@ class TutorialEngine(private val service: MyAutoClickService) {
         isTutorialActive = false
         currentStepIndex = 0
         service.overlayManager.tutorialOverlay.hide()
-        logDiagnostic("TUTORIAL", "Обучение остановлено.")
     }
 
     private fun showCurrentStep() {
         if (currentStepIndex in 0 until steps.size) {
             val step = steps[currentStepIndex]
-            val targetBounds = when (step.id) {
-                "step_2" -> getControlPanelChildBounds(service, "btnToggleMenu")
-                "step_3" -> getControlPanelChildBounds(service, "btnCapturePool")
-                "step_4" -> getControlPanelChildBounds(service, "btnAdd")
-                "step_5" -> getControlPanelChildBounds(service, "btnToggleJoystick")
-                else -> {
-                    val panel = service.overlayManager.controlPanel
-                    val v = panel.overlayView
-                    val lp = panel.layoutParams
-                    if (v != null && lp != null) {
-                        Rect(lp.x, lp.y, lp.x + v.width, lp.y + v.height)
-                    } else Rect(100, 200, 500, 400)
-                }
+
+            val targetButtonId = when (step.id) {
+                "step_2" -> "btnPlay"
+                "step_3" -> "btnAdd"
+                "step_4" -> "btnCapturePool"
+                "step_5" -> "btnHelpTutorial"
+                "step_6" -> "btnToggleMenu"
+                "step_7" -> "btnRecord"
+                "step_8" -> "btnToggleJoystick"
+                "step_9" -> "btnLoadScript"
+                else -> ""
             }
 
-            val updatedStep = step.copy(highlightArea = targetBounds)
-            service.overlayManager.tutorialOverlay.show()
-            service.overlayManager.tutorialOverlay.renderStep(updatedStep)
+            if (targetButtonId.isNotEmpty()) {
+                getControlPanelChildBounds(service, targetButtonId) { exactBounds ->
+                    val updatedStep = step.copy(highlightArea = exactBounds)
+                    service.overlayManager.tutorialOverlay.show()
+                    service.overlayManager.tutorialOverlay.renderStep(updatedStep)
+                }
+            } else {
+                val panel = service.overlayManager.controlPanel
+                val v = panel.overlayView
+                val lp = panel.layoutParams
+                val panelBounds = if (v != null && lp != null) {
+                    val location = IntArray(2)
+                    v.getLocationOnScreen(location)
+                    Rect(location[0], location[1], location[0] + v.width, location[1] + v.height)
+                } else Rect(100, 200, 500, 400)
+
+                val updatedStep = step.copy(highlightArea = panelBounds)
+                service.overlayManager.tutorialOverlay.show()
+                service.overlayManager.tutorialOverlay.renderStep(updatedStep)
+            }
         }
     }
 }
@@ -2396,7 +2500,7 @@ class HybridCascadeMatcher {
             searchArea.bottom.coerceIn(0, frame.height)
         )
 
-        val step = if (modes.hybridCascadeMode) {
+        val coarseStep = if (modes.hybridCascadeMode) {
             when (modes.profile) {
                 TemplateProfile.SMALL -> 2
                 TemplateProfile.LARGE -> 6
@@ -2412,34 +2516,61 @@ class HybridCascadeMatcher {
 
         if (endX <= startX || endY <= startY) return candidates
 
+        // ФАЗА 1: Грубое быстрое сканирование (Порог 50%)
+        val coarseThreshold = (threshold - 0.30f).coerceAtLeast(0.50f)
+        val potentialHits = mutableListOf<PointF>()
+
         var x = startX
         while (x <= endX) {
             var y = startY
             while (y <= endY) {
                 if (frame.isRecycled || mask.isRecycled) break
 
-                val pixelScore = comparePixels(frame, mask, x, y)
-                val contourScore = if (modes.shapeOnlyMode || modes.profile == TemplateProfile.THIN_LINE) {
-                    compareEdges(frame, mask, x, y)
-                } else {
-                    pixelScore
-                }
+                val pixelScore = comparePixelsWithTolerance(frame, mask, x, y)
+                val contourScore = compareEdges(frame, mask, x, y)
+                val coarseScore = (contourScore * 0.4f) + (pixelScore * 0.6f)
 
-                val finalScore = (contourScore * modes.contourWeight) + (pixelScore * modes.pixelWeight)
-
-                if (finalScore >= threshold) {
-                    val pt = PointF(x + mask.width / 2f, y + mask.height / 2f)
-                    val bbox = Rect(x, y, x + mask.width, y + mask.height)
-                    candidates.add(MatchCandidate(pt, finalScore, bbox, 1.0f, 0))
+                if (coarseScore >= coarseThreshold) {
+                    potentialHits.add(PointF(x.toFloat(), y.toFloat()))
                 }
-                y += step
+                y += coarseStep
             }
-            x += step
+            x += coarseStep
         }
-        return candidates
+
+        // ФАЗА 2: Точнейшая доводка с шагом 1 пиксель (1px Fine Refinement)
+        val fineWindow = coarseStep + 2
+        val visitedPoints = HashSet<Long>()
+
+        for (hit in potentialHits) {
+            val fxStart = (hit.x.toInt() - fineWindow).coerceIn(startX, endX)
+            val fxEnd = (hit.x.toInt() + fineWindow).coerceIn(startX, endX)
+            val fyStart = (hit.y.toInt() - fineWindow).coerceIn(startY, endY)
+            val fyEnd = (hit.y.toInt() + fineWindow).coerceIn(startY, endY)
+
+            for (fx in fxStart..fxEnd) {
+                for (fy in fyStart..fyEnd) {
+                    val pointKey = (fx.toLong() shl 32) or (fy.toLong() and 0xFFFFFFFFL)
+                    if (visitedPoints.contains(pointKey)) continue
+                    visitedPoints.add(pointKey)
+
+                    val pixelScore = comparePixelsWithTolerance(frame, mask, fx, fy)
+                    val contourScore = compareEdges(frame, mask, fx, fy)
+                    val exactScore = (contourScore * 0.4f) + (pixelScore * 0.6f)
+
+                    if (exactScore >= threshold) {
+                        val pt = PointF(fx + mask.width / 2f, fy + mask.height / 2f)
+                        val bbox = Rect(fx, fy, fx + mask.width, fy + mask.height)
+                        candidates.add(MatchCandidate(pt, exactScore, bbox, 1.0f, 0))
+                    }
+                }
+            }
+        }
+
+        return candidates.sortedByDescending { it.score }
     }
 
-    private fun comparePixels(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
+    private fun comparePixelsWithTolerance(frame: Bitmap, mask: Bitmap, x: Int, y: Int): Float {
         if (frame.isRecycled || mask.isRecycled) return 0f
         var totalDiff = 0L
         var pixelCount = 0
@@ -2461,6 +2592,12 @@ class HybridCascadeMatcher {
                 val framePixel = frame.getPixel(fx, fy)
                 val maskPixel = mask.getPixel(mx, my)
 
+                val ma = (maskPixel shr 24) and 0xFF
+                if (ma < 30) {
+                    my += stepY
+                    continue
+                }
+
                 val fr = (framePixel shr 16) and 0xFF
                 val fg = (framePixel shr 8) and 0xFF
                 val fb = framePixel and 0xFF
@@ -2469,7 +2606,11 @@ class HybridCascadeMatcher {
                 val mg = (maskPixel shr 8) and 0xFF
                 val mb = maskPixel and 0xFF
 
-                totalDiff += abs(fr - mr) + abs(fg - mg) + abs(fb - mb)
+                val diffR = abs(fr - mr).let { if (it <= 12) 0 else it - 12 }
+                val diffG = abs(fg - mg).let { if (it <= 12) 0 else it - 12 }
+                val diffB = abs(fb - mb).let { if (it <= 12) 0 else it - 12 }
+
+                totalDiff += diffR + diffG + diffB
                 pixelCount++
 
                 my += stepY
@@ -2477,8 +2618,8 @@ class HybridCascadeMatcher {
             mx += stepX
         }
 
-        if (pixelCount == 0) return 0f
-        val maxDiff = pixelCount * 255f * 3f
+        if (pixelCount == 0) return 1.0f
+        val maxDiff = pixelCount * 240f * 3f
         val similarity = 1.0f - (totalDiff.toFloat() / maxDiff)
         return similarity.coerceIn(0f, 1f)
     }
@@ -2511,7 +2652,7 @@ class HybridCascadeMatcher {
             mx += stepX
         }
 
-        if (count == 0) return 0f
+        if (count == 0) return 1.0f
         val maxGradDiff = count * 255f
         return (1.0f - (edgeDiff.toFloat() / maxGradDiff)).coerceIn(0f, 1f)
     }
@@ -2663,19 +2804,47 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         val searchModes = buildProfileAwareModes(action, profile)
         val threshold = action.similarityPercent / 100f
 
-        // ПРОХОД 1: СВЕРХБЫСТРЫЙ ПОИСК В ЛОКАЛЬНОЙ ЗОНЕ ЯКОРЯ (±15% ВОКРУГ ТОЧКИ СЪЕМКИ)
-        if (!action.customSearchArea) {
+        // 1. ПЕРВАЯ ПОПЫТКА НА ЦЕЛЕВОМ ПОРОГЕ (например, 85%)
+        var candidates = if (!action.customSearchArea) {
             val hotspotArea = buildAnchorHotspotArea(action, frame, mask)
             val hotspotCandidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, threshold)
             if (hotspotCandidates.isNotEmpty()) {
-                logDiagnostic("AI_SCANNER", "Умный локальный якорь: цель найдена за 2мс в исходной зоне!")
-                return hotspotCandidates
+                logDiagnostic("AI_SCANNER", "Локальный якорь: цель найдена в исходной зоне!")
+                hotspotCandidates
+            } else {
+                val fullArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+                cascadeMatcher.match(frame, mask, fullArea, searchModes, threshold)
+            }
+        } else {
+            val fullArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+            cascadeMatcher.match(frame, mask, fullArea, searchModes, threshold)
+        }
+
+        // 2. АВТОМАШИНА АДАПТИВНОЙ КАЛИБРОВКИ (Снижение порога если нет совпадений)
+        if (candidates.isEmpty()) {
+            val adaptiveThreshold = (threshold - 0.15f).coerceAtLeast(0.55f)
+            logDiagnostic("AI_SCANNER", "Авто-Калибровка: на пороге ${(threshold * 100).toInt()}% нет совпадений. Адаптивное снижение порога до ${(adaptiveThreshold * 100).toInt()}%...")
+
+            candidates = if (!action.customSearchArea) {
+                val hotspotArea = buildAnchorHotspotArea(action, frame, mask)
+                val softHotspot = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, adaptiveThreshold)
+                if (softHotspot.isNotEmpty()) softHotspot
+                else {
+                    val fullArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+                    cascadeMatcher.match(frame, mask, fullArea, searchModes, adaptiveThreshold)
+                }
+            } else {
+                val fullArea = buildProfileAwareSearchArea(action, frame, profile, mask)
+                cascadeMatcher.match(frame, mask, fullArea, searchModes, adaptiveThreshold)
+            }
+
+            if (candidates.isNotEmpty()) {
+                val best = candidates.maxByOrNull { it.score }
+                logDiagnostic("AI_SCANNER", "🎯 Адаптивная калибровка УСПЕШНА: цель найдена с уверенностью ${((best?.score ?: 0f) * 100).toInt()}%!")
             }
         }
 
-        // ПРОХОД 2: ПОЛНОЭКРАННЫЙ ПОИСК (FALLBACK ЕСЛИ ОБЪЕКТ СМЕСТИЛСЯ)
-        val fullSearchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
-        return cascadeMatcher.match(frame, mask, fullSearchArea, searchModes, threshold)
+        return rankCandidates(candidates)
     }
 
     fun matchMultiTemplate(frame: Bitmap, action: ActionConfig): List<MatchCandidate> {
@@ -2695,21 +2864,15 @@ class TemplateMatcher(private val repository: TemplateRepository) {
             val searchModes = buildProfileAwareModes(action, profile)
             val threshold = action.similarityPercent / 100f
 
-            // ПРОХОД 1 ПО ЛОКАЛЬНОМУ ЯКОРЮ
-            if (!action.customSearchArea) {
-                val hotspotArea = buildAnchorHotspotArea(action, frame, mask)
-                val hotspotCandidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, threshold)
-                if (hotspotCandidates.isNotEmpty()) {
-                    for (c in hotspotCandidates) {
-                        allCandidates.add(c.copy(templateIndex = index))
-                    }
-                    continue
-                }
+            val hotspotArea = if (!action.customSearchArea) buildAnchorHotspotArea(action, frame, mask) else buildProfileAwareSearchArea(action, frame, profile, mask)
+            var candidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, threshold)
+
+            // Адаптивная калибровка для каждого шаблона
+            if (candidates.isEmpty()) {
+                val adaptiveThreshold = (threshold - 0.15f).coerceAtLeast(0.55f)
+                candidates = cascadeMatcher.match(frame, mask, hotspotArea, searchModes, adaptiveThreshold)
             }
 
-            // ПРОХОД 2 ПО ВСЕМУ ЭКРАНУ
-            val fullSearchArea = buildProfileAwareSearchArea(action, frame, profile, mask)
-            val candidates = cascadeMatcher.match(frame, mask, fullSearchArea, searchModes, threshold)
             for (c in candidates) {
                 allCandidates.add(c.copy(templateIndex = index))
             }
@@ -2726,8 +2889,8 @@ class TemplateMatcher(private val repository: TemplateRepository) {
         val anchorX = (action.xNorm * frame.width).toInt()
         val anchorY = (action.yNorm * frame.height).toInt()
 
-        val paddingX = (frame.width * 0.15f).toInt().coerceAtLeast(mask.width * 2)
-        val paddingY = (frame.height * 0.15f).toInt().coerceAtLeast(mask.height * 2)
+        val paddingX = (frame.width * 0.20f).toInt().coerceAtLeast(mask.width * 2)
+        val paddingY = (frame.height * 0.20f).toInt().coerceAtLeast(mask.height * 2)
 
         return Rect(
             (anchorX - paddingX).coerceIn(0, frame.width),
@@ -2738,48 +2901,16 @@ class TemplateMatcher(private val repository: TemplateRepository) {
     }
 
     private fun buildProfileAwareModes(action: ActionConfig, profile: TemplateProfile): SearchModes {
-        return when (profile) {
-            TemplateProfile.SMALL -> SearchModes(
-                shapeOnlyMode = action.shapeOnlyMode,
-                autoTuningMode = action.autoTuningMode,
-                hybridCascadeMode = action.hybridCascadeMode,
-                multiScaleSearch = action.multiScaleSearch,
-                contourWeight = 0.4f,
-                pixelWeight = 0.6f,
-                scaleBoost = 0.25f,
-                profile = profile
-            )
-            TemplateProfile.LARGE -> SearchModes(
-                shapeOnlyMode = action.shapeOnlyMode,
-                autoTuningMode = action.autoTuningMode,
-                hybridCascadeMode = action.hybridCascadeMode,
-                multiScaleSearch = action.multiScaleSearch,
-                contourWeight = 0.2f,
-                pixelWeight = 0.8f,
-                scaleBoost = -0.25f,
-                profile = profile
-            )
-            TemplateProfile.THIN_LINE -> SearchModes(
-                shapeOnlyMode = true,
-                autoTuningMode = action.autoTuningMode,
-                hybridCascadeMode = action.hybridCascadeMode,
-                multiScaleSearch = false,
-                contourWeight = 0.85f,
-                pixelWeight = 0.15f,
-                scaleBoost = 0.0f,
-                profile = profile
-            )
-            else -> SearchModes(
-                shapeOnlyMode = action.shapeOnlyMode,
-                autoTuningMode = action.autoTuningMode,
-                hybridCascadeMode = action.hybridCascadeMode,
-                multiScaleSearch = action.multiScaleSearch,
-                contourWeight = 0.3f,
-                pixelWeight = 0.7f,
-                scaleBoost = 0.0f,
-                profile = profile
-            )
-        }
+        return SearchModes(
+            shapeOnlyMode = action.shapeOnlyMode,
+            autoTuningMode = true,
+            hybridCascadeMode = action.hybridCascadeMode,
+            multiScaleSearch = action.multiScaleSearch,
+            contourWeight = 0.3f,
+            pixelWeight = 0.7f,
+            scaleBoost = 0.0f,
+            profile = profile
+        )
     }
 
     private fun buildProfileAwareSearchArea(action: ActionConfig, frame: Bitmap, profile: TemplateProfile, mask: Bitmap): Rect {
@@ -2929,6 +3060,7 @@ data class ActionConfig(
     var multiTemplateIndices: List<Int> = emptyList(),
     var similarityPercent: Int = 85,
     var scanIntervalSeconds: Float = 0.1f,
+    var aiTimeoutSeconds: Float = 5.0f, // Таймаут поиска в секундах
     var clickAiTarget: Boolean = false,
     var loopUntilStopped: Boolean = true,
     var jumpToStepOnMatch: Int? = null,
@@ -2940,7 +3072,7 @@ data class ActionConfig(
     var searchAreaW: Int = 0,
     var searchAreaH: Int = 0,
     var shapeOnlyMode: Boolean = false,
-    var autoTuningMode: Boolean = false,
+    var autoTuningMode: Boolean = true,
     var hybridCascadeMode: Boolean = true,
     var multiScaleSearch: Boolean = true,
     var joystickPath: List<PointF> = emptyList(),
@@ -2948,7 +3080,7 @@ data class ActionConfig(
     var longPressDuration: Long = 500L,
     var clickOffsetX: Int = 0,
     var clickOffsetY: Int = 0,
-    var notificationMode: Int = 0 // 0 = OFF, 1 = VIBRO, 2 = SOUND, 3 = BOTH
+    var notificationMode: Int = 0
 )
 
 --- END OF FILE: app/src/main/java/com/example/autotap/model/ActionConfig.kt ---
@@ -3039,6 +3171,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import com.example.autotap.R
@@ -3096,6 +3229,7 @@ class LogViewerActivity : AppCompatActivity() {
         if (file != null && file.exists()) {
             file.writeText("")
             logDiagnostic("LOGS", "Лог-файл очищен по btnClearLogs.")
+            Toast.makeText(this, "Лог-файл очищен", Toast.LENGTH_SHORT).show()
         }
         refreshLogs()
     }
@@ -3115,9 +3249,14 @@ class LogViewerActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(intent, "Поделиться error_log.txt"))
+            // Флаг чтения Uri принудительно продублирован на chooser интент
+            val chooser = Intent.createChooser(intent, "Поделиться error_log.txt").apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(chooser)
         } catch (e: Exception) {
             logError("LOGS", "Ошибка отправки файла логов", e)
+            Toast.makeText(this, "Ошибка отправки лог-файла", Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -3247,7 +3386,7 @@ abstract class OverlayBase(
             val added = windowManager.safeAddView(view, lp)
             if (added) {
                 isShowing = true
-                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) принудительно отображен.")
+                logDiagnostic("OVERLAY", "Оверлей ${javaClass.simpleName} (слой=${layer.name}) отображен.")
             }
         } catch (e: Exception) {
             logError("OVERLAY", "Ошибка при отображении ${javaClass.simpleName}", e)
@@ -3277,8 +3416,16 @@ abstract class OverlayBase(
         }
         val screenSize = context.getRealScreenSize()
         val v = overlayView ?: rootView
-        val viewW = v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
-        val viewH = v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
+        
+        if (v != null && (v.width == 0 || v.height == 0)) {
+            v.measure(
+                View.MeasureSpec.makeMeasureSpec(screenSize.x, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(screenSize.y, View.MeasureSpec.AT_MOST)
+            )
+        }
+
+        val viewW = v?.measuredWidth?.takeIf { it > 0 } ?: v?.width?.takeIf { it > 0 } ?: width.takeIf { it > 0 } ?: 140
+        val viewH = v?.measuredHeight?.takeIf { it > 0 } ?: v?.height?.takeIf { it > 0 } ?: height.takeIf { it > 0 } ?: 140
 
         val maxX = (screenSize.x - viewW).coerceAtLeast(0)
         val maxY = (screenSize.y - viewH).coerceAtLeast(0)
@@ -3328,35 +3475,44 @@ abstract class OverlayBase(
 
     fun getBounds(): Rect {
         val lp = layoutParams ?: params ?: return Rect(0, 0, 0, 0)
-        val w = if (width > 0) width else 200
-        val h = if (height > 0) height else 200
+        val v = overlayView ?: rootView
+        val w = v?.width?.takeIf { it > 0 } ?: if (width > 0) width else 200
+        val h = v?.height?.takeIf { it > 0 } ?: if (height > 0) height else 200
         return Rect(lp.x, lp.y, lp.x + w, lp.y + h)
     }
 
     protected fun setupDragAndDrop(handleView: View) {
-        var lastRawX = 0f
-        var lastRawY = 0f
+        var startX = 0f
+        var startY = 0f
+        var isDragging = false
 
         handleView.setOnTouchListener { _, event ->
             val lp = layoutParams ?: params ?: return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    lastRawX = event.rawX
-                    lastRawY = event.rawY
-                    true
+                    startX = event.rawX
+                    startY = event.rawY
+                    isDragging = false
+                    true // ВОЗВРАЩАЕМ TRUE, ЧТОБЫ ОС ПЕРЕДАВАЛА ACTION_MOVE
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - lastRawX).toInt()
-                    val dy = (event.rawY - lastRawY).toInt()
+                    val dx = (event.rawX - startX).toInt()
+                    val dy = (event.rawY - startY).toInt()
 
-                    if (dx != 0 || dy != 0) {
+                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        isDragging = true
+                    }
+
+                    if (isDragging) {
                         updatePosition(lp.x + dx, lp.y + dy)
-                        lastRawX = event.rawX
-                        lastRawY = event.rawY
+                        startX = event.rawX
+                        startY = event.rawY
                     }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val wasDragging = isDragging
+                    isDragging = false
                     true
                 }
                 else -> false
@@ -3390,7 +3546,11 @@ enum class OverlayLayer {
 package com.example.autotap.ui.base
 
 import android.content.Context
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.dpToPx
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.model.ActionType
 import com.example.autotap.ui.debug.ScenarioDebuggerOverlay
 import com.example.autotap.ui.overlays.AddActionDialog
 import com.example.autotap.ui.overlays.CandidateSelectionOverlay
@@ -3409,12 +3569,15 @@ import com.example.autotap.ui.overlays.SaveRecordingDialog
 import com.example.autotap.ui.overlays.ScriptsDialog
 import com.example.autotap.ui.overlays.SearchAreaOverlay
 import com.example.autotap.ui.overlays.TargetMarkerOverlay
+import com.example.autotap.ui.overlays.TemplatePickerDialog
 import com.example.autotap.ui.overlays.TemplatesManagerDialog
 import com.example.autotap.ui.overlays.TutorialOverlay
 
 class OverlayManager(val context: Context) {
 
     private val overlays = mutableMapOf<OverlayLayer, OverlayBase>()
+    private val activeTargetMarkers = mutableListOf<TargetMarkerOverlay>()
+    var areMarkersVisible = true
 
     val controlPanel by lazy { ControlPanelOverlay(context, this) }
     val debuggerOverlay by lazy { ScenarioDebuggerOverlay(context, this) }
@@ -3435,7 +3598,7 @@ class OverlayManager(val context: Context) {
     val permissionsDialog by lazy { PermissionsDialog(context, this) }
     val saveRecordingDialog by lazy { SaveRecordingDialog(context, this) }
     val searchAreaOverlay by lazy { SearchAreaOverlay(context, this) }
-    val targetMarkerOverlay by lazy { TargetMarkerOverlay(context, this) }
+    val templatePickerDialog by lazy { TemplatePickerDialog(context, this) }
 
     init {
         register(OverlayLayer.PANEL_LAYER, controlPanel)
@@ -3445,7 +3608,6 @@ class OverlayManager(val context: Context) {
         register(OverlayLayer.TUTORIAL_LAYER, tutorialOverlay)
         register(OverlayLayer.DIALOG_LAYER, editActionDialog)
         register(OverlayLayer.SEARCH_AREA_LAYER, searchAreaOverlay)
-        register(OverlayLayer.TARGET_LAYER, targetMarkerOverlay)
         register(OverlayLayer.STOP_BUTTON_LAYER, floatingStopButton)
         logDiagnostic("OVERLAY", "OverlayManager полностью инициализирован.")
     }
@@ -3464,6 +3626,7 @@ class OverlayManager(val context: Context) {
 
     fun showControlPanel() {
         controlPanel.show()
+        updateTargetMarkers()
     }
 
     fun hideControlPanel() {
@@ -3482,12 +3645,51 @@ class OverlayManager(val context: Context) {
         clickVisualizer.showClickAt(x, y)
     }
 
+    // ДВИНЖОК ОБНОВЛЕНИЯ ВИЗУАЛЬНЫХ МИШЕНЕЙ НА ЭКРАНЕ
+    fun updateTargetMarkers() {
+        activeTargetMarkers.forEach { it.hide() }
+        activeTargetMarkers.clear()
+
+        if (!areMarkersVisible) return
+
+        val svc = MyAutoClickService.instance ?: return
+        val screenSize = context.getRealScreenSize()
+        val actions = svc.actionsList
+
+        for ((index, action) in actions.withIndex()) {
+            val marker = TargetMarkerOverlay(context, this, index, isEndMarker = false)
+            val px = (action.xNorm * screenSize.x - 22.dpToPx(context)).toInt().coerceIn(0, screenSize.x - 44.dpToPx(context))
+            val py = (action.yNorm * screenSize.y - 22.dpToPx(context)).toInt().coerceIn(0, screenSize.y - 44.dpToPx(context))
+            marker.initialX = px
+            marker.initialY = py
+            marker.show()
+            activeTargetMarkers.add(marker)
+
+            if (action.type == ActionType.SWIPE) {
+                val endMarker = TargetMarkerOverlay(context, this, index, isEndMarker = true)
+                val endPx = (action.endXNorm * screenSize.x - 22.dpToPx(context)).toInt().coerceIn(0, screenSize.x - 44.dpToPx(context))
+                val endPy = (action.endYNorm * screenSize.y - 22.dpToPx(context)).toInt().coerceIn(0, screenSize.y - 44.dpToPx(context))
+                endMarker.initialX = endPx
+                endMarker.initialY = endPy
+                endMarker.show()
+                activeTargetMarkers.add(endMarker)
+            }
+        }
+        logDiagnostic("OVERLAY", "Отображено мишеней на экране: ${activeTargetMarkers.size}")
+    }
+
+    fun toggleTargetMarkersVisibility() {
+        areMarkersVisible = !areMarkersVisible
+        updateTargetMarkers()
+    }
+
     fun setTouchable(layer: OverlayLayer, enabled: Boolean) {
         overlays[layer]?.setTouchable(enabled)
     }
 
     fun hideAll() {
         overlays.values.forEach { it.hide() }
+        activeTargetMarkers.forEach { it.hide() }
     }
 
     fun onConfigurationChanged() {
@@ -3501,7 +3703,7 @@ class OverlayManager(val context: Context) {
                 } catch (_: Exception) {}
             }
         }
-        logDiagnostic("OVERLAY", "Автоматический пересчет позиций оверлеев при повороте экрана.")
+        updateTargetMarkers()
     }
 }
 
@@ -3530,21 +3732,18 @@ import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.dpToPx
 import com.example.autotap.engine.ai.MatchCandidate
-import com.example.autotap.findViewByNames
 import com.example.autotap.logAppEvent
-import com.example.autotap.model.ActionConfig
-import com.example.autotap.model.ActionType
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayManager
 
@@ -3555,15 +3754,15 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
     private var ivPreview: ImageView? = null
     private var btnConfirm: Button? = null
     private var btnTrash: Button? = null
-    private var lastCapturedIndex = -1
+    private var currentTemplateIndex = -1
 
-    private val autoHideHandler = Handler(Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         width = WindowManager.LayoutParams.WRAP_CONTENT
         height = WindowManager.LayoutParams.WRAP_CONTENT
         gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        initialY = 100.dpToPx(context)
+        initialY = 90.dpToPx(context)
     }
 
     override fun createView(): View {
@@ -3571,75 +3770,101 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundResource(R.drawable.panel_background)
-            setPadding(20, 12, 20, 12)
+            setPadding(24, 16, 24, 16)
 
             val tv = TextView(context).apply {
                 text = "🎯 Калибровка ИИ-Маски"
                 setTextColor(Color.parseColor("#00F5D4"))
-                textSize = 13f
+                textSize = 14f
                 setTypeface(null, Typeface.BOLD)
                 gravity = Gravity.CENTER
             }
             statusText = tv
             addView(tv)
 
-            // ОКНО ПРЕВЬЮ ОБЪЕКТА КАЛИБРОВКИ
             val img = ImageView(context).apply {
                 visibility = View.GONE
-                setPadding(0, 8, 0, 8)
+                setPadding(0, 10, 0, 10)
             }
             ivPreview = img
             addView(img, LinearLayout.LayoutParams(120.dpToPx(context), 120.dpToPx(context)))
 
-            // КНОПКИ ПОДТВЕРЖДЕНИЯ ЧЕЛОВЕКОМ
             val btnRow = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                setPadding(0, 8, 0, 0)
+                setPadding(0, 12, 0, 0)
             }
 
             btnConfirm = Button(context).apply {
-                text = "✅ Понятно"
+                text = "Подтвердить объект"
                 textSize = 11f
+                setTypeface(null, Typeface.BOLD)
                 setBackgroundColor(Color.parseColor("#1F6FEB"))
                 setTextColor(Color.WHITE)
-                setOnClickListener { hide() }
+                setOnClickListener {
+                    confirmSmartMaskGeneration()
+                }
             }
 
             btnTrash = Button(context).apply {
-                text = "🗑 В корзину"
+                text = "Удалить в корзину"
                 textSize = 11f
-                setBackgroundColor(Color.parseColor("#F04438"))
-                setTextColor(Color.WHITE)
+                setTypeface(null, Typeface.BOLD)
+                setBackgroundColor(Color.parseColor("#2A1215"))
+                setTextColor(Color.parseColor("#FF5B5B"))
                 setOnClickListener {
-                    if (lastCapturedIndex >= 0) {
-                        MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(lastCapturedIndex)
+                    if (currentTemplateIndex >= 0) {
+                        MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(currentTemplateIndex)
                     }
                     hide()
                 }
             }
 
-            btnRow.addView(btnConfirm)
-            btnRow.addView(View(context), LinearLayout.LayoutParams(12.dpToPx(context), 1))
-            btnRow.addView(btnTrash)
-            addView(btnRow)
+            val btnLp = LinearLayout.LayoutParams(0, 44.dpToPx(context), 1.0f)
+            btnRow.addView(btnConfirm, btnLp)
+            btnRow.addView(View(context), LinearLayout.LayoutParams(10.dpToPx(context), 1))
+            btnRow.addView(btnTrash, btnLp)
+            addView(btnRow, LinearLayout.LayoutParams(270.dpToPx(context), LinearLayout.LayoutParams.WRAP_CONTENT))
         }
 
         return root
     }
 
-    fun showCalibratedTemplate(bitmap: Bitmap, templateIndex: Int, profileName: String, widthPx: Int, heightPx: Int) {
-        this.lastCapturedIndex = templateIndex
+    fun startLiveCalibration(templateIndex: Int, directBitmap: Bitmap? = null) {
+        this.currentTemplateIndex = templateIndex
         show()
 
-        ivPreview?.setImageBitmap(bitmap)
-        ivPreview?.visibility = View.VISIBLE
+        val svc = MyAutoClickService.instance ?: return
+        val bitmap = directBitmap ?: svc.templateRepository.loadTemplate(templateIndex)
 
-        statusText?.text = "🎯 Маска #$templateIndex откалибрована!\nРазмер: ${widthPx}x${heightPx}px | Профиль: $profileName"
-        logAppEvent("AI_SCANNER", "Показан объект калибровки маски #$templateIndex (${widthPx}x${heightPx}px)")
+        if (bitmap != null) {
+            ivPreview?.setImageBitmap(bitmap)
+            ivPreview?.visibility = View.VISIBLE
+            statusText?.text = "Сканирование экрана для Маски #$templateIndex...\nПодтвердите найденный объект"
+        } else {
+            statusText?.text = "Ошибка загрузки маски #$templateIndex"
+        }
+    }
 
-        autoHideHandler.removeCallbacksAndMessages(null)
-        autoHideHandler.postDelayed({ hide() }, 4000L)
+    private fun confirmSmartMaskGeneration() {
+        val svc = MyAutoClickService.instance
+        if (svc != null && currentTemplateIndex >= 0) {
+            val calibrated = svc.templateRepository.recalibrateTemplate(currentTemplateIndex)
+            val profile = calibrated?.metadata?.profile?.name ?: "MEDIUM"
+            val recSim = calibrated?.metadata?.recommendedSimilarity ?: 85
+
+            Toast.makeText(
+                context,
+                "Умная маска #$currentTemplateIndex создана! Профиль: $profile (Порог: $recSim%)",
+                Toast.LENGTH_LONG
+            ).show()
+            logAppEvent("AI_SCANNER", "Умная маска #$currentTemplateIndex сгенерирована.")
+        }
+        hide()
+    }
+
+    fun showCalibratedTemplate(bitmap: Bitmap, templateIndex: Int, profileName: String, widthPx: Int, heightPx: Int) {
+        startLiveCalibration(templateIndex, bitmap)
     }
 
     fun showCandidates(candidates: List<MatchCandidate>) {
@@ -3647,26 +3872,29 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             showNoMatch()
             return
         }
+        show()
         val topCandidate = candidates.first()
         val scorePercent = "${(topCandidate.score * 100).toInt()}%"
-        statusText?.text = "🎯 Маска #${topCandidate.templateIndex} найдена: $scorePercent точность"
+        statusText?.text = "Найден объект: точность $scorePercent\nПодтвердите выбор объекта"
+        ivPreview?.visibility = View.GONE
         logAppEvent("AI_SCANNER", "ИИ нашел совпадение: Маска #${topCandidate.templateIndex}, точность: $scorePercent")
 
-        autoHideHandler.removeCallbacksAndMessages(null)
-        autoHideHandler.postDelayed({ hide() }, 2500L)
+        mainHandler.removeCallbacksAndMessages(null)
+        mainHandler.postDelayed({ hide() }, 2500L)
     }
 
     fun showNoMatch() {
-        statusText?.text = "🔍 ИИ Поиск: совпадений не найдено"
+        show()
+        statusText?.text = "ИИ Поиск: совпадений не найдено"
         ivPreview?.visibility = View.GONE
         logAppEvent("AI_SCANNER", "Debugger: NO MATCH")
 
-        autoHideHandler.removeCallbacksAndMessages(null)
-        autoHideHandler.postDelayed({ hide() }, 2000L)
+        mainHandler.removeCallbacksAndMessages(null)
+        mainHandler.postDelayed({ hide() }, 2000L)
     }
 
     override fun hide() {
-        autoHideHandler.removeCallbacksAndMessages(null)
+        mainHandler.removeCallbacksAndMessages(null)
         super.hide()
     }
 }
@@ -3709,8 +3937,11 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(R.layout.dialog_add_action, null)
 
         view.bindClickByNames("btnAddClick") {
-            MyAutoClickService.instance?.addNewActionAtPosition(0.5f, 0.5f)
-            logDiagnostic("SCRIPT", "Добавлено действие КЛИК.")
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                svc.addNewActionAtPosition(0.5f, 0.5f)
+                overlayManager.updateTargetMarkers()
+            }
             hide()
         }
 
@@ -3718,12 +3949,11 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
             val svc = MyAutoClickService.instance
             if (svc != null) {
                 svc.actionsList.add(ActionConfig(type = ActionType.SWIPE, xNorm = 0.3f, yNorm = 0.5f, endXNorm = 0.7f, endYNorm = 0.5f))
-                logDiagnostic("SCRIPT", "Добавлено действие СВАЙП.")
+                overlayManager.updateTargetMarkers()
             }
             hide()
         }
 
-        // СОЗДАНИЕ ИИ-ШАГА ИСПОЛЬЗУЕТ УЖЕ СУЩЕСТВУЮЩИЕ ШАБЛОНЫ
         view.bindClickByNames("btnAddTrigger", "btnAddAi") {
             val svc = MyAutoClickService.instance
             if (svc != null) {
@@ -3734,7 +3964,7 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
                     loopUntilStopped = true
                 )
                 svc.actionsList.add(action)
-                logDiagnostic("SCRIPT", "Добавлено действие ИИ-Поиска (выбор существующей маски).")
+                overlayManager.updateTargetMarkers()
                 overlayManager.editActionDialog.setTargetStepIndex(svc.actionsList.size - 1)
                 overlayManager.editActionDialog.show()
             }
@@ -3755,14 +3985,17 @@ class AddActionDialog(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
-import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
-import com.example.autotap.R
+import android.view.WindowManager
 import com.example.autotap.engine.ai.MatchCandidate
-import com.example.autotap.findViewByNames
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
@@ -3772,36 +4005,120 @@ import com.example.autotap.ui.base.OverlayPriority
 class CandidateSelectionOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager, OverlayLayer.CANDIDATE_LAYER, OverlayPriority.HIGH) {
 
-    private var candidatesContainer: LinearLayout? = null
-    private var onCandidateSelected: ((MatchCandidate) -> Unit)? = null
+    private var activeCandidates = emptyList<MatchCandidate>()
+    private var onCandidateConfirmed: ((MatchCandidate) -> Unit)? = null
 
-    override val layoutResId: Int = R.layout.candidate_selection_overlay
-
-    override fun createView(): View {
-        val inflater = LayoutInflater.from(context)
-        val view = inflater.inflate(layoutResId, null)
-
-        candidatesContainer = view.findViewByNames("candidateContainer") as? LinearLayout
-        return view
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.MATCH_PARENT
+        gravity = Gravity.TOP or Gravity.START
     }
 
-    fun showCandidates(candidates: List<MatchCandidate>, callback: (MatchCandidate) -> Unit) {
-        this.onCandidateSelected = callback
+    override fun createView(): View {
+        return BeaconRadarCustomView(context)
+    }
+
+    fun showRadarBeaconCandidates(
+        candidates: List<MatchCandidate>,
+        callback: (MatchCandidate) -> Unit
+    ) {
+        this.activeCandidates = candidates
+        this.onCandidateConfirmed = callback
         show()
+        (overlayView as? BeaconRadarCustomView)?.setCandidates(candidates)
+    }
 
-        val container = candidatesContainer ?: return
-        container.removeAllViews()
+    private inner class BeaconRadarCustomView(context: Context) : View(context) {
 
-        for ((index, candidate) in candidates.withIndex()) {
-            val btn = Button(context).apply {
-                text = "Цель #${index + 1} (score: ${"%.2f".format(candidate.score)})"
-                setOnClickListener {
-                    logDiagnostic("AI_SCANNER", "Выбрана цель #${index + 1}")
-                    onCandidateSelected?.invoke(candidate)
-                    hide()
+        private var candidateList = emptyList<MatchCandidate>()
+        private var pulseRadius = 0f
+        private var isIncreasing = true
+        private val mainHandler = Handler(Looper.getMainLooper())
+
+        private val pulseRunnable = object : Runnable {
+            override fun run() {
+                if (isIncreasing) {
+                    pulseRadius += 2.0f
+                    if (pulseRadius >= 16f) isIncreasing = false
+                } else {
+                    pulseRadius -= 2.0f
+                    if (pulseRadius <= 0f) isIncreasing = true
+                }
+                invalidate()
+                mainHandler.postDelayed(this, 30L)
+            }
+        }
+
+        private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#FF00F5D4")
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+        }
+
+        private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#8000E5FF")
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 32f
+            isFakeBoldText = true
+        }
+
+        init {
+            mainHandler.post(pulseRunnable)
+        }
+
+        fun setCandidates(list: List<MatchCandidate>) {
+            this.candidateList = list
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            for ((index, c) in candidateList.withIndex()) {
+                val bbox = c.boundingBox
+                val rectF = RectF(bbox)
+
+                // Пульсирующий неоновый маяк вокруг найденной цели
+                canvas.drawRoundRect(rectF, 12f, 12f, borderPaint)
+
+                val pulseRect = RectF(
+                    rectF.left - pulseRadius,
+                    rectF.top - pulseRadius,
+                    rectF.right + pulseRadius,
+                    rectF.bottom + pulseRadius
+                )
+                canvas.drawRoundRect(pulseRect, 16f, 16f, pulsePaint)
+
+                val scorePercent = "${(c.score * 100).toInt()}%"
+                canvas.drawText("🎯 #${index + 1} ($scorePercent)", rectF.left, (rectF.top - 12f).coerceAtLeast(40f), textPaint)
+            }
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                val touchX = event.rawX
+                val touchY = event.rawY
+
+                // Тап по маяку на экране = Подтверждение выбора цели!
+                for (c in candidateList) {
+                    if (c.boundingBox.contains(touchX.toInt(), touchY.toInt())) {
+                        logDiagnostic("AI_SCANNER", "Пользователь подтвердил цель тапом по экрану: ${c.point}")
+                        onCandidateConfirmed?.invoke(c)
+                        hide()
+                        return true
+                    }
                 }
             }
-            container.addView(btn)
+            return super.onTouchEvent(event)
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            mainHandler.removeCallbacks(pulseRunnable)
         }
     }
 }
@@ -3813,13 +4130,14 @@ package com.example.autotap.ui.overlays
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.PointF
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
+import android.widget.LinearLayout
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
@@ -3840,158 +4158,195 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
     override val layoutResId: Int = R.layout.floating_capture_frame
 
-    private val minSizePx = 24.dpToPx(context)
+    private val minSizePx = 20.dpToPx(context)
     private var currentFrameWidthPx = 140.dpToPx(context)
     private var currentFrameHeightPx = 140.dpToPx(context)
 
-    private var currentWidthPx: Int
-        get() = currentFrameWidthPx
-        set(value) { currentFrameWidthPx = value }
+    private var captureSquareView: View? = null
+    private var topBarView: View? = null
+    private var bottomBarView: View? = null
 
-    private var currentHeightPx: Int
-        get() = currentFrameHeightPx
-        set(value) { currentFrameHeightPx = value }
-
-    private var captureSquare: FrameLayout? = null
-    private var layoutTopBarView: View? = null
-    private var layoutBottomBarView: View? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         gravity = Gravity.TOP or Gravity.START
         val metrics = context.resources.displayMetrics
         initialX = (metrics.widthPixels - currentFrameWidthPx) / 2
         initialY = (metrics.heightPixels - currentFrameHeightPx) / 2
-        width = currentFrameWidthPx
-        height = currentFrameHeightPx
+        width = WindowManager.LayoutParams.WRAP_CONTENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
     }
 
     override fun createView(): View {
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(layoutResId, null)
 
-        captureSquare = view.findViewByNames("captureSquare") as? FrameLayout
-        layoutTopBarView = view.findViewByNames("layoutTopBar")
-        layoutBottomBarView = view.findViewByNames("layoutBottomBar")
+        captureSquareView = view.findViewByNames("captureSquare")
+        topBarView = view.findViewByNames("layoutTopBar")
+        bottomBarView = view.findViewByNames("layoutBottomBar")
 
-        view.bindClickByNames("btnDoCapture", "btn_do_capture", "btn_capture") {
-            logDiagnostic("OVERLAY", "Вырезание маски с экрана (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
+        view.bindClickByNames("btnDoCapture", "btn_do_capture") {
+            logDiagnostic("OVERLAY", "Вырезание маски (${currentFrameWidthPx}x${currentFrameHeightPx}px)")
             context.vibrateFeedback()
 
             val svc = MyAutoClickService.instance
-            val lp = layoutParams ?: params
-            if (svc != null && lp != null) {
-                svc.captureScreenBitmapAsync { fullBitmap ->
-                    if (fullBitmap != null && fullBitmap.width > 20 && fullBitmap.height > 20) {
-                        val safeX = lp.x.coerceIn(0, (fullBitmap.width - 20).coerceAtLeast(0))
-                        val safeY = lp.y.coerceIn(0, (fullBitmap.height - 20).coerceAtLeast(0))
-                        val maxAllowedW = fullBitmap.width - safeX
-                        val maxAllowedH = fullBitmap.height - safeY
-                        val safeW = currentFrameWidthPx.coerceIn(10, maxAllowedW)
-                        val safeH = currentFrameHeightPx.coerceIn(10, maxAllowedH)
+            val square = captureSquareView
+            val root = rootView
 
-                        val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
+            if (svc != null && square != null && root != null) {
+                val location = IntArray(2)
+                square.getLocationOnScreen(location)
+                val cropX = location[0]
+                val cropY = location[1]
+                val cropW = square.width
+                val cropH = square.height
 
-                        if (safeW > 10 && safeH > 10) {
-                            try {
-                                val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
-                                svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+                root.visibility = View.INVISIBLE
 
-                                val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
-                                if (calibrated != null) {
-                                    // ОТОБРАЖЕНИЕ ОБЪЕКТА КАЛИБРОВКИ С ПРЕВЬЮ КАРТИНКИ И ПАРАМЕТРАМИ
-                                    overlayManager.debuggerOverlay.showCalibratedTemplate(
-                                        croppedMask,
-                                        nextTemplateIndex,
-                                        calibrated.metadata.profile.name,
-                                        safeW,
-                                        safeH
-                                    )
+                mainHandler.postDelayed({
+                    svc.captureScreenBitmapAsync { fullBitmap ->
+                        root.visibility = View.VISIBLE
+                        if (fullBitmap != null && fullBitmap.width > 10 && fullBitmap.height > 10) {
+                            val safeX = cropX.coerceIn(0, (fullBitmap.width - 10).coerceAtLeast(0))
+                            val safeY = cropY.coerceIn(0, (fullBitmap.height - 10).coerceAtLeast(0))
+
+                            val maxAllowedW = fullBitmap.width - safeX
+                            val maxAllowedH = fullBitmap.height - safeY
+                            val safeW = cropW.coerceIn(5, maxAllowedW)
+                            val safeH = cropH.coerceIn(5, maxAllowedH)
+
+                            val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
+
+                            if (safeW > 5 && safeH > 5) {
+                                try {
+                                    val croppedMask = Bitmap.createBitmap(fullBitmap, safeX, safeY, safeW, safeH)
+                                    svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+
+                                    val calibrated = svc.templateRepository.loadCalibratedMask(nextTemplateIndex)
+                                    if (calibrated != null) {
+                                        overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                            croppedMask,
+                                            nextTemplateIndex,
+                                            calibrated.metadata.profile.name,
+                                            safeW,
+                                            safeH
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
                                 }
-                            } catch (e: Exception) {
-                                logError("AI_SCANNER", "Ошибка создания Bitmap кропа", e)
                             }
                         }
                     }
-                }
+                    hide()
+                    overlayManager.showControlPanel()
+                }, 120L)
             }
-            hide()
-            overlayManager.showControlPanel()
         }
 
-        view.bindClickByNames("btnCancelCapture", "btn_cancel_capture", "btn_close") {
+        view.bindClickByNames("btnCancelCapture") {
             hide()
             overlayManager.showControlPanel()
         }
 
         view.bindClickByNames("btnCaptureSearchArea") {
-            logDiagnostic("OVERLAY", "Переход к настройке области поиска.")
             overlayManager.searchAreaOverlay.show()
             hide()
         }
 
+        // ИЗОЛИРОВАННЫЙ СЛУШАТЕЛЬ ДВИЖЕНИЯ ДЛЯ ЗНАЧКА handleMoveFrame
         val moveHandle = view.findViewByNames("handleMoveFrame") ?: view
-        setupDragAndDrop(moveHandle)
+        val topBar = topBarView ?: view
 
-        val sq = captureSquare
+        setupDragAndDrop(moveHandle)
+        setupDragAndDrop(topBar)
+
+        // ИЗОЛИРОВАННЫЙ СЛУШАТЕЛЬ РЕСАЙЗА ДЛЯ РУЧКИ handleResize [⤢]
         val resizeHandle = view.findViewByNames("handleResize")
+        val sq = captureSquareView
         if (resizeHandle != null && sq != null) {
-            setupResizeHandler(resizeHandle, sq)
+            setupCornerResizeHandler(resizeHandle, sq)
         }
 
         return view
     }
 
     override fun updatePosition(x: Int, y: Int) {
-        val lp = layoutParams ?: params ?: return
+        super.updatePosition(x, y)
+        applyShiftingToolbarsRepositioning(x, y)
+    }
+
+    private fun applyShiftingToolbarsRepositioning(currentX: Int, currentY: Int) {
+        val square = captureSquareView ?: return
+        val topBar = topBarView ?: return
+        val bottomBar = bottomBarView ?: return
         val screenSize = context.getRealScreenSize()
 
-        val maxX = (screenSize.x - currentFrameWidthPx).coerceAtLeast(0)
-        val maxY = (screenSize.y - currentFrameHeightPx).coerceAtLeast(0)
+        val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
+        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
+        val squareHeight = square.height.takeIf { it > 0 } ?: 140.dpToPx(context)
+        val gap = 4.dpToPx(context)
 
-        lp.x = x.coerceIn(0, maxX)
-        lp.y = y.coerceIn(0, maxY)
+        val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
+        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
 
-        applySmartPanelFlipping(lp.x, lp.y, screenSize.x, screenSize.y)
-
-        val v = overlayView ?: rootView ?: return
-        try {
-            windowManager.updateViewLayout(v, lp)
-        } catch (e: Exception) {
-            logError("OVERLAY", "Ошибка обновления позиции прицела", e)
+        when {
+            isNearTop -> {
+                topBar.translationY = (squareHeight + gap).toFloat()
+                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
+            }
+            isNearBottom -> {
+                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
+                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
+            }
+            else -> {
+                topBar.translationY = 0f
+                bottomBar.translationY = 0f
+            }
         }
-    }
 
-    private fun applySmartPanelFlipping(currentX: Int, currentY: Int, screenWidth: Int, screenHeight: Int) {
-        val topBar = layoutTopBarView ?: return
-        val bottomBar = layoutBottomBarView ?: return
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
+        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
+        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
 
-        val topBarH = 44.dpToPx(context).toFloat()
-        val bottomBarH = 44.dpToPx(context).toFloat()
+        if (square.width < maxToolbarW) {
+            val extraWidth = maxToolbarW - square.width
+            val isNearLeft = currentX <= extraWidth / 2
+            val isNearRight = currentX >= screenSize.x - square.width - (extraWidth / 2)
 
-        if (currentY < 120) {
-            topBar.translationY = currentFrameHeightPx.toFloat() + 8f
-            bottomBar.translationY = currentFrameHeightPx.toFloat() + topBarH + 16f
-        } else if (currentY > screenHeight - (currentFrameHeightPx + 150)) {
-            topBar.translationY = -(topBarH + bottomBarH + 16f)
-            bottomBar.translationY = -bottomBarH - 8f
+            when {
+                isNearLeft -> {
+                    topBar.translationX = (extraWidth / 2f)
+                    bottomBar.translationX = (extraWidth / 2f)
+                }
+                isNearRight -> {
+                    topBar.translationX = -(extraWidth / 2f)
+                    bottomBar.translationX = -(extraWidth / 2f)
+                }
+                else -> {
+                    topBar.translationX = 0f
+                    bottomBar.translationX = 0f
+                }
+            }
         } else {
-            topBar.translationY = -topBarH - 8f
-            bottomBar.translationY = currentFrameHeightPx.toFloat() + 8f
+            topBar.translationX = 0f
+            bottomBar.translationX = 0f
         }
     }
 
-    private fun setupResizeHandler(resizeView: View, captureSquare: FrameLayout) {
+    private fun setupCornerResizeHandler(resizeView: View, targetSquare: View) {
         var startW = 0
         var startH = 0
         var touchX = 0f
         var touchY = 0f
 
         resizeView.setOnTouchListener { _, event ->
-            val lp = layoutParams ?: params ?: return@setOnTouchListener false
+            val screenSize = context.getRealScreenSize()
+
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = currentFrameWidthPx
-                    startH = currentFrameHeightPx
+                    startW = targetSquare.width.takeIf { it > 0 } ?: currentFrameWidthPx
+                    startH = targetSquare.height.takeIf { it > 0 } ?: currentFrameHeightPx
                     touchX = event.rawX
                     touchY = event.rawY
                     true
@@ -4000,26 +4355,30 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                     val dx = (event.rawX - touchX).toInt()
                     val dy = (event.rawY - touchY).toInt()
 
-                    currentFrameWidthPx = max(minSizePx, startW + dx)
-                    currentFrameHeightPx = max(minSizePx, startH + dy)
+                    val location = IntArray(2)
+                    targetSquare.getLocationOnScreen(location)
+                    val squareX = location[0]
+                    val squareY = location[1]
 
-                    lp.width = currentFrameWidthPx
-                    lp.height = currentFrameHeightPx
-                    width = currentFrameWidthPx
-                    height = currentFrameHeightPx
+                    val maxW = (screenSize.x - squareX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - squareY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
 
-                    val sqLp = captureSquare.layoutParams
+                    val newW = (startW + dx).coerceIn(minSizePx, maxW)
+                    val newH = (startH + dy).coerceIn(minSizePx, maxH)
+
+                    currentFrameWidthPx = newW
+                    currentFrameHeightPx = newH
+
+                    val sqLp = targetSquare.layoutParams
                     if (sqLp != null) {
-                        sqLp.width = currentFrameWidthPx
-                        sqLp.height = currentFrameHeightPx
-                        captureSquare.layoutParams = sqLp
+                        sqLp.width = newW
+                        sqLp.height = newH
+                        targetSquare.layoutParams = sqLp
+                        targetSquare.requestLayout()
                     }
-
-                    try {
-                        windowManager.updateViewLayout(overlayView ?: rootView, lp)
-                    } catch (e: Exception) {
-                        logError("OVERLAY", "Ошибка ресайза прицела", e)
-                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     true
                 }
                 else -> false
@@ -4122,13 +4481,13 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         }
 
         view.bindClickByNames("btnCapturePool") {
-            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона по btnCapturePool.")
+            logDiagnostic("OVERLAY", "Запуск прицела вырезания шаблона.")
             context.vibrateFeedback()
             overlayManager.captureFrameOverlay.show()
         }
 
         view.bindClickByNames("btnAdd") {
-            logDiagnostic("OVERLAY", "Открытие меню добавления действия по btnAdd.")
+            logDiagnostic("OVERLAY", "Открытие меню добавления действия.")
             context.vibrateFeedback()
             overlayManager.addActionDialog.show()
         }
@@ -4161,13 +4520,18 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
             val svc = MyAutoClickService.instance
             if (svc != null) {
                 svc.actionsList.clear()
+                overlayManager.updateTargetMarkers()
                 context.vibrateFeedback()
-                logDiagnostic("OVERLAY", "Очищены все шаги сценария.")
+                logDiagnostic("OVERLAY", "Очищены все шаги сценария и мишени.")
             }
         }
 
+        view.bindClickByNames("btnHideNumbers") {
+            overlayManager.toggleTargetMarkersVisibility()
+            context.vibrateFeedback()
+        }
+
         view.bindClickByNames("btnLoadScript") {
-            logDiagnostic("OVERLAY", "Кнопка btnLoadScript нажата.")
             overlayManager.scriptsDialog.show()
         }
 
@@ -4181,12 +4545,10 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         }
 
         view.bindClickByNames("btnHelpTutorial") {
-            logDiagnostic("OVERLAY", "Кнопка btnHelpTutorial нажата.")
             MyAutoClickService.instance?.tutorialEngine?.startDefaultTutorial()
         }
 
         view.bindClickByNames("btnClose") {
-            logDiagnostic("OVERLAY", "Кнопка КРЕСТИК нажата. Скрытие панели управления.")
             MyAutoClickService.instance?.scriptExecutor?.stop()
             hide()
         }
@@ -4207,7 +4569,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
         val targetView = overlayView ?: rootView
 
         when (displayStage) {
-            0 -> { // Full Stage
+            0 -> {
                 singleBubble?.visibility = View.GONE
                 mainRow?.visibility = View.VISIBLE
                 subMenu?.visibility = View.VISIBLE
@@ -4218,7 +4580,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
-            1 -> { // Single Bubble Stage
+            1 -> {
                 mainRow?.visibility = View.GONE
                 subMenu?.visibility = View.GONE
                 singleBubble?.visibility = View.VISIBLE
@@ -4230,7 +4592,7 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
                     try { windowManager.updateViewLayout(targetView, lp) } catch (_: Exception) {}
                 }
             }
-            2 -> { // Compact Stage
+            2 -> {
                 singleBubble?.visibility = View.GONE
                 mainRow?.visibility = View.VISIBLE
                 subMenu?.visibility = View.GONE
@@ -4243,7 +4605,6 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
             }
         }
         context.vibrateFeedback()
-        logDiagnostic("OVERLAY", "3-Этапный циклический режим панели: этап $displayStage")
     }
 
     fun updateToggleStates() {
@@ -4278,7 +4639,6 @@ class ControlPanelOverlay(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.BitmapFactory
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -4286,21 +4646,20 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.model.ActionConfig
-import com.example.autotap.model.ActionType
 import com.example.autotap.playNotificationAlert
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
-import java.io.File
 
 class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
@@ -4311,12 +4670,15 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     private var etEditX: EditText? = null
     private var etEditY: EditText? = null
     private var etEditDelayMs: EditText? = null
-    private var etEditComment: EditText? = null
-    private var etEditTemplateIndex: EditText? = null
     private var etEditSimilarity: EditText? = null
+    private var etEditAiTimeout: EditText? = null
+    private var etJumpOnMatch: EditText? = null
+    private var etJumpOnFail: EditText? = null
     private var btnToggleNotificationMode: Button? = null
     private var cbLoopUntilStopped: CheckBox? = null
-    private var ivStepTemplatePreview: ImageView? = null
+    private var tvSelectedTemplatesSummary: TextView? = null
+    private var layoutTechnicalData: LinearLayout? = null
+    private var tvToggleTechnicalData: TextView? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -4338,12 +4700,15 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
         etEditX = view.findViewByNames("etEditX") as? EditText
         etEditY = view.findViewByNames("etEditY") as? EditText
         etEditDelayMs = view.findViewByNames("etEditDelayMs") as? EditText
-        etEditComment = view.findViewByNames("etEditComment") as? EditText
-        etEditTemplateIndex = view.findViewByNames("etEditTemplateIndex") as? EditText
         etEditSimilarity = view.findViewByNames("etEditSimilarity") as? EditText
+        etEditAiTimeout = view.findViewByNames("etEditAiTimeout") as? EditText
+        etJumpOnMatch = view.findViewByNames("etJumpOnMatch") as? EditText
+        etJumpOnFail = view.findViewByNames("etJumpOnFail") as? EditText
         btnToggleNotificationMode = view.findViewByNames("btnToggleNotificationMode") as? Button
         cbLoopUntilStopped = view.findViewByNames("cbLoopUntilStopped") as? CheckBox
-        ivStepTemplatePreview = view.findViewByNames("ivStepTemplatePreview") as? ImageView
+        tvSelectedTemplatesSummary = view.findViewByNames("tvSelectedTemplatesSummary") as? TextView
+        layoutTechnicalData = view.findViewByNames("layoutTechnicalData") as? LinearLayout
+        tvToggleTechnicalData = view.findViewByNames("tvToggleTechnicalData") as? TextView
 
         val actions = MyAutoClickService.instance?.actionsList ?: emptyList()
         val stepAction = if (targetStepIndex in actions.indices) {
@@ -4352,6 +4717,38 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
         if (stepAction != null) {
             bindActionToUI(stepAction)
+        }
+
+        // Переключение видимости технических данных X/Y
+        tvToggleTechnicalData?.setOnClickListener {
+            val isVisible = layoutTechnicalData?.visibility == View.VISIBLE
+            layoutTechnicalData?.visibility = if (isVisible) View.GONE else View.VISIBLE
+            tvToggleTechnicalData?.text = if (isVisible) "► Показать технические данные (X/Y px)" else "▼ Скрыть технические данные"
+        }
+
+        view.bindClickByNames("btnCalibrateStepMask") {
+            val maskIndex = stepAction?.selectedTemplateIndex ?: 0
+            hide()
+            overlayManager.debuggerOverlay.startLiveCalibration(maskIndex)
+        }
+
+        view.bindClickByNames("btnOpenSearchArea") {
+            hide()
+            overlayManager.searchAreaOverlay.show()
+        }
+
+        view.bindClickByNames("btnOpenTemplatePicker") {
+            val currentList = if (stepAction?.multiTemplateIndices?.isNotEmpty() == true) {
+                stepAction.multiTemplateIndices
+            } else listOf(stepAction?.selectedTemplateIndex ?: 0)
+
+            overlayManager.templatePickerDialog.showPicker(currentList) { selected ->
+                if (selected.isNotEmpty() && stepAction != null) {
+                    stepAction.multiTemplateIndices = selected
+                    stepAction.selectedTemplateIndex = selected[0]
+                    updateSummaryText(selected)
+                }
+            }
         }
 
         view.bindClickByNames("btnToggleNotificationMode") {
@@ -4363,13 +4760,29 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
 
         view.bindClickByNames("btnEditApply", "btnSave") {
             val action = stepAction
+            val screenSize = context.getRealScreenSize()
             if (action != null) {
+                val inputX = etEditX?.text?.toString()?.toFloatOrNull()
+                val inputY = etEditY?.text?.toString()?.toFloatOrNull()
+
+                if (inputX != null) {
+                    action.xNorm = if (inputX > 1.0f) (inputX / screenSize.x).coerceIn(0f, 1f) else inputX.coerceIn(0f, 1f)
+                }
+                if (inputY != null) {
+                    action.yNorm = if (inputY > 1.0f) (inputY / screenSize.y).coerceIn(0f, 1f) else inputY.coerceIn(0f, 1f)
+                }
+
                 action.delay = etEditDelayMs?.text?.toString()?.toLongOrNull() ?: action.delay
                 action.similarityPercent = etEditSimilarity?.text?.toString()?.toIntOrNull()?.coerceIn(10, 100) ?: action.similarityPercent
-                action.selectedTemplateIndex = etEditTemplateIndex?.text?.toString()?.toIntOrNull() ?: action.selectedTemplateIndex
+                action.aiTimeoutSeconds = etEditAiTimeout?.text?.toString()?.toFloatOrNull()?.coerceAtLeast(0.1f) ?: action.aiTimeoutSeconds
+                
+                // Сохранение переходов и ветвления
+                action.jumpToStepOnMatch = etJumpOnMatch?.text?.toString()?.toIntOrNull()
+                action.jumpToStepOnFail = etJumpOnFail?.text?.toString()?.toIntOrNull()
+
                 action.loopUntilStopped = cbLoopUntilStopped?.isChecked ?: action.loopUntilStopped
             }
-            logDiagnostic("SCRIPT", "Изменения действия сохранены в EditActionDialog.")
+            logDiagnostic("SCRIPT", "Изменения сохранены: JumpOnMatch=${action?.jumpToStepOnMatch}, JumpOnFail=${action?.jumpToStepOnFail}")
             hide()
         }
 
@@ -4378,7 +4791,6 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
             if (list != null && list.isNotEmpty()) {
                 val removeIdx = if (targetStepIndex in list.indices) targetStepIndex else list.size - 1
                 list.removeAt(removeIdx)
-                logDiagnostic("SCRIPT", "Удален шаг #$removeIdx из сценария.")
             }
             hide()
         }
@@ -4391,32 +4803,34 @@ class EditActionDialog(context: Context, overlayManager: OverlayManager) :
     }
 
     private fun bindActionToUI(action: ActionConfig) {
+        val screenSize = context.getRealScreenSize()
+        etEditX?.setText((action.xNorm * screenSize.x).toInt().toString())
+        etEditY?.setText((action.yNorm * screenSize.y).toInt().toString())
+
         etEditDelayMs?.setText(action.delay.toString())
         etEditSimilarity?.setText(action.similarityPercent.toString())
-        etEditTemplateIndex?.setText(action.selectedTemplateIndex.toString())
+        etEditAiTimeout?.setText(action.aiTimeoutSeconds.toString())
+
+        etJumpOnMatch?.setText(action.jumpToStepOnMatch?.toString() ?: "")
+        etJumpOnFail?.setText(action.jumpToStepOnFail?.toString() ?: "")
+
         cbLoopUntilStopped?.isChecked = action.loopUntilStopped
         updateNotificationButtonText(action.notificationMode)
 
-        if (action.type == ActionType.AI_SEARCH) {
-            val maskFile = File(context.filesDir, "template_${action.selectedTemplateIndex}.png")
-            if (maskFile.exists()) {
-                val bitmap = BitmapFactory.decodeFile(maskFile.absolutePath)
-                ivStepTemplatePreview?.setImageBitmap(bitmap)
-                ivStepTemplatePreview?.visibility = View.VISIBLE
-            } else {
-                ivStepTemplatePreview?.visibility = View.GONE
-            }
-        } else {
-            ivStepTemplatePreview?.visibility = View.GONE
-        }
+        val list = if (action.multiTemplateIndices.isNotEmpty()) action.multiTemplateIndices else listOf(action.selectedTemplateIndex)
+        updateSummaryText(list)
+    }
+
+    private fun updateSummaryText(indices: List<Int>) {
+        tvSelectedTemplatesSummary?.text = "Выбранные маски (${indices.size}): #" + indices.joinToString(", #")
     }
 
     private fun updateNotificationButtonText(mode: Int) {
         val label = when (mode) {
-            1 -> "🔔 Оповещение: [ 📳 ВИБРО ]"
-            2 -> "🔔 Оповещение: [ 🔊 ЗВУК ]"
-            3 -> "🔔 Оповещение: [ 🔊+📳 ЗВУК + ВИБРО ]"
-            else -> "🔔 Оповещение: [ ВЫКЛ ]"
+            1 -> "Оповещение: [ 📳 ВИБРО ]"
+            2 -> "Оповещение: [ 🔊 ЗВУК ]"
+            3 -> "Оповещение: [ 🔊+📳 ЗВУК + ВИБРО ]"
+            else -> "Оповещение: [ ВЫКЛ ]"
         }
         btnToggleNotificationMode?.text = label
     }
@@ -5040,9 +5454,15 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.Toast
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
+import com.example.autotap.data.ScriptMetadata
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
@@ -5052,6 +5472,10 @@ class SaveRecordingDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
 
     override val layoutResId: Int = R.layout.dialog_save_recording
+
+    private var etSaveScriptName: EditText? = null
+    private var etSaveLoopCount: EditText? = null
+    private var cbSaveInfinite: CheckBox? = null
 
     init {
         width = WindowManager.LayoutParams.MATCH_PARENT
@@ -5066,12 +5490,33 @@ class SaveRecordingDialog(context: Context, overlayManager: OverlayManager) :
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(layoutResId, null)
 
-        view.bindClickByNames("btnSaveRecordScript") {
-            MyAutoClickService.instance?.recordingEngine?.stopRecording("recorded_script")
+        etSaveScriptName = view.findViewByNames("etSaveScriptName") as? EditText
+        etSaveLoopCount = view.findViewByNames("etSaveLoopCount") as? EditText
+        cbSaveInfinite = view.findViewByNames("cbSaveInfinite") as? CheckBox
+
+        view.bindClickByNames("btnSaveRecording", "btnSaveRecordScript") {
+            val name = etSaveScriptName?.text?.toString()?.takeIf { it.isNotBlank() } ?: "recording_1"
+            val loops = etSaveLoopCount?.text?.toString()?.toIntOrNull() ?: 1
+            val isInfinite = cbSaveInfinite?.isChecked ?: false
+
+            val svc = MyAutoClickService.instance
+            if (svc != null) {
+                val metadata = ScriptMetadata(
+                    name = name,
+                    stepCount = svc.recordingEngine.recordedActions.size,
+                    loopCount = loops,
+                    isInfinite = isInfinite
+                )
+                svc.recordingEngine.stopRecording(name)
+                svc.scriptRepository.saveScript(name, svc.actionsList, metadata)
+                logDiagnostic("RECORDING", "Запись сохранена с именем '$name' ($loops повторов, бесконечно: $isInfinite)")
+                Toast.makeText(context, "Запись '$name' сохранена!", Toast.LENGTH_SHORT).show()
+                overlayManager.updateTargetMarkers()
+            }
             hide()
         }
 
-        view.bindClickByNames("btnSkipRecordScript") {
+        view.bindClickByNames("btnSaveClose", "btnSkipRecordScript") {
             hide()
         }
 
@@ -5085,19 +5530,26 @@ class SaveRecordingDialog(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
+import android.graphics.Color
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
 import com.example.autotap.bindClickByNames
 import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
+import java.io.File
 
 class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
@@ -5105,11 +5557,13 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
     override val layoutResId: Int = R.layout.dialog_scripts
 
     private var etScriptName: EditText? = null
+    private var etScriptLoopCount: EditText? = null
+    private var scriptsListContainer: LinearLayout? = null
 
     init {
         gravity = Gravity.CENTER
         flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND
-        dimAmount = 0.5f
+        dimAmount = 0.6f
     }
 
     override fun createView(): View {
@@ -5117,24 +5571,104 @@ class ScriptsDialog(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(layoutResId, null)
 
         etScriptName = view.findViewByNames("etScriptName") as? EditText
+        etScriptLoopCount = view.findViewByNames("etScriptLoopCount") as? EditText
+        scriptsListContainer = view.findViewByNames("layoutScriptsList") as? LinearLayout
 
         view.bindClickByNames("btnSaveScriptAction") {
-            val name = etScriptName?.text?.toString()?.takeIf { it.isNotBlank() } ?: "default_script"
+            val name = etScriptName?.text?.toString()?.takeIf { it.isNotBlank() } ?: "script_1"
+            val loops = etScriptLoopCount?.text?.toString()?.toIntOrNull() ?: 1
             val svc = MyAutoClickService.instance
-            svc?.saveScriptByName(name, svc.actionsList)
-            hide()
+            if (svc != null) {
+                svc.saveScriptByName(name, svc.actionsList)
+                logDiagnostic("SCRIPT", "Сценарий '$name' успешно сохранен.")
+                Toast.makeText(context, "Сценарий '$name' сохранен!", Toast.LENGTH_SHORT).show()
+                refreshScriptsList()
+            }
         }
 
         view.bindClickByNames("btnCloseScripts", "btnCloseScriptsHeader") {
             hide()
         }
 
+        refreshScriptsList()
         return view
     }
 
     override fun show() {
         super.show()
-        setFocusable(true) // ВЛЮЧАЕМ ФОКУС ДЛЯ РАБОТЫ КЛАВИАТУРЫ
+        setFocusable(true)
+        refreshScriptsList()
+    }
+
+    private fun refreshScriptsList() {
+        val container = scriptsListContainer ?: return
+        container.removeAllViews()
+
+        val jsonFiles = context.filesDir.listFiles { _, name -> name.endsWith(".json") && !name.contains("meta") }
+            ?.sortedByDescending { it.lastModified() } ?: emptyList()
+
+        if (jsonFiles.isEmpty()) {
+            val emptyTv = TextView(context).apply {
+                text = "Сохраненных сценариев пока нет."
+                setTextColor(Color.GRAY)
+                gravity = Gravity.CENTER
+                setPadding(16, 32, 16, 32)
+            }
+            container.addView(emptyTv)
+            return
+        }
+
+        for (file in jsonFiles) {
+            val scriptName = file.nameWithoutExtension
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setBackgroundResource(R.drawable.drag_handle_bg)
+                setPadding(12, 10, 12, 10)
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.setMargins(0, 0, 0, 8)
+                layoutParams = lp
+            }
+
+            val tv = TextView(context).apply {
+                text = "$scriptName\n(${file.length() / 1024} КБ)"
+                setTextColor(Color.WHITE)
+                textSize = 13f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
+            }
+
+            val btnLoad = Button(context).apply {
+                text = "▶️ Загрузить"
+                textSize = 10f
+                setBackgroundColor(Color.parseColor("#1F6FEB"))
+                setTextColor(Color.WHITE)
+                setOnClickListener {
+                    val svc = MyAutoClickService.instance
+                    if (svc != null && svc.loadScriptByName(scriptName)) {
+                        overlayManager.updateTargetMarkers()
+                        Toast.makeText(context, "Загружен сценарий '$scriptName'", Toast.LENGTH_SHORT).show()
+                        hide()
+                    }
+                }
+            }
+
+            val btnDel = Button(context).apply {
+                text = "🗑"
+                textSize = 10f
+                setBackgroundColor(Color.parseColor("#2A1215"))
+                setTextColor(Color.parseColor("#FF5B5B"))
+                setOnClickListener {
+                    file.delete()
+                    refreshScriptsList()
+                }
+            }
+
+            row.addView(tv)
+            row.addView(btnLoad)
+            row.addView(View(context), LinearLayout.LayoutParams(6, 1))
+            row.addView(btnDel)
+            container.addView(row)
+        }
     }
 }
 
@@ -5149,6 +5683,8 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
+import android.widget.LinearLayout
 import com.example.autotap.CoordConverter
 import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
@@ -5157,7 +5693,6 @@ import com.example.autotap.dpToPx
 import com.example.autotap.findViewByNames
 import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
@@ -5168,18 +5703,20 @@ import kotlin.math.max
 class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager) {
 
-    private val minSizePx = 32.dpToPx(context)
+    private val minSizePx = 30.dpToPx(context)
     private var currentWidthPx = 200.dpToPx(context)
     private var currentHeightPx = 200.dpToPx(context)
 
     private var viewSearchAreaFrameView: View? = null
+    private var topBarView: View? = null
+    private var bottomBarView: View? = null
 
     init {
         gravity = Gravity.TOP or Gravity.START
         layer = OverlayLayer.CAPTURE_LAYER
         priority = OverlayPriority.HIGH
-        width = currentWidthPx
-        height = currentHeightPx
+        width = WindowManager.LayoutParams.WRAP_CONTENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
     }
 
     override fun createView(): View {
@@ -5187,16 +5724,19 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
         val view = inflater.inflate(R.layout.floating_search_area_frame, null)
 
         viewSearchAreaFrameView = view.findViewByNames("viewSearchAreaFrame")
+        topBarView = view.findViewByNames("layoutSearchTopBar")
+        bottomBarView = view.findViewByNames("layoutSearchBottomBar")
 
         view.bindClickByNames("btnSaveSearchArea") {
             val svc = MyAutoClickService.instance
-            val lp = layoutParams
             val frame = viewSearchAreaFrameView
-            if (svc != null && lp != null && frame != null) {
+            if (svc != null && frame != null) {
                 val screenSize = context.getRealScreenSize()
+                val location = IntArray(2)
+                frame.getLocationOnScreen(location)
 
-                val exactX = lp.x + frame.left
-                val exactY = lp.y + frame.top
+                val exactX = location[0]
+                val exactY = location[1]
                 val exactW = frame.width.takeIf { it > 0 } ?: currentWidthPx
                 val exactH = frame.height.takeIf { it > 0 } ?: currentHeightPx
 
@@ -5210,7 +5750,7 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
                     currentAction.searchAreaY = exactY
                     currentAction.searchAreaW = exactW
                     currentAction.searchAreaH = exactH
-                    logDiagnostic("AI_SCANNER", "Зона поиска сохранена с точным смещением рамки: ($exactX, $exactY, ${exactW}x${exactH}px), norm=$rectNorm")
+                    logDiagnostic("AI_SCANNER", "Зона поиска сохранена: ($exactX, $exactY, ${exactW}x${exactH}px), norm=$rectNorm")
                 }
             }
             context.vibrateFeedback()
@@ -5220,52 +5760,114 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
         view.bindClickByNames("btnResetSearchArea") {
             currentWidthPx = 200.dpToPx(context)
             currentHeightPx = 200.dpToPx(context)
-            width = currentWidthPx
-            height = currentHeightPx
-            val lp = layoutParams
-            val targetView = overlayView
-            if (lp != null && targetView != null) {
-                lp.width = currentWidthPx
-                lp.height = currentHeightPx
-                try {
-                    windowManager.updateViewLayout(targetView, lp)
-                } catch (e: Exception) {
-                    logError("OVERLAY", "Ошибка обновления расположения в btnResetSearchArea", e)
+            val frame = viewSearchAreaFrameView
+            if (frame != null) {
+                val lp = frame.layoutParams
+                if (lp != null) {
+                    lp.width = currentWidthPx
+                    lp.height = currentHeightPx
+                    frame.layoutParams = lp
+                    frame.requestLayout()
                 }
             }
             context.vibrateFeedback()
-            logDiagnostic("AI_SCANNER", "Размер области поиска сброшен к 200x200px.")
+            logDiagnostic("AI_SCANNER", "Размер области поиска сброшен.")
         }
 
         view.bindClickByNames("btnCancelSearchArea", "btnCloseSearchArea") {
-            logDiagnostic("AI_SCANNER", "Настройка области поиска отменена пользователем.")
             hide()
         }
 
-        val handle = view.findViewByNames("handleMoveSearchArea", "layoutSearchTopBar") ?: view
-        setupDragAndDrop(handle)
+        val moveHandle = view.findViewByNames("handleMoveSearchArea") ?: view
+        val topBar = topBarView ?: view
+        setupDragAndDrop(moveHandle)
+        setupDragAndDrop(topBar)
 
         val resizeHandle = view.findViewByNames("handleResizeSearchArea")
-        if (resizeHandle != null) {
-            setupResizeHandler(resizeHandle)
+        val frameView = viewSearchAreaFrameView
+        if (resizeHandle != null && frameView != null) {
+            setupCornerResizeHandler(resizeHandle, frameView)
         }
 
         return view
     }
 
-    private fun setupResizeHandler(resizeView: View) {
+    override fun updatePosition(x: Int, y: Int) {
+        super.updatePosition(x, y)
+        applyNonOverlappingToolbarRepositioning(x, y)
+    }
+
+    private fun applyNonOverlappingToolbarRepositioning(currentX: Int, currentY: Int) {
+        val frame = viewSearchAreaFrameView ?: return
+        val topBar = topBarView ?: return
+        val bottomBar = bottomBarView ?: return
+        val screenSize = context.getRealScreenSize()
+
+        val topBarHeight = topBar.height.takeIf { it > 0 } ?: 38.dpToPx(context)
+        val bottomBarHeight = bottomBar.height.takeIf { it > 0 } ?: 28.dpToPx(context)
+        val squareHeight = frame.height.takeIf { it > 0 } ?: 200.dpToPx(context)
+        val gap = 4.dpToPx(context)
+
+        val isNearTop = currentY <= (topBarHeight + 10.dpToPx(context))
+        val isNearBottom = currentY >= (screenSize.y - squareHeight - bottomBarHeight - 60.dpToPx(context))
+
+        when {
+            isNearTop -> {
+                topBar.translationY = (squareHeight + gap).toFloat()
+                bottomBar.translationY = (squareHeight + topBarHeight + gap * 2).toFloat()
+            }
+            isNearBottom -> {
+                bottomBar.translationY = -(squareHeight + bottomBarHeight + gap).toFloat()
+                topBar.translationY = -(squareHeight + topBarHeight + bottomBarHeight + gap * 2).toFloat()
+            }
+            else -> {
+                topBar.translationY = 0f
+                bottomBar.translationY = 0f
+            }
+        }
+
+        val topBarWidth = topBar.width.takeIf { it > 0 } ?: 120.dpToPx(context)
+        val bottomBarWidth = bottomBar.width.takeIf { it > 0 } ?: 90.dpToPx(context)
+        val maxToolbarW = maxOf(topBarWidth, bottomBarWidth)
+
+        if (frame.width < maxToolbarW) {
+            val extraWidth = maxToolbarW - frame.width
+            val isNearLeft = currentX <= extraWidth / 2
+            val isNearRight = currentX >= screenSize.x - frame.width - (extraWidth / 2)
+
+            when {
+                isNearLeft -> {
+                    topBar.translationX = (extraWidth / 2f)
+                    bottomBar.translationX = (extraWidth / 2f)
+                }
+                isNearRight -> {
+                    topBar.translationX = -(extraWidth / 2f)
+                    bottomBar.translationX = -(extraWidth / 2f)
+                }
+                else -> {
+                    topBar.translationX = 0f
+                    bottomBar.translationX = 0f
+                }
+            }
+        } else {
+            topBar.translationX = 0f
+            bottomBar.translationX = 0f
+        }
+    }
+
+    private fun setupCornerResizeHandler(resizeView: View, targetFrame: View) {
         var startW = 0
         var startH = 0
         var touchX = 0f
         var touchY = 0f
 
         resizeView.setOnTouchListener { _, event ->
-            val lp = layoutParams ?: return@setOnTouchListener false
-            val targetView = overlayView ?: return@setOnTouchListener false
+            val screenSize = context.getRealScreenSize()
+
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startW = lp.width.takeIf { it > 0 } ?: currentWidthPx
-                    startH = lp.height.takeIf { it > 0 } ?: currentHeightPx
+                    startW = targetFrame.width.takeIf { it > 0 } ?: currentWidthPx
+                    startH = targetFrame.height.takeIf { it > 0 } ?: currentHeightPx
                     touchX = event.rawX
                     touchY = event.rawY
                     true
@@ -5274,19 +5876,30 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
                     val dx = (event.rawX - touchX).toInt()
                     val dy = (event.rawY - touchY).toInt()
 
-                    currentWidthPx = max(minSizePx, startW + dx)
-                    currentHeightPx = max(minSizePx, startH + dy)
+                    val location = IntArray(2)
+                    targetFrame.getLocationOnScreen(location)
+                    val windowX = location[0]
+                    val windowY = location[1]
 
-                    lp.width = currentWidthPx
-                    lp.height = currentHeightPx
-                    width = currentWidthPx
-                    height = currentHeightPx
+                    val maxW = (screenSize.x - windowX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - windowY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
 
-                    try {
-                        windowManager.updateViewLayout(targetView, lp)
-                    } catch (e: Exception) {
-                        logError("OVERLAY", "Ошибка ресайза области поиска", e)
+                    val newW = (startW + dx).coerceIn(minSizePx, maxW)
+                    val newH = (startH + dy).coerceIn(minSizePx, maxH)
+
+                    currentWidthPx = newW
+                    currentHeightPx = newH
+
+                    val lp = targetFrame.layoutParams
+                    if (lp != null) {
+                        lp.width = newW
+                        lp.height = newH
+                        targetFrame.layoutParams = lp
+                        targetFrame.requestLayout()
                     }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     true
                 }
                 else -> false
@@ -5301,62 +5914,286 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
 package com.example.autotap.ui.overlays
 
 import android.content.Context
-import android.graphics.PixelFormat
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
-import android.widget.LinearLayout
 import android.widget.TextView
+import com.example.autotap.MyAutoClickService
 import com.example.autotap.R
+import com.example.autotap.dpToPx
 import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import kotlin.math.abs
 
-class TargetMarkerOverlay(context: Context, overlayManager: OverlayManager) :
-    OverlayBase(context, overlayManager) {
+class TargetMarkerOverlay(
+    context: Context,
+    overlayManager: OverlayManager,
+    val markerIndex: Int,
+    val isEndMarker: Boolean = false
+) : OverlayBase(context, overlayManager, OverlayLayer.TARGET_LAYER, OverlayPriority.HIGH) {
+
+    override val layoutResId: Int = if (isEndMarker) R.layout.floating_target_end else R.layout.floating_target
 
     private var tvNumber: TextView? = null
-    private var tvEndNumber: TextView? = null
 
     init {
+        width = 44.dpToPx(context)
+        height = 44.dpToPx(context)
         gravity = Gravity.TOP or Gravity.START
-        layer = OverlayLayer.VISUALIZER_LAYER
     }
 
     override fun createView(): View {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
         val inflater = LayoutInflater.from(context)
-        val startView = try {
-            inflater.inflate(R.layout.floating_target, null)
-        } catch (e: Exception) {
-            View(context)
-        }
-        tvNumber = startView.findViewByNames("tvTargetNumber") as? TextView
-        container.addView(startView)
+        val view = inflater.inflate(layoutResId, null)
 
-        try {
-            val endView = inflater.inflate(R.layout.floating_target_end, null)
-            tvEndNumber = endView.findViewByNames("tvTargetNumberEnd") as? TextView
-            container.addView(endView)
-        } catch (_: Exception) {}
+        tvNumber = view.findViewByNames("tvTargetNumber", "tvTargetNumberEnd") as? TextView
+        val label = if (isEndMarker) "${markerIndex + 1}E" else "${markerIndex + 1}"
+        tvNumber?.text = label
 
-        return container
+        setupMarkerDragAndTap(view)
+        return view
     }
 
-    fun setTargetNumber(num: Int) {
-        val textStr = num.toString()
-        tvNumber?.text = textStr
-        tvEndNumber?.text = "${textStr}E"
+    private fun setupMarkerDragAndTap(targetView: View) {
+        var startX = 0f
+        var startY = 0f
+        var isDragging = false
+        val touchSlop = 8.dpToPx(context)
+
+        targetView.setOnTouchListener { _, event ->
+            val lp = layoutParams ?: return@setOnTouchListener false
+            val svc = MyAutoClickService.instance ?: return@setOnTouchListener false
+            val screenSize = context.getRealScreenSize()
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = event.rawX
+                    startY = event.rawY
+                    isDragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - startX).toInt()
+                    val dy = (event.rawY - startY).toInt()
+
+                    if (!isDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        isDragging = true
+                    }
+
+                    if (isDragging) {
+                        val newX = (lp.x + dx).coerceIn(0, screenSize.x - width)
+                        val newY = (lp.y + dy).coerceIn(0, screenSize.y - height)
+                        updatePosition(newX, newY)
+
+                        // Синхронизация координат с моделью шага в реальном времени
+                        val actions = svc.actionsList
+                        if (markerIndex in actions.indices) {
+                            val action = actions[markerIndex]
+                            val normX = (newX + width / 2f) / screenSize.x.toFloat()
+                            val normY = (newY + height / 2f) / screenSize.y.toFloat()
+
+                            if (isEndMarker) {
+                                action.endXNorm = normX.coerceIn(0f, 1f)
+                                action.endYNorm = normY.coerceIn(0f, 1f)
+                            } else {
+                                action.xNorm = normX.coerceIn(0f, 1f)
+                                action.yNorm = normY.coerceIn(0f, 1f)
+                            }
+                        }
+
+                        startX = event.rawX
+                        startY = event.rawY
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (!isDragging) {
+                        // Тач без перемещения = Нажатие на мишень для открытия настроек шага
+                        overlayManager.editActionDialog.setTargetStepIndex(markerIndex)
+                        overlayManager.editActionDialog.show()
+                    }
+                    isDragging = false
+                    true
+                }
+                else -> false
+            }
+        }
     }
 }
 
 --- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TargetMarkerOverlay.kt ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TemplatePickerDialog.kt ---
+package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.findViewByNames
+import com.example.autotap.logger.logDiagnostic
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import java.io.File
+
+class TemplatePickerDialog(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager, OverlayLayer.DIALOG_LAYER, OverlayPriority.CRITICAL) {
+
+    override val layoutResId: Int = R.layout.dialog_template_picker
+
+    private var templatesContainer: LinearLayout? = null
+    private val selectedIndices = mutableSetOf<Int>()
+    private var onApplyCallback: ((List<Int>) -> Unit)? = null
+
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.WRAP_CONTENT
+        gravity = Gravity.CENTER
+        flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        dimAmount = 0.6f
+    }
+
+    fun showPicker(currentIndices: List<Int>, callback: (List<Int>) -> Unit) {
+        this.selectedIndices.clear()
+        this.selectedIndices.addAll(currentIndices)
+        this.onApplyCallback = callback
+        show()
+        populateGrid()
+    }
+
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(layoutResId, null)
+
+        templatesContainer = view.findViewByNames("layoutTemplatesGrid") as? LinearLayout
+
+        view.bindClickByNames("btnSelectAllPicker") {
+            setAllChecked(true)
+        }
+
+        view.bindClickByNames("btnUnselectAllPicker") {
+            setAllChecked(false)
+        }
+
+        view.bindClickByNames("btnApplyPicker") {
+            val sorted = selectedIndices.sorted()
+            logDiagnostic("AI_SCANNER", "Выбраны маски для мультипоиска: $sorted")
+            onApplyCallback?.invoke(sorted)
+            hide()
+        }
+
+        view.bindClickByNames("btnCancelPicker") {
+            hide()
+        }
+
+        return view
+    }
+
+    private fun populateGrid() {
+        val container = templatesContainer ?: return
+        container.removeAllViews()
+
+        val files = context.filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") }
+            ?.sortedBy { file ->
+                file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull() ?: 0
+            } ?: emptyList()
+
+        if (files.isEmpty()) {
+            val tv = TextView(context).apply {
+                text = "Шаблонов пока нет. Вырежьте их прицелом 📷"
+                setTextColor(Color.GRAY)
+                gravity = Gravity.CENTER
+                setPadding(16, 32, 16, 32)
+            }
+            container.addView(tv)
+            return
+        }
+
+        for (file in files) {
+            val index = file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull() ?: continue
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setBackgroundResource(R.drawable.drag_handle_bg)
+                setPadding(12, 10, 12, 10)
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.setMargins(0, 0, 0, 8)
+                layoutParams = lp
+            }
+
+            val cb = CheckBox(context).apply {
+                isChecked = selectedIndices.contains(index)
+                setOnCheckedChangeListener { _, isChecked ->
+                    if (isChecked) selectedIndices.add(index) else selectedIndices.remove(index)
+                }
+            }
+
+            val iv = ImageView(context).apply {
+                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                if (bitmap != null) setImageBitmap(bitmap)
+                layoutParams = LinearLayout.LayoutParams(60.dpToPx(context), 60.dpToPx(context)).apply {
+                    setMargins(12, 0, 16, 0)
+                }
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setBackgroundResource(R.drawable.border_capture_square)
+            }
+
+            val tv = TextView(context).apply {
+                text = "ИИ-Маска #$index | Размер: ${file.length() / 1024} КБ"
+                setTextColor(Color.WHITE)
+                textSize = 13f
+            }
+
+            row.addView(cb)
+            row.addView(iv)
+            row.addView(tv)
+            container.addView(row)
+        }
+    }
+
+    private fun setAllChecked(checked: Boolean) {
+        val container = templatesContainer ?: return
+        selectedIndices.clear()
+
+        val files = context.filesDir.listFiles { _, name -> name.startsWith("template_") && name.endsWith(".png") } ?: emptyArray()
+        if (checked) {
+            for (file in files) {
+                val index = file.name.removePrefix("template_").removeSuffix(".png").toIntOrNull() ?: continue
+                selectedIndices.add(index)
+            }
+        }
+
+        for (i in 0 until container.childCount) {
+            val row = container.getChildAt(i) as? LinearLayout ?: continue
+            val cb = row.getChildAt(0) as? CheckBox ?: continue
+            cb.isChecked = checked
+        }
+    }
+
+    private fun Int.dpToPx(context: Context): Int {
+        return (this * context.resources.displayMetrics.density).toInt()
+    }
+}
+
+--- END OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TemplatePickerDialog.kt ---
 
 --- START OF FILE: app/src/main/java/com/example/autotap/ui/overlays/TemplatesManagerDialog.kt ---
 package com.example.autotap.ui.overlays
@@ -6286,9 +7123,10 @@ class TutorialOverlay(
         android:orientation="vertical"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
-        android:paddingTop="24dp"
-        android:paddingBottom="16dp">
+        android:paddingTop="20dp"
+        android:paddingBottom="20dp">
 
+        <!-- Шапка -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -6297,8 +7135,8 @@ class TutorialOverlay(
             android:background="@drawable/panel_background"
             android:paddingTop="18dp"
             android:paddingBottom="18dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:layout_marginBottom="16dp">
 
             <TextView
@@ -6307,12 +7145,9 @@ class TutorialOverlay(
                 android:layout_height="wrap_content"
                 android:text="AutoTap Premium"
                 android:textColor="#00F5D4"
-                android:textSize="24sp"
+                android:textSize="22sp"
                 android:textStyle="bold"
-                android:gravity="center"
-                android:singleLine="true"
-                android:maxLines="1"
-                android:ellipsize="end" />
+                android:gravity="center" />
 
             <TextView
                 android:id="@+id/tvSubTitle"
@@ -6336,7 +7171,7 @@ class TutorialOverlay(
                 android:layout_marginTop="4dp" />
         </LinearLayout>
 
-        <!-- Секция 1: Настройки системных разрешений -->
+        <!-- Секция 1: Настройка разрешений без обрезки -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -6348,7 +7183,7 @@ class TutorialOverlay(
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="⚙ Настройка системных разрешений"
+                android:text="Настройка системных разрешений"
                 android:textColor="#58A6FF"
                 android:textSize="14sp"
                 android:textStyle="bold"
@@ -6358,45 +7193,42 @@ class TutorialOverlay(
                 android:id="@+id/btnAppDetails"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="52dp"
-                android:text="1. Ограниченные настройки (MIUI/HyperOS / Android 13+)"
+                android:minHeight="48dp"
+                android:text="1. Ограниченные настройки (MIUI / Android 13+)"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
                 android:textSize="12sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:maxLines="2"
+                android:padding="10dp"
+                android:gravity="start|center_vertical"
                 android:layout_marginBottom="10dp"/>
 
             <Button
                 android:id="@+id/btnAccessibility"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="52dp"
-                android:text="2. Спец. возможности (Включить AutoTap)"
+                android:minHeight="48dp"
+                android:text="2. Спец. возможности: [ ВЫКЛ ]"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
                 android:textSize="12sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:maxLines="2"
+                android:padding="10dp"
+                android:gravity="start|center_vertical"
                 android:layout_marginBottom="10dp"/>
 
             <Button
                 android:id="@+id/btnOverlay"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="52dp"
-                android:text="3. Поверх других приложений / Энергосбережение"
+                android:minHeight="48dp"
+                android:text="3. Поверх других приложений: [ ВЫКЛ ]"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
                 android:textSize="12sp"
-                android:padding="8dp"
-                android:gravity="center"
-                android:maxLines="2"/>
+                android:padding="10dp"
+                android:gravity="start|center_vertical"/>
         </LinearLayout>
 
-        <!-- Секция 2: Управление данными -->
+        <!-- Секция 2: Данные -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -6408,7 +7240,7 @@ class TutorialOverlay(
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📁 Управление шаблонами и данными"
+                android:text="Управление шаблонами и данными"
                 android:textColor="#58A6FF"
                 android:textSize="14sp"
                 android:textStyle="bold"
@@ -6419,12 +7251,12 @@ class TutorialOverlay(
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:minHeight="48dp"
-                android:text="Редактирование и менеджер ИИ-шаблонов"
+                android:text="Галерея и менеджер ИИ-шаблонов"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
                 android:textSize="12sp"
-                android:padding="8dp"
-                android:gravity="center"
+                android:padding="10dp"
+                android:gravity="start|center_vertical"
                 android:layout_marginBottom="10dp"/>
 
             <LinearLayout
@@ -6437,8 +7269,8 @@ class TutorialOverlay(
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="48dp"
-                    android:text="📤 Экспорт"
+                    android:minHeight="44dp"
+                    android:text="Экспорт"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
                     android:textSize="12sp"
@@ -6454,8 +7286,8 @@ class TutorialOverlay(
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="48dp"
-                    android:text="📥 Импорт"
+                    android:minHeight="44dp"
+                    android:text="Импорт"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
                     android:textSize="12sp"
@@ -6484,7 +7316,7 @@ class TutorialOverlay(
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="46dp"
+                    android:minHeight="44dp"
                     android:text="О разрешениях"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
@@ -6501,8 +7333,8 @@ class TutorialOverlay(
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:minHeight="46dp"
-                    android:text="Справка v40 PRO"
+                    android:minHeight="44dp"
+                    android:text="Справка PRO"
                     android:textColor="@color/text_white"
                     android:backgroundTint="#21262D"
                     android:textSize="12sp"
@@ -6514,7 +7346,7 @@ class TutorialOverlay(
                 android:id="@+id/btnShowLogs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="46dp"
+                android:minHeight="44dp"
                 android:text="Просмотр логов работы и ошибок"
                 android:textColor="@color/text_white"
                 android:backgroundTint="#21262D"
@@ -6527,11 +7359,11 @@ class TutorialOverlay(
             android:id="@+id/btnStartPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="58dp"
-            android:text="🚀 ЗАПУСТИТЬ ПАНЕЛЬ КЛИКЕРА"
+            android:minHeight="54dp"
+            android:text="ЗАПУСТИТЬ ПАНЕЛЬ КЛИКЕРА"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/accent_blue"
-            android:textSize="15sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:padding="10dp"
             android:gravity="center"/>
@@ -7554,6 +8386,105 @@ class TutorialOverlay(
 
 --- END OF FILE: app/src/main/res/layout/dialog_templates_manager.xml ---
 
+--- START OF FILE: app/src/main/res/layout/dialog_template_picker.xml ---
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="320dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/panel_background"
+    android:padding="16dp"
+    android:elevation="22dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Выбор ИИ-Масок для Мультипоиска"
+        android:textColor="#00F5D4"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="10dp">
+
+        <Button
+            android:id="@+id/btnSelectAllPicker"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="38dp"
+            android:minHeight="0dp"
+            android:text="Выделить все"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="11sp"/>
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="match_parent"/>
+
+        <Button
+            android:id="@+id/btnUnselectAllPicker"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="38dp"
+            android:minHeight="0dp"
+            android:text="Снять все"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:textSize="11sp"/>
+    </LinearLayout>
+
+    <ScrollView
+        android:overScrollMode="never"
+        android:layout_width="match_parent"
+        android:layout_height="240dp"
+        android:background="@color/bg_dark_blue"
+        android:padding="6dp"
+        android:layout_marginBottom="14dp">
+
+        <LinearLayout
+            android:id="@+id/layoutTemplatesGrid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"/>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnApplyPicker"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="44dp"
+            android:text="Применить"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textStyle="bold"/>
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="match_parent"/>
+
+        <Button
+            android:id="@+id/btnCancelPicker"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="44dp"
+            android:text="Отмена"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/bg_dark_blue"/>
+    </LinearLayout>
+</LinearLayout>
+
+--- END OF FILE: app/src/main/res/layout/dialog_template_picker.xml ---
+
 --- START OF FILE: app/src/main/res/layout/floating_beacon_ring.xml ---
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -7603,109 +8534,102 @@ class TutorialOverlay(
 
 --- START OF FILE: app/src/main/res/layout/floating_capture_frame.xml ---
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/layoutCaptureContainer"
-    android:layout_width="140dp"
-    android:layout_height="140dp"
-    android:background="@drawable/border_capture_square"
-    android:elevation="18dp"
-    android:clipChildren="false"
-    android:clipToPadding="false">
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:padding="0dp"
+    android:elevation="18dp">
 
-    <!-- 1. ОСНОВНОЙ КВАДРАТ ПРИЦЕЛА -->
-    <FrameLayout
-        android:id="@+id/captureSquare"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#00000000" />
-
-    <!-- 2. ВЕРХНИЙ ПЛАВАЮЩИЙ ТУЛБАР КНОПОК (ВЫНЕСЕН СНАРУЖИ ОПИСАНИЯ ОКНА) -->
+    <!-- ВЕРХНИЙ ТУЛБАР -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
-        android:layout_height=" wrap_content"
-        android:layout_gravity="top|center_horizontal"
+        android:layout_height="38dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
-        android:padding="3dp"
-        android:translationY="-44dp">
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:layout_marginBottom="2dp">
 
         <ImageButton
             android:id="@+id/btnDoCapture"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:src="@drawable/ic_camera"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_primary"
-            android:padding="7dp"
+            android:padding="5dp"
             android:contentDescription="Capture"
             android:layout_marginEnd="4dp" />
 
         <Button
             android:id="@+id/btnCaptureSearchArea"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:text="📐"
+            android:text="Зона"
             android:textColor="#FFFFFF"
             android:backgroundTint="@color/accent_blue"
-            android:textSize="13sp"
+            android:textSize="10sp"
             android:padding="0dp"
             android:layout_marginEnd="4dp" />
 
         <ImageButton
             android:id="@+id/btnCancelCapture"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
-            android:padding="7dp"
+            android:padding="5dp"
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- 3. НИЖНИЙ ПЛАВАЮЩИЙ ТУЛБАР МАНИПУЛЯТОРОВ -->
+    <!-- РАМКА ПРИЦЕЛА С УГЛОВОЙ РУЧКОЙ РЕСАЙЗА -->
+    <FrameLayout
+        android:id="@+id/captureSquare"
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        android:background="@drawable/border_capture_square">
+
+        <ImageView
+            android:id="@+id/handleResize"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="bottom|end"
+            android:src="@drawable/handle_manipulator_bg"
+            android:padding="3dp"
+            android:contentDescription="Resize Grip" />
+    </FrameLayout>
+
+    <!-- НИЖНЯЯ ПЛАШКА ПЕРЕМЕЩЕНИЯ -->
     <LinearLayout
         android:id="@+id/layoutBottomBar"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
+        android:layout_height="28dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
-        android:padding="3dp"
-        android:translationY="44dp">
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:layout_marginTop="2dp">
 
         <TextView
             android:id="@+id/handleMoveFrame"
             android:layout_width="wrap_content"
-            android:layout_height="34dp"
+            android:layout_height="match_parent"
             android:gravity="center"
-            android:text=" ✥ ДВИГАТЬ "
+            android:text="ДВИГАТЬ"
             android:textColor="#FFB703"
             android:textSize="10sp"
-            android:textStyle="bold"
-            android:background="@drawable/drag_handle_bg"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:layout_marginEnd="4dp" />
-
-        <TextView
-            android:id="@+id/handleResize"
-            android:layout_width="wrap_content"
-            android:layout_height="34dp"
-            android:gravity="center"
-            android:text=" ⤢ РАЗМЕР "
-            android:textColor="#00F5D4"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:background="@drawable/handle_manipulator_bg"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
+            android:textStyle="bold" />
     </LinearLayout>
-</FrameLayout>
+</LinearLayout>
 
 --- END OF FILE: app/src/main/res/layout/floating_capture_frame.xml ---
 
@@ -7720,19 +8644,19 @@ class TutorialOverlay(
     android:padding="8dp"
     android:elevation="16dp">
 
-    <!-- КНОПКА-БАББЛ ДЛЯ 3-ЭТАПНОГО РЕЖИМА (УДОБНЫЙ ТАЧ 56x56DP) -->
+    <!-- КНОПКА-БАББЛ СО ЗНАЧКОМ РАЗВОРОТА ≡ -->
     <ImageButton
         android:id="@+id/btnSingleBubble"
         android:layout_width="56dp"
         android:layout_height="56dp"
-        android:src="@drawable/ic_launcher_foreground"
+        android:src="@drawable/ic_menu"
         android:scaleType="centerInside"
         android:background="@drawable/handle_manipulator_bg"
-        android:padding="4dp"
+        android:padding="12dp"
         android:visibility="gone"
-        android:contentDescription="Bubble Mode" />
+        android:contentDescription="Expand Panel" />
 
-    <!-- Строка 1: Главная панель (Эргономичный размер 44x44dp) -->
+    <!-- Строка 1: Главная панель -->
     <LinearLayout
         android:id="@+id/layoutMainRow"
         android:layout_width="wrap_content"
@@ -7791,7 +8715,7 @@ class TutorialOverlay(
             android:layout_height="44dp"
             android:src="@drawable/ic_help"
             android:scaleType="centerInside"
-            android:background="@drawable/btn_premium_secondary"
+            android:background="@drawable/btn_premium_record"
             android:padding="10dp"
             android:contentDescription="Help"
             android:layout_marginEnd="5dp"/>
@@ -7907,29 +8831,78 @@ class TutorialOverlay(
             android:id="@+id/tvEditTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="✏️ Настройка шага сценария"
-            android:textColor="@color/text_white"
+            android:text="Настройка шага сценария"
+            android:textColor="#00F5D4"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="12dp" />
 
-        <!-- 🖼 ПРЕВЬЮ КАРТИНКИ ИИ-МАСКИ -->
-        <ImageView
-            android:id="@+id/ivStepTemplatePreview"
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:layout_gravity="center_horizontal"
-            android:scaleType="fitCenter"
-            android:background="@drawable/border_capture_square"
-            android:padding="4dp"
-            android:layout_marginBottom="12dp"
-            android:visibility="gone" />
-
-        <!-- 📌 Позиция -->
+        <!-- 1. ИИ-МАСКИ И КАЛИБРОВКА -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="📌 Координаты и задержка"
+            android:text="ИИ-Маски и Калибровка:"
+            android:textColor="#58A6FF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="6dp">
+
+            <Button
+                android:id="@+id/btnOpenTemplatePicker"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="42dp"
+                android:text="Галерея масок"
+                android:textColor="@color/text_white"
+                android:backgroundTint="@color/accent_blue"
+                android:textStyle="bold"
+                android:textSize="11sp"/>
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="match_parent"/>
+
+            <Button
+                android:id="@+id/btnCalibrateStepMask"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="42dp"
+                android:text="Калибровать"
+                android:textColor="@color/text_white"
+                android:backgroundTint="#21262D"
+                android:textSize="11sp"/>
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnOpenSearchArea"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:text="Задать Зону Поиска ИИ на экране"
+            android:textColor="@color/text_white"
+            android:backgroundTint="#21262D"
+            android:textSize="11sp"
+            android:layout_marginBottom="6dp"/>
+
+        <TextView
+            android:id="@+id/tvSelectedTemplatesSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Выбранные маски: #0"
+            android:textColor="#00F5D4"
+            android:textSize="11sp"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- 2. ТАЙМАУТЫ И ЗАДЕРЖКИ -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Пауза и Таймаут поиска:"
             android:textColor="#58A6FF"
             android:textSize="12sp"
             android:textStyle="bold"
@@ -7939,19 +8912,208 @@ class TutorialOverlay(
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
+            android:layout_marginBottom="10dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Пауза перед шагом (мс)"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etEditDelayMs"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:hint="500"
+                    android:inputType="number"
+                    android:textColor="@color/text_white"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="match_parent"/>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Таймаут поиска (сек)"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etEditAiTimeout"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:hint="5.0"
+                    android:inputType="numberDecimal"
+                    android:textColor="@color/text_white"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 3. ВЕТВЛЕНИЕ СЦЕНАРИЯ (ПОЛЕЗНОЕ УПРАВЛЕНИЕ) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ветвление сценария (Переходы по условию):"
+            android:textColor="#58A6FF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="При успехе -> Шаг №"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etJumpOnMatch"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:hint="След."
+                    android:inputType="number"
+                    android:textColor="@color/text_white"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="match_parent"/>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="При неудаче -> Шаг №"
+                    android:textColor="@color/text_gray"
+                    android:textSize="10sp"/>
+                <EditText
+                    android:id="@+id/etJumpOnFail"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:hint="След."
+                    android:inputType="number"
+                    android:textColor="@color/text_white"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="8dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Точность совпадения %:"
+                android:textColor="@color/text_gray"
+                android:textSize="11sp"
+                android:layout_marginEnd="8dp"/>
+
+            <EditText
+                android:id="@+id/etEditSimilarity"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:hint="85"
+                android:inputType="number"
+                android:textColor="@color/text_white"
+                android:background="@drawable/drag_handle_bg"
+                android:padding="8dp" />
+        </LinearLayout>
+
+        <CheckBox
+            android:id="@+id/cbLoopUntilStopped"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Непрерывный мультипоиск до остановки"
+            android:textColor="@color/text_white"
+            android:textSize="12sp"
+            android:layout_marginBottom="10dp" />
+
+        <Button
+            android:id="@+id/btnToggleNotificationMode"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:text="Оповещение: [ ВЫКЛ ]"
+            android:textColor="@color/text_white"
+            android:backgroundTint="#21262D"
+            android:textSize="12sp"
+            android:layout_marginBottom="10dp" />
+
+        <EditText
+            android:id="@+id/etEditComment"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:hint="Заметка к шагу"
+            android:inputType="text"
+            android:textColor="@color/text_white"
+            android:textColorHint="@color/text_gray"
+            android:background="@drawable/drag_handle_bg"
+            android:padding="8dp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- 4. СВОРАЧИВАЕМЫЕ ТЕХНИЧЕСКИЕ ДАННЫЕ (X и Y px) -->
+        <TextView
+            android:id="@+id/tvToggleTechnicalData"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="► Показать технические данные (X/Y px)"
+            android:textColor="@color/text_gray"
+            android:textSize="11sp"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp"/>
+
+        <LinearLayout
+            android:id="@+id/layoutTechnicalData"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            android:layout_marginBottom="14dp">
 
             <EditText
                 android:id="@+id/etEditX"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="44dp"
-                android:hint="X (px)"
+                android:layout_height="38dp"
+                android:hint="X px"
                 android:inputType="number"
-                android:textColor="@color/text_white"
-                android:textColorHint="@color/text_gray"
+                android:textColor="@color/text_gray"
                 android:background="@drawable/drag_handle_bg"
-                android:padding="8dp" />
+                android:padding="6dp" />
 
             <View
                 android:layout_width="8dp"
@@ -7961,112 +9123,13 @@ class TutorialOverlay(
                 android:id="@+id/etEditY"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="44dp"
-                android:hint="Y (px)"
+                android:layout_height="38dp"
+                android:hint="Y px"
                 android:inputType="number"
-                android:textColor="@color/text_white"
-                android:textColorHint="@color/text_gray"
+                android:textColor="@color/text_gray"
                 android:background="@drawable/drag_handle_bg"
-                android:padding="8dp" />
+                android:padding="6dp" />
         </LinearLayout>
-
-        <EditText
-            android:id="@+id/etEditDelayMs"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:hint="Задержка перед шагом (мс)"
-            android:inputType="number"
-            android:textColor="@color/text_white"
-            android:textColorHint="@color/text_gray"
-            android:background="@drawable/drag_handle_bg"
-            android:padding="8dp"
-            android:layout_marginBottom="12dp" />
-
-        <!-- 🎯 Настройки ИИ-Маски -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🎯 Параметры ИИ-Поиска"
-            android:textColor="#58A6FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-
-            <EditText
-                android:id="@+id/etEditTemplateIndex"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="44dp"
-                android:hint="Номер маски (#0)"
-                android:inputType="number"
-                android:textColor="@color/text_white"
-                android:textColorHint="@color/text_gray"
-                android:background="@drawable/drag_handle_bg"
-                android:padding="8dp" />
-
-            <View
-                android:layout_width="8dp"
-                android:layout_height="match_parent"/>
-
-            <EditText
-                android:id="@+id/etEditSimilarity"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="44dp"
-                android:hint="Порог % (85)"
-                android:inputType="number"
-                android:textColor="@color/text_white"
-                android:textColorHint="@color/text_gray"
-                android:background="@drawable/drag_handle_bg"
-                android:padding="8dp" />
-        </LinearLayout>
-
-        <CheckBox
-            android:id="@+id/cbLoopUntilStopped"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔁 Непрерывный мультипоиск до остановки"
-            android:textColor="@color/text_white"
-            android:textSize="12sp"
-            android:layout_marginBottom="12dp" />
-
-        <!-- 🔔 Сигналы и Оповещения -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔔 Звуки и Вибро"
-            android:textColor="#58A6FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp"/>
-
-        <Button
-            android:id="@+id/btnToggleNotificationMode"
-            android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:text="🔔 Оповещение: [ ВЫКЛ ]"
-            android:textColor="@color/text_white"
-            android:backgroundTint="#21262D"
-            android:textSize="12sp"
-            android:layout_marginBottom="12dp" />
-
-        <EditText
-            android:id="@+id/etEditComment"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:hint="Заметка к шагу"
-            android:inputType="text"
-            android:textColor="@color/text_white"
-            android:textColorHint="@color/text_gray"
-            android:background="@drawable/drag_handle_bg"
-            android:padding="8dp"
-            android:layout_marginBottom="14dp" />
 
         <LinearLayout
             android:id="@+id/layoutEditButtons"
@@ -8078,8 +9141,8 @@ class TutorialOverlay(
                 android:id="@+id/btnEditApply"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="48dp"
-                android:text="✅ Сохранить"
+                android:layout_height="46dp"
+                android:text="Сохранить"
                 android:textColor="@color/text_white"
                 android:backgroundTint="@color/accent_blue"
                 android:textStyle="bold" />
@@ -8092,9 +9155,9 @@ class TutorialOverlay(
                 android:id="@+id/btnEditDelete"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="48dp"
-                android:text="🗑 Удалить"
-                android:textColor="@color/text_white"
+                android:layout_height="46dp"
+                android:text="Удалить"
+                android:textColor="@color/red_close_text"
                 android:backgroundTint="@color/red_close"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -8102,7 +9165,7 @@ class TutorialOverlay(
         <Button
             android:id="@+id/btnEditClose"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
+            android:layout_height="42dp"
             android:text="Отмена"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/bg_dark_blue"
@@ -8212,57 +9275,43 @@ class TutorialOverlay(
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center_horizontal"
-    android:background="#00000000"
-    android:padding="6dp"
-    android:elevation="18dp"
-    android:clipChildren="false"
-    android:clipToPadding="false">
+    android:padding="0dp"
+    android:elevation="18dp">
 
-    <!-- 1. ВЕРХНЯЯ ПАНЕЛЬ С КНОПКАМИ -->
+    <!-- ВЕРХНИЙ ТУЛБАР -->
     <LinearLayout
         android:id="@+id/layoutSearchTopBar"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="38dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
-        android:padding="4dp"
-        android:layout_marginBottom="8dp">
-
-        <TextView
-            android:id="@+id/handleMoveSearchArea"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:gravity="center"
-            android:text="✥"
-            android:textColor="@color/gold_accent"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:background="@drawable/drag_handle_bg"
-            android:layout_marginEnd="6dp" />
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:layout_marginBottom="2dp">
 
         <Button
             android:id="@+id/btnSaveSearchArea"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="32dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:text="✅ Задать зону"
+            android:text="Задать зону"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/accent_blue"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:layout_marginEnd="4dp" />
 
         <Button
             android:id="@+id/btnResetSearchArea"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="32dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:text="🌐 Сброс"
+            android:text="Сброс"
             android:textColor="@color/text_white"
             android:backgroundTint="@color/bg_dark_blue"
             android:textSize="11sp"
@@ -8272,23 +9321,22 @@ class TutorialOverlay(
 
         <ImageButton
             android:id="@+id/btnCancelSearchArea"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:src="@drawable/ic_close"
             android:scaleType="centerInside"
             android:background="@drawable/btn_premium_record"
-            android:padding="6dp"
+            android:padding="5dp"
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- 2. ЖЁЛТАЯ РАМКА ЗОНЫ ПОИСКА -->
+    <!-- ЗОНА ПОИСКА С УГЛОВОЙ РУЧКОЙ РЕСАЙЗА -->
     <FrameLayout
         android:id="@+id/viewSearchAreaFrame"
-        android:layout_width="200dp"
-        android:layout_height="200dp"
+        android:layout_width="220dp"
+        android:layout_height="220dp"
         android:layout_gravity="center_horizontal"
-        android:background="@drawable/border_yellow_search_area"
-        android:layout_marginBottom="8dp">
+        android:background="@drawable/border_yellow_search_area">
 
         <TextView
             android:layout_width="wrap_content"
@@ -8299,33 +9347,42 @@ class TutorialOverlay(
             android:paddingEnd="8dp"
             android:paddingTop="4dp"
             android:paddingBottom="4dp"
-            android:text="📐 Зона поиска ИИ"
+            android:text="Зона поиска ИИ"
             android:textColor="@color/gold_accent"
             android:textSize="12sp"
             android:textStyle="bold" />
+
+        <ImageView
+            android:id="@+id/handleResizeSearchArea"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="bottom|end"
+            android:src="@drawable/handle_manipulator_bg"
+            android:padding="3dp"
+            android:contentDescription="Resize Search Area" />
     </FrameLayout>
 
-    <!-- 3. НИЖНЯЯ ПАНЕЛЬ РЕСАЙЗА -->
+    <!-- НИЖНИЙ ТУЛБАР ПЕРЕМЕЩЕНИЯ -->
     <LinearLayout
         android:id="@+id/layoutSearchBottomBar"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="28dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/drag_handle_bg"
-        android:padding="4dp">
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:layout_marginTop="2dp">
 
         <TextView
-            android:id="@+id/handleResizeSearchArea"
+            android:id="@+id/handleMoveSearchArea"
             android:layout_width="wrap_content"
-            android:layout_height="32dp"
+            android:layout_height="match_parent"
             android:gravity="center"
-            android:text=" ⤢ РАСТЯНУТЬ ЗОНУ "
+            android:text="ДВИГАТЬ ЗОНУ"
             android:textColor="@color/electric_cyan"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
+            android:textSize="10sp"
+            android:textStyle="bold" />
     </LinearLayout>
 </LinearLayout>
 
@@ -8732,14 +9789,15 @@ class TutorialOverlay(
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- Modern Dark Obsidian Palette -->
-    <color name="bg_dark_blue">#0D1117</color>
+    <!-- Premium Dark Obsidian Palette -->
+    <color name="bg_dark_blue">#0B0E14</color>
     <color name="panel_blue">#161B22</color>
-    <color name="accent_blue">#58A6FF</color>
+    <color name="accent_blue">#1F6FEB</color>
     <color name="electric_cyan">#00F5D4</color>
     <color name="text_white">#F0F6FC</color>
     <color name="text_gray">#8B949E</color>
-    <color name="red_close">#F04438</color>
+    <color name="red_close">#2A1215</color>
+    <color name="red_close_text">#FF5B5B</color>
     <color name="card_border">#30363D</color>
     <color name="gold_accent">#FFB703</color>
 </resources>

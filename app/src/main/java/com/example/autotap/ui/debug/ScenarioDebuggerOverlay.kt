@@ -19,6 +19,7 @@ import com.example.autotap.R
 import com.example.autotap.dpToPx
 import com.example.autotap.engine.ai.MatchCandidate
 import com.example.autotap.logAppEvent
+import com.example.autotap.model.ActionConfig
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayManager
 
@@ -48,7 +49,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             setPadding(24, 16, 24, 16)
 
             val tv = TextView(context).apply {
-                text = "🎯 Калибровка ИИ-Маски"
+                text = "Калибровка ИИ-Маски"
                 setTextColor(Color.parseColor("#00F5D4"))
                 textSize = 14f
                 setTypeface(null, Typeface.BOLD)
@@ -71,7 +72,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
             }
 
             btnConfirm = Button(context).apply {
-                text = "Подтвердить объект"
+                text = "Подтвердить маску"
                 textSize = 11f
                 setTypeface(null, Typeface.BOLD)
                 setBackgroundColor(Color.parseColor("#1F6FEB"))
@@ -91,6 +92,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
                     if (currentTemplateIndex >= 0) {
                         MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(currentTemplateIndex)
                     }
+                    overlayManager.candidateOverlay.hide()
                     hide()
                 }
             }
@@ -105,6 +107,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         return root
     }
 
+    // Пробный ИИ-поиск объекта на экране с радарным маяком
     fun startLiveCalibration(templateIndex: Int, directBitmap: Bitmap? = null) {
         this.currentTemplateIndex = templateIndex
         show()
@@ -115,7 +118,29 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         if (bitmap != null) {
             ivPreview?.setImageBitmap(bitmap)
             ivPreview?.visibility = View.VISIBLE
-            statusText?.text = "Сканирование экрана для Маски #$templateIndex...\nПодтвердите найденный объект"
+            statusText?.text = "Сканирование экрана для Маски #$templateIndex...\nПоиск объекта на экране..."
+
+            // Запуск пробного поиска и включение неонового радарного маяка
+            svc.captureScreenBitmapAsync { frameBmp ->
+                if (frameBmp != null) {
+                    val testAction = ActionConfig(selectedTemplateIndex = templateIndex, similarityPercent = 70)
+                    val scanResult = svc.aiScannerEngine.scan({ frameBmp }, testAction)
+                    val candidates = scanResult.candidates
+
+                    if (candidates.isNotEmpty()) {
+                        val top = candidates.first()
+                        val percent = "${(top.score * 100).toInt()}%"
+                        statusText?.text = "🎯 Объект найден на экране ($percent)!\\nПроверьте радарный маяк на экране и подтвердите."
+                        
+                        // Показываем радарный маяк над найденной целью
+                        overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) { confirmedCandidate ->
+                            confirmSmartMaskGeneration()
+                        }
+                    } else {
+                        statusText?.text = "🔍 Пробный поиск: объект пока не найден.\\nПодтвердите создание маски #$templateIndex."
+                    }
+                }
+            }
         } else {
             statusText?.text = "Ошибка загрузки маски #$templateIndex"
         }
@@ -133,8 +158,9 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
                 "Умная маска #$currentTemplateIndex создана! Профиль: $profile (Порог: $recSim%)",
                 Toast.LENGTH_LONG
             ).show()
-            logAppEvent("AI_SCANNER", "Умная маска #$currentTemplateIndex сгенерирована.")
+            logAppEvent("AI_SCANNER", "Умная маска #$currentTemplateIndex сгенерирована после подтверждения.")
         }
+        overlayManager.candidateOverlay.hide()
         hide()
     }
 
