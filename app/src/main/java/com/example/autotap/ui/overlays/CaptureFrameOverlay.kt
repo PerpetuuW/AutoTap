@@ -82,7 +82,8 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
                         val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
 
-                        if (safeW > 5 && safeH > 5) {
+                        // 💥 ФИКС: Исправлена проверка размера realCropW и realCropH
+                        if (realCropW > 5 && realCropH > 5) {
                             try {
                                 val croppedMask = Bitmap.createBitmap(fullBitmap, realCropX, realCropY, realCropW, realCropH)
                                 val saved = svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
@@ -123,7 +124,6 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
-        // 💥 НАСТРОЙКА ПРАВИЛЬНЫХ МАНИПУЛЯТОРОВ И ХОЛСТА
         val topBar = topBarView
         if (topBar != null) {
             setupIndependentViewDrag(topBar)
@@ -136,20 +136,18 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             setupIndependentViewDrag(frameContainer)
         }
 
-        // 💥 ПРИВЯЗКА ВСЕХ 4 МАНИПУЛЯТОРОВ ПЕРЕМЕЩЕНИЯ ПО СТОРОНАМ
         val hTop = view.findViewByNames("handleMoveTop")
         val hBottom = view.findViewByNames("handleMoveBottom")
         val hLeft = view.findViewByNames("handleMoveLeft")
         val hRight = view.findViewByNames("handleMoveRight")
 
         if (frameContainer != null) {
-            hTop?.let { setupIndependentViewDrag(hTop, frameContainer) }
-            hBottom?.let { setupIndependentViewDrag(hBottom, frameContainer) }
-            hLeft?.let { setupIndependentViewDrag(hLeft, frameContainer) }
-            hRight?.let { setupIndependentViewDrag(hRight, frameContainer) }
+            hTop?.let { setupIndependentViewDrag(it, frameContainer) }
+            hBottom?.let { setupIndependentViewDrag(it, frameContainer) }
+            hLeft?.let { setupIndependentViewDrag(it, frameContainer) }
+            hRight?.let { setupIndependentViewDrag(it, frameContainer) }
         }
 
-        // 💥 ВЫНЕСЕННЫЙ РЕСАЙЗ СНИЗУ-СПРАВА
         val resizeHandle = view.findViewByNames("handleResize")
         if (resizeHandle != null && sq != null) {
             setupCornerResizeHandler(resizeHandle, sq)
