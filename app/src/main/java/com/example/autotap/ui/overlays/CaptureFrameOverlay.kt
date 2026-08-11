@@ -21,7 +21,7 @@ import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
 import com.example.autotap.ui.base.OverlayPriority
 import com.example.autotap.vibrateFeedback
-import kotlin.math.max
+import kotlin.math.abs
 
 class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
     OverlayBase(context, overlayManager, OverlayLayer.CAPTURE_LAYER, OverlayPriority.HIGH) {
@@ -51,7 +51,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
         topBarView = view.findViewByNames("layoutTopBar")
 
         view.bindClickByNames("btnDoCapture", "btn_do_capture") {
-            StructuredLogger.logDiagnostic("CAPTURE_FRAME", "Снятие шаблона (" + currentFrameWidthPx + "x" + currentFrameHeightPx + "px)")
+            StructuredLogger.logDiagnostic("CAPTURE_FRAME", "Нажата кнопка Снятия Шаблона.")
             context.vibrateFeedback()
 
             val svc = MyAutoClickService.instance
@@ -69,10 +69,7 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
                 val cropNormX = ((cropX + cropW / 2f) / screenSize.x.toFloat()).coerceIn(0f, 1f)
                 val cropNormY = ((cropY + cropH / 2f) / screenSize.y.toFloat()).coerceIn(0f, 1f)
 
-                // 💥 ВОССТАНОВЛЕННЫЙ РАБОЧИЙ МЕХАНИЗМ: hide() + captureScreenBitmapAsync
-                hide()
-
-                svc.captureScreenBitmapAsync { fullBitmap ->
+                overlayManager.captureCleanScreen(svc) { fullBitmap ->
                     if (fullBitmap != null && fullBitmap.width > 10 && fullBitmap.height > 10) {
                         val realMetrics = context.resources.displayMetrics
                         val scaleX = fullBitmap.width.toFloat() / realMetrics.widthPixels.toFloat()
@@ -85,26 +82,29 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
 
                         val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
 
-                        try {
-                            val croppedMask = Bitmap.createBitmap(fullBitmap, realCropX, realCropY, realCropW, realCropH)
-                            val saved = svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
+                        if (safeW > 5 && safeH > 5) {
+                            try {
+                                val croppedMask = Bitmap.createBitmap(fullBitmap, realCropX, realCropY, realCropW, realCropH)
+                                val saved = svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
-                            if (saved && svc.actionsList.isNotEmpty()) {
-                                val lastAction = svc.actionsList.last()
-                                lastAction.xNorm = cropNormX
-                                lastAction.yNorm = cropNormY
-                                lastAction.selectedTemplateIndex = nextTemplateIndex
+                                if (saved && svc.actionsList.isNotEmpty()) {
+                                    val lastAction = svc.actionsList.last()
+                                    lastAction.xNorm = cropNormX
+                                    lastAction.yNorm = cropNormY
+                                    lastAction.selectedTemplateIndex = nextTemplateIndex
+                                }
+
+                                overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                    croppedMask,
+                                    nextTemplateIndex,
+                                    "MEDIUM",
+                                    realCropW,
+                                    realCropH,
+                                    fullBitmap
+                                )
+                            } catch (e: Exception) {
+                                StructuredLogger.logError("CAPTURE_FRAME", "Ошибка создания Bitmap кропа маски", e)
                             }
-
-                            overlayManager.debuggerOverlay.showCalibratedTemplate(
-                                croppedMask,
-                                nextTemplateIndex,
-                                "MEDIUM",
-                                realCropW,
-                                realCropH
-                            )
-                        } catch (e: Exception) {
-                            StructuredLogger.logError("CAPTURE_FRAME", "Ошибка создания Bitmap кропа маски", e)
                         }
                     } else {
                         StructuredLogger.logError("CAPTURE_FRAME", "Скриншот вернул NULL!", null)
@@ -123,44 +123,62 @@ class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
             hide()
         }
 
+        // 💥 НАСТРОЙКА ПРАВИЛЬНЫХ МАНИПУЛЯТОРОВ И ХОЛСТА
         val topBar = topBarView
         if (topBar != null) {
             setupIndependentViewDrag(topBar)
         }
 
+        val frameContainer = view.findViewByNames("layoutFrameWithHandles") ?: captureSquareView
         val sq = captureSquareView
-        if (sq != null) {
-            setupIndependentViewDrag(sq)
-            val resizeHandle = view.findViewByNames("handleResize")
-            if (resizeHandle != null) {
-                setupCornerResizeHandler(resizeHandle, sq)
-            }
+
+        if (frameContainer != null) {
+            setupIndependentViewDrag(frameContainer)
+        }
+
+        // 💥 ПРИВЯЗКА ВСЕХ 4 МАНИПУЛЯТОРОВ ПЕРЕМЕЩЕНИЯ ПО СТОРОНАМ
+        val hTop = view.findViewByNames("handleMoveTop")
+        val hBottom = view.findViewByNames("handleMoveBottom")
+        val hLeft = view.findViewByNames("handleMoveLeft")
+        val hRight = view.findViewByNames("handleMoveRight")
+
+        if (frameContainer != null) {
+            hTop?.let { setupIndependentViewDrag(hTop, frameContainer) }
+            hBottom?.let { setupIndependentViewDrag(hBottom, frameContainer) }
+            hLeft?.let { setupIndependentViewDrag(hLeft, frameContainer) }
+            hRight?.let { setupIndependentViewDrag(hRight, frameContainer) }
+        }
+
+        // 💥 ВЫНЕСЕННЫЙ РЕСАЙЗ СНИЗУ-СПРАВА
+        val resizeHandle = view.findViewByNames("handleResize")
+        if (resizeHandle != null && sq != null) {
+            setupCornerResizeHandler(resizeHandle, sq)
         }
 
         return view
     }
 
-    private fun setupIndependentViewDrag(targetView: View) {
+    private fun setupIndependentViewDrag(touchView: View, targetViewToDrag: View = touchView) {
         var startTouchX = 0f
         var startTouchY = 0f
         var initialTranslationX = 0f
         var initialTranslationY = 0f
 
-        targetView.setOnTouchListener { _, event ->
+        touchView.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startTouchX = event.rawX
                     startTouchY = event.rawY
-                    initialTranslationX = targetView.translationX
-                    initialTranslationY = targetView.translationY
+                    initialTranslationX = targetViewToDrag.translationX
+                    initialTranslationY = targetViewToDrag.translationY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - startTouchX
                     val dy = event.rawY - startTouchY
 
-                    targetView.translationX = initialTranslationX + dx
-                    targetView.translationY = initialTranslationY + dy
+                    targetViewToDrag.translationX = initialTranslationX + dx
+                    targetViewToDrag.translationY = initialTranslationY + dy
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {

@@ -102,39 +102,54 @@ class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
             setupIndependentViewDrag(topBar)
         }
 
+        val frameContainer = view.findViewByNames("layoutSearchFrameWithHandles") ?: viewSearchAreaFrameView
         val frameView = viewSearchAreaFrameView
-        if (frameView != null) {
-            setupIndependentViewDrag(frameView)
-            val resizeHandle = view.findViewByNames("handleResizeSearchArea")
-            if (resizeHandle != null) {
-                setupCornerResizeHandler(resizeHandle, frameView)
-            }
+
+        if (frameContainer != null) {
+            setupIndependentViewDrag(frameContainer)
+        }
+
+        val hTop = view.findViewByNames("handleMoveSearchTop")
+        val hBottom = view.findViewByNames("handleMoveSearchBottom")
+        val hLeft = view.findViewByNames("handleMoveSearchLeft")
+        val hRight = view.findViewByNames("handleMoveSearchRight")
+
+        if (frameContainer != null) {
+            hTop?.let { setupIndependentViewDrag(it, frameContainer) }
+            hBottom?.let { setupIndependentViewDrag(it, frameContainer) }
+            hLeft?.let { setupIndependentViewDrag(it, frameContainer) }
+            hRight?.let { setupIndependentViewDrag(it, frameContainer) }
+        }
+
+        val resizeHandle = view.findViewByNames("handleResizeSearchArea")
+        if (resizeHandle != null && frameView != null) {
+            setupCornerResizeHandler(resizeHandle, frameView)
         }
 
         return view
     }
 
-    private fun setupIndependentViewDrag(targetView: View) {
+    private fun setupIndependentViewDrag(touchView: View, targetViewToDrag: View = touchView) {
         var startTouchX = 0f
         var startTouchY = 0f
         var initialTranslationX = 0f
         var initialTranslationY = 0f
 
-        targetView.setOnTouchListener { _, event ->
+        touchView.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startTouchX = event.rawX
                     startTouchY = event.rawY
-                    initialTranslationX = targetView.translationX
-                    initialTranslationY = targetView.translationY
+                    initialTranslationX = targetViewToDrag.translationX
+                    initialTranslationY = targetViewToDrag.translationY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - startTouchX
                     val dy = event.rawY - startTouchY
 
-                    targetView.translationX = initialTranslationX + dx
-                    targetView.translationY = initialTranslationY + dy
+                    targetViewToDrag.translationX = initialTranslationX + dx
+                    targetViewToDrag.translationY = initialTranslationY + dy
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {

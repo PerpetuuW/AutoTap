@@ -6,7 +6,7 @@
     android:clipChildren="false"
     android:clipToPadding="false">
 
-    <!-- 1. ПЛАВАЮЩАЯ ПАНЕЛЬ КНОПЕК (АВТОНОМНАЯ, ВСЕГДА 100% ДОСТУПНАЯ) -->
+    <!-- 1. ПЛАВАЮЩАЯ ПАНЕЛЬ КНОПЕК (АВТОНОМНАЯ) -->
     <LinearLayout
         android:id="@+id/layoutTopBar"
         android:layout_width="wrap_content"
@@ -70,23 +70,105 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- 2. РАМКА ВЫРЕЗАНИЯ ШАБЛОНА (АВТОНОМНАЯ, ДВИГАЕТСЯ В ЛЮБУЮ ТОЧКУ ЭКРАНА 0..100%) -->
-    <FrameLayout
-        android:id="@+id/captureSquare"
-        android:layout_width="160dp"
-        android:layout_height="160dp"
+    <!-- 2. РАМКА С ВЫНЕСЕННЫМ РЕСАЙЗОМ И 4 МАНИПУЛЯТОРАМИ ПО СТОРОНАМ -->
+    <RelativeLayout
+        android:id="@+id/layoutFrameWithHandles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="@drawable/border_capture_square"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:elevation="16dp">
 
-        <!-- ВНУТРЕННИЙ РЕГУЛЯТОР РЕСАЙЗА -->
+        <!-- ОСНОВНОЕ ПОЛЕ ВЫРЕЗАНИЯ (100% ЧИСТОЕ ВНУТРИ) -->
+        <FrameLayout
+            android:id="@+id/captureSquare"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/border_capture_square" />
+
+        <!-- 1. МАНИПУЛЯТОР ВЕРХНИЙ (СЕРЕДИНА ВЕРХНЕГО КРАЯ) -->
+        <TextView
+            android:id="@+id/handleMoveTop"
+            android:layout_width="36dp"
+            android:layout_height="18dp"
+            android:layout_alignTop="@id/captureSquare"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="-9dp"
+            android:gravity="center"
+            android:text="•••"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- 2. МАНИПУЛЯТОР НИЖНИЙ (СЕРЕДИНА НИЖНЕГО КРАЯ) -->
+        <TextView
+            android:id="@+id/handleMoveBottom"
+            android:layout_width="36dp"
+            android:layout_height="18dp"
+            android:layout_alignBottom="@id/captureSquare"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="-9dp"
+            android:gravity="center"
+            android:text="•••"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- 3. МАНИПУЛЯТОР ЛЕВЫЙ (СЕРЕДИНА ЛЕВОГО КРАЯ) -->
+        <TextView
+            android:id="@+id/handleMoveLeft"
+            android:layout_width="18dp"
+            android:layout_height="36dp"
+            android:layout_alignLeft="@id/captureSquare"
+            android:layout_centerVertical="true"
+            android:layout_marginLeft="-9dp"
+            android:gravity="center"
+            android:text=":
+:"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- 4. МАНИПУЛЯТОР ПРАВЫЙ (СЕРЕДИНА ПРАВОГО КРАЯ) -->
+        <TextView
+            android:id="@+id/handleMoveRight"
+            android:layout_width="18dp"
+            android:layout_height="36dp"
+            android:layout_alignRight="@id/captureSquare"
+            android:layout_centerVertical="true"
+            android:layout_marginRight="-9dp"
+            android:gravity="center"
+            android:text=":
+:"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- 5. МАНИПУЛЯТОР РЕСАЙЗА СНИЗУ-СПРАВА (ПОЛНОСТЬЮ ВЫНЕСЕН ЗА ПРЕДЕЛЫ ПОЛЯ!) -->
         <ImageView
             android:id="@+id/handleResize"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_gravity="bottom|end"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_below="@id/captureSquare"
+            android:layout_toEndOf="@id/captureSquare"
+            android:layout_marginTop="-12dp"
+            android:layout_marginStart="-12dp"
             android:src="@drawable/handle_manipulator_bg"
             android:padding="4dp"
+            android:elevation="22dp"
             android:contentDescription="Resize Grip" />
-    </FrameLayout>
+    </RelativeLayout>
 </FrameLayout>

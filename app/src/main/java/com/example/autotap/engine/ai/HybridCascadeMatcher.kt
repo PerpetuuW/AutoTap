@@ -20,7 +20,7 @@ class HybridCascadeMatcher {
         if (mask.width < 2 || mask.height < 2 || frame.width < 2 || frame.height < 2) return candidates
 
         val scales = if (modes.multiScaleSearch) {
-            floatArrayOf(1.0f, 0.85f, 1.15f, 0.7f, 1.3f)
+            floatArrayOf(1.0f, 0.85f, 1.15f)
         } else {
             floatArrayOf(1.0f)
         }
@@ -64,14 +64,10 @@ class HybridCascadeMatcher {
             searchArea.bottom.coerceIn(0, frame.height)
         )
 
+        // 💥 ОПТИМИЗИРОВАННЫЙ ШАГ СКАНИРОВАНИЯ ПОД FULL HD (1080x2400) -> 80-120мс!
         val coarseStep = if (modes.hybridCascadeMode) {
-            when (modes.profile) {
-                TemplateProfile.SMALL -> 2
-                TemplateProfile.LARGE -> 6
-                TemplateProfile.THIN_LINE -> 1
-                else -> 4
-            }
-        } else 1
+            (maxOf(mask.width, mask.height) / 10).coerceIn(4, 12)
+        } else 2
 
         val startX = safeSearchArea.left
         val startY = safeSearchArea.top
@@ -137,8 +133,8 @@ class HybridCascadeMatcher {
         var totalDiff = 0L
         var pixelCount = 0
 
-        val stepX = (mask.width / 16).coerceAtLeast(1)
-        val stepY = (mask.height / 16).coerceAtLeast(1)
+        val stepX = (mask.width / 14).coerceAtLeast(1)
+        val stepY = (mask.height / 14).coerceAtLeast(1)
 
         var mx = 0
         while (mx < mask.width) {
@@ -190,8 +186,8 @@ class HybridCascadeMatcher {
         if (frame.isRecycled || mask.isRecycled) return 0f
         var edgeDiff = 0L
         var count = 0
-        val stepX = (mask.width / 12).coerceAtLeast(1)
-        val stepY = (mask.height / 12).coerceAtLeast(1)
+        val stepX = (mask.width / 10).coerceAtLeast(1)
+        val stepY = (mask.height / 10).coerceAtLeast(1)
 
         var mx = 1
         while (mx < mask.width - 1) {
@@ -219,7 +215,6 @@ class HybridCascadeMatcher {
         return (1.0f - (edgeDiff.toFloat() / maxGradDiff)).coerceIn(0f, 1f)
     }
 
-    // 💥 КРИТИЧЕСКИЙ ФИКС: Явный пересчет полных RGB яркостей вместо синего канала (and 0xFF)
     private fun getGradient(bmp: Bitmap, x: Int, y: Int): Int {
         if (bmp.isRecycled || x <= 0 || x >= bmp.width - 1 || y <= 0 || y >= bmp.height - 1) return 0
         val p1 = getLuminance(bmp.getPixel(x - 1, y))

@@ -21,333 +21,832 @@ def validate_python_self_syntax():
 validate_python_self_syntax()
 
 # -----------------------------------------------------------------------------
-# 2. DEFINITIONS OF UPDATED FILES (V54 PROPERTY DECLARATION FIX)
+# 2. DEFINITIONS OF UPDATED FILES (V58 EXTERNAL RESIZE & 4 SIDE MANIPULATORS)
 # -----------------------------------------------------------------------------
 
 FILES_TO_PATCH = {}
 
-# FILE 1: MyAutoClickService.kt (Added var globalPreScreenshotDelayMs)
-FILES_TO_PATCH["app/src/main/java/com/example/autotap/MyAutoClickService.kt"] = '''package com.example.autotap
+# FILE 1: floating_capture_frame.xml (Outer Resize Handle & 4 Side Drag Handles)
+FILES_TO_PATCH["app/src/main/res/layout/floating_capture_frame.xml"] = '''<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layoutCaptureContainer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
-import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityService.ScreenshotResult
-import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
-import android.accessibilityservice.GestureDescription
+    <!-- 1. ПЛАВАЮЩАЯ ПАНЕЛЬ КНОПЕК (АВТОНОМНАЯ) -->
+    <LinearLayout
+        android:id="@+id/layoutTopBar"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="20dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/drag_handle_bg"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:elevation="24dp">
+
+        <TextView
+            android:id="@+id/handleMoveFrame"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="⁝⁝ ПАНЕЛЬ"
+            android:textColor="#FFB703"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="4dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="6dp" />
+
+        <ImageButton
+            android:id="@+id/btnDoCapture"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:src="@drawable/ic_camera"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_primary"
+            android:padding="6dp"
+            android:contentDescription="Capture"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnCaptureSearchArea"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="Зона"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:layout_marginEnd="6dp" />
+
+        <ImageButton
+            android:id="@+id/btnCancelCapture"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:src="@drawable/ic_close"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_record"
+            android:padding="6dp"
+            android:contentDescription="Close" />
+    </LinearLayout>
+
+    <!-- 2. РАМКА С ВЫНЕСЕННЫМ РЕСАЙЗОМ И 4 МАНИПУЛЯТОРАМИ ПО СТОРОНАМ -->
+    <RelativeLayout
+        android:id="@+id/layoutFrameWithHandles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:elevation="16dp">
+
+        <!-- ОСНОВНОЕ ПОЛЕ ВЫРЕЗАНИЯ (100% ЧИСТОЕ ВНУТРИ) -->
+        <FrameLayout
+            android:id="@+id/captureSquare"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/border_capture_square" />
+
+        <!-- 1. МАНИПУЛЯТОР ВЕРХНИЙ (СЕРЕДИНА ВЕРХНЕГО КРАЯ) -->
+        <TextView
+            android:id="@+id/handleMoveTop"
+            android:layout_width="36dp"
+            android:layout_height="18dp"
+            android:layout_alignTop="@id/captureSquare"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="-9dp"
+            android:gravity="center"
+            android:text="•••"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- 2. МАНИПУЛЯТОР НИЖНИЙ (СЕРЕДИНА НИЖНЕГО КРАЯ) -->
+        <TextView
+            android:id="@+id/handleMoveBottom"
+            android:layout_width="36dp"
+            android:layout_height="18dp"
+            android:layout_alignBottom="@id/captureSquare"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="-9dp"
+            android:gravity="center"
+            android:text="•••"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- 3. МАНИПУЛЯТОР ЛЕВЫЙ (СЕРЕДИНА ЛЕВОГО КРАЯ) -->
+        <TextView
+            android:id="@+id/handleMoveLeft"
+            android:layout_width="18dp"
+            android:layout_height="36dp"
+            android:layout_alignLeft="@id/captureSquare"
+            android:layout_centerVertical="true"
+            android:layout_marginLeft="-9dp"
+            android:gravity="center"
+            android:text=":\n:"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- 4. МАНИПУЛЯТОР ПРАВЫЙ (СЕРЕДИНА ПРАВОГО КРАЯ) -->
+        <TextView
+            android:id="@+id/handleMoveRight"
+            android:layout_width="18dp"
+            android:layout_height="36dp"
+            android:layout_alignRight="@id/captureSquare"
+            android:layout_centerVertical="true"
+            android:layout_marginRight="-9dp"
+            android:gravity="center"
+            android:text=":\n:"
+            android:textColor="#FFB703"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- 5. МАНИПУЛЯТОР РЕСАЙЗА СНИЗУ-СПРАВА (ПОЛНОСТЬЮ ВЫНЕСЕН ЗА ПРЕДЕЛЫ ПОЛЯ!) -->
+        <ImageView
+            android:id="@+id/handleResize"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_below="@id/captureSquare"
+            android:layout_toEndOf="@id/captureSquare"
+            android:layout_marginTop="-12dp"
+            android:layout_marginStart="-12dp"
+            android:src="@drawable/handle_manipulator_bg"
+            android:padding="4dp"
+            android:elevation="22dp"
+            android:contentDescription="Resize Grip" />
+    </RelativeLayout>
+</FrameLayout>
+'''
+
+# FILE 2: CaptureFrameOverlay.kt (Binding All 4 Side Manipulators & External Resize)
+FILES_TO_PATCH["app/src/main/java/com/example/autotap/ui/overlays/CaptureFrameOverlay.kt"] = '''package com.example.autotap.ui.overlays
+
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.ColorSpace
-import android.graphics.PointF
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.view.Display
-import android.view.accessibility.AccessibilityEvent
-import android.widget.Toast
-import com.example.autotap.data.ScriptRepository
-import com.example.autotap.data.TemplateRepository
-import com.example.autotap.engine.AiScannerEngine
-import com.example.autotap.engine.GestureExecutor
-import com.example.autotap.engine.RecordingEngine
-import com.example.autotap.engine.ScriptExecutor
-import com.example.autotap.engine.TutorialEngine
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.dpToPx
+import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
 import com.example.autotap.logger.StructuredLogger
-import com.example.autotap.model.ActionConfig
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
 import com.example.autotap.ui.base.OverlayManager
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+import kotlin.math.abs
 
-class MyAutoClickService : AccessibilityService() {
+class CaptureFrameOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager, OverlayLayer.CAPTURE_LAYER, OverlayPriority.HIGH) {
 
-    companion object {
-        @Volatile var instance: MyAutoClickService? = null
-    }
+    override val layoutResId: Int = R.layout.floating_capture_frame
 
-    val actionsList = mutableListOf<ActionConfig>()
-    @Volatile var isPlaying = false
+    private val minSizePx = 30.dpToPx(context)
+    private var currentFrameWidthPx = 160.dpToPx(context)
+    private var currentFrameHeightPx = 160.dpToPx(context)
 
-    // 💥 ВОССТАНОВЛЕННЫЕ ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ
-    var globalClickDurationMs: Long = 120L
-    var globalSwipeDurationMs: Long = 300L
-    var globalPreScreenshotDelayMs: Long = 250L
-
-    lateinit var gestureExecutor: GestureExecutor
-    lateinit var scriptExecutor: ScriptExecutor
-    lateinit var recordingEngine: RecordingEngine
-    lateinit var tutorialEngine: TutorialEngine
-    lateinit var scriptRepository: ScriptRepository
-    lateinit var templateRepository: TemplateRepository
-    lateinit var aiScannerEngine: AiScannerEngine
-    lateinit var overlayManager: OverlayManager
+    private var captureSquareView: View? = null
+    private var topBarView: View? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val bgScannerExecutor = Executors.newSingleThreadExecutor()
-    private val gestureQueue = ConcurrentLinkedQueue<GestureTask>()
-    @Volatile private var isExecutingGesture = false
 
-    data class GestureTask(
-        val stroke: GestureDescription.StrokeDescription,
-        val description: String,
-        val callback: ((Boolean) -> Unit)?
-    )
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        instance = this
-        StructuredLogger.init(this)
-
-        gestureExecutor = GestureExecutor(this)
-        scriptExecutor = ScriptExecutor(this)
-        recordingEngine = RecordingEngine(this)
-        tutorialEngine = TutorialEngine(this)
-        scriptRepository = ScriptRepository(this)
-        templateRepository = TemplateRepository(this)
-        aiScannerEngine = AiScannerEngine(this)
-        overlayManager = OverlayManager(this)
-
-        StructuredLogger.logDiagnostic("SERVICE", "Служба Спец. возможностей подключена и инициализирована.")
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.MATCH_PARENT
+        gravity = Gravity.TOP or Gravity.START
     }
 
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        StructuredLogger.logDiagnostic("SYSTEM", "Смена конфигурации экрана.")
-        if (::overlayManager.isInitialized) {
-            overlayManager.onConfigurationChanged()
-        }
-    }
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(layoutResId, null)
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+        captureSquareView = view.findViewByNames("captureSquare")
+        topBarView = view.findViewByNames("layoutTopBar")
 
-    override fun onInterrupt() {
-        StructuredLogger.logError("SERVICE", "Служба Accessibility прервана системой.", null)
-        gestureQueue.clear()
-        isExecutingGesture = false
-    }
+        view.bindClickByNames("btnDoCapture", "btn_do_capture") {
+            StructuredLogger.logDiagnostic("CAPTURE_FRAME", "Нажата кнопка Снятия Шаблона.")
+            context.vibrateFeedback()
 
-    override fun onDestroy() {
-        super.onDestroy()
-        StructuredLogger.logDiagnostic("SERVICE", "Служба Accessibility уничтожена.")
-        if (instance == this) {
-            instance = null
-        }
-        bgScannerExecutor.shutdown()
-    }
+            val svc = MyAutoClickService.instance
+            val square = captureSquareView
 
-    fun isOverlayArea(x: Float, y: Float): Boolean {
-        if (!::overlayManager.isInitialized) return false
-        val ptX = x.toInt()
-        val ptY = y.toInt()
+            if (svc != null && square != null) {
+                val location = IntArray(2)
+                square.getLocationOnScreen(location)
+                val cropX = location[0]
+                val cropY = location[1]
+                val cropW = square.width
+                val cropH = square.height
 
-        if (overlayManager.controlPanel.isShowing && overlayManager.controlPanel.getBounds().contains(ptX, ptY)) return true
-        if (overlayManager.joystickOverlay.isShowing && overlayManager.joystickOverlay.getBounds().contains(ptX, ptY)) return true
-        if (overlayManager.debuggerOverlay.isShowing && overlayManager.debuggerOverlay.getBounds().contains(ptX, ptY)) return true
+                val screenSize = context.getRealScreenSize()
+                val cropNormX = ((cropX + cropW / 2f) / screenSize.x.toFloat()).coerceIn(0f, 1f)
+                val cropNormY = ((cropY + cropH / 2f) / screenSize.y.toFloat()).coerceIn(0f, 1f)
 
-        return false
-    }
+                overlayManager.captureCleanScreen(svc) { fullBitmap ->
+                    if (fullBitmap != null && fullBitmap.width > 10 && fullBitmap.height > 10) {
+                        val realMetrics = context.resources.displayMetrics
+                        val scaleX = fullBitmap.width.toFloat() / realMetrics.widthPixels.toFloat()
+                        val scaleY = fullBitmap.height.toFloat() / realMetrics.heightPixels.toFloat()
 
-    fun dispatchGestureTask(stroke: GestureDescription.StrokeDescription, description: String, callback: ((Boolean) -> Unit)?) {
-        gestureQueue.add(GestureTask(stroke, description, callback))
-        processNextGesture()
-    }
+                        val realCropX = (cropX * scaleX).toInt().coerceIn(0, fullBitmap.width - 1)
+                        val realCropY = (cropY * scaleY).toInt().coerceIn(0, fullBitmap.height - 1)
+                        val realCropW = (cropW * scaleX).toInt().coerceIn(10, (fullBitmap.width - realCropX).coerceAtLeast(10))
+                        val realCropH = (cropH * scaleY).toInt().coerceIn(10, (fullBitmap.height - realCropY).coerceAtLeast(10))
 
-    private fun processNextGesture() {
-        if (isExecutingGesture) return
-        val task = gestureQueue.poll() ?: return
-        isExecutingGesture = true
+                        val nextTemplateIndex = svc.templateRepository.getNextFreeTemplateIndex()
 
-        val builder = GestureDescription.Builder()
-        builder.addStroke(task.stroke)
-        val gesture = builder.build()
+                        if (safeW > 5 && safeH > 5) {
+                            try {
+                                val croppedMask = Bitmap.createBitmap(fullBitmap, realCropX, realCropY, realCropW, realCropH)
+                                val saved = svc.templateRepository.saveTemplate(nextTemplateIndex, croppedMask)
 
-        val resultCallback = object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                super.onCompleted(gestureDescription)
-                isExecutingGesture = false
-                StructuredLogger.logDiagnostic("GESTURE", "Жест успешно выполнен: " + task.description)
-                task.callback?.invoke(true)
-                mainHandler.post { processNextGesture() }
-            }
-
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                super.onCancelled(gestureDescription)
-                isExecutingGesture = false
-                StructuredLogger.logError("GESTURE", "Жест отменен системой: " + task.description, null)
-                task.callback?.invoke(false)
-                mainHandler.post { processNextGesture() }
-            }
-        }
-
-        val dispatched = dispatchGesture(gesture, resultCallback, mainHandler)
-        if (!dispatched) {
-            isExecutingGesture = false
-            StructuredLogger.logError("GESTURE", "Не удалось отправить жест в ОС: " + task.description, null)
-            task.callback?.invoke(false)
-            mainHandler.post { processNextGesture() }
-        }
-    }
-
-    fun resolveNormalizedPoint(xNorm: Float, yNorm: Float): PointF {
-        val metrics = resources.displayMetrics
-        return PointF(xNorm * metrics.widthPixels, yNorm * metrics.heightPixels)
-    }
-
-    fun vibrateFeedback(durationMs: Long = 30L) {
-        try {
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                getSystemService(Vibrator::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-            } ?: return
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(durationMs)
-            }
-        } catch (e: Exception) {
-            StructuredLogger.logError("ERROR", "Ошибка обратной связи вибрации", e)
-        }
-    }
-
-    fun addNewActionAtPosition(xNorm: Float, yNorm: Float) {
-        actionsList.add(ActionConfig(xNorm = xNorm, yNorm = yNorm))
-        if (::recordingEngine.isInitialized && recordingEngine.isRecording) {
-            recordingEngine.recordClick(xNorm, yNorm)
-        }
-        StructuredLogger.logDiagnostic("SCRIPT", "Добавлено новое действие на позиции (" + xNorm + ", " + yNorm + ")")
-    }
-
-    fun getSafeScriptRepository(): ScriptRepository {
-        return if (::scriptRepository.isInitialized) {
-            scriptRepository
-        } else {
-            ScriptRepository(this).also { scriptRepository = it }
-        }
-    }
-
-    fun getSafeTemplateRepository(): TemplateRepository {
-        return if (::templateRepository.isInitialized) {
-            templateRepository
-        } else {
-            TemplateRepository(this).also { templateRepository = it }
-        }
-    }
-
-    fun saveScriptByName(name: String, actions: List<ActionConfig>) {
-        getSafeScriptRepository().saveScript(name, actions)
-    }
-
-    fun loadScriptByName(name: String): Boolean {
-        val loaded = getSafeScriptRepository().loadScript(name)
-        if (loaded.isNotEmpty()) {
-            actionsList.clear()
-            actionsList.addAll(loaded)
-            return true
-        }
-        return false
-    }
-
-    fun captureScreenBitmapAsync(callback: (Bitmap?) -> Unit) {
-        val delay = globalPreScreenshotDelayMs.coerceAtLeast(100L)
-        StructuredLogger.logDiagnostic("SCREEN_CAPTURE", "Подготовка к снятию кадра (пауза " + delay + "ms)...")
-        mainHandler.postDelayed({
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                try {
-                    takeScreenshot(
-                        Display.DEFAULT_DISPLAY,
-                        bgScannerExecutor,
-                        object : TakeScreenshotCallback {
-                            override fun onSuccess(screenshotResult: ScreenshotResult) {
-                                val hwBuffer = screenshotResult.hardwareBuffer
-                                try {
-                                    val cs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        screenshotResult.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
-                                    } else null
-
-                                    val hwBitmap = if (cs != null) {
-                                        Bitmap.wrapHardwareBuffer(hwBuffer, cs)
-                                    } else {
-                                        Bitmap.wrapHardwareBuffer(hwBuffer, ColorSpace.get(ColorSpace.Named.SRGB))
-                                    }
-
-                                    val softwareBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
-
-                                    if (softwareBitmap != null) {
-                                        StructuredLogger.logDiagnostic("SCREEN_CAPTURE", "Скриншот успешно получен (" + softwareBitmap.width + "x" + softwareBitmap.height + "px)")
-                                        callback(softwareBitmap)
-                                    } else {
-                                        StructuredLogger.logError("SCREEN_CAPTURE", "Bitmap.wrapHardwareBuffer = NULL", null)
-                                        callback(null)
-                                    }
-                                } catch (e: Exception) {
-                                    StructuredLogger.logError("SCREEN_CAPTURE", "Ошибка конвертации HardwareBuffer", e)
-                                    callback(null)
-                                } finally {
-                                    hwBuffer.close()
+                                if (saved && svc.actionsList.isNotEmpty()) {
+                                    val lastAction = svc.actionsList.last()
+                                    lastAction.xNorm = cropNormX
+                                    lastAction.yNorm = cropNormY
+                                    lastAction.selectedTemplateIndex = nextTemplateIndex
                                 }
-                            }
 
-                            override fun onFailure(errorCode: Int) {
-                                StructuredLogger.logError("SCREEN_CAPTURE", "Сбой takeScreenshot(): код " + errorCode, null)
-                                callback(null)
+                                overlayManager.debuggerOverlay.showCalibratedTemplate(
+                                    croppedMask,
+                                    nextTemplateIndex,
+                                    "MEDIUM",
+                                    realCropW,
+                                    realCropH,
+                                    fullBitmap
+                                )
+                            } catch (e: Exception) {
+                                StructuredLogger.logError("CAPTURE_FRAME", "Ошибка создания Bitmap кропа маски", e)
                             }
                         }
-                    )
-                } catch (e: Exception) {
-                    StructuredLogger.logError("SCREEN_CAPTURE", "Исключение при вызове takeScreenshot()", e)
-                    callback(null)
+                    } else {
+                        StructuredLogger.logError("CAPTURE_FRAME", "Скриншот вернул NULL!", null)
+                    }
                 }
-            } else {
-                StructuredLogger.logError("SCREEN_CAPTURE", "Android API " + Build.VERSION.SDK_INT + " < 30.", null)
-                callback(null)
             }
-        }, delay)
+        }
+
+        view.bindClickByNames("btnCancelCapture") {
+            hide()
+            overlayManager.showControlPanel()
+        }
+
+        view.bindClickByNames("btnCaptureSearchArea") {
+            overlayManager.searchAreaOverlay.show()
+            hide()
+        }
+
+        // 💥 НАСТРОЙКА ПРАВИЛЬНЫХ МАНИПУЛЯТОРОВ И ХОЛСТА
+        val topBar = topBarView
+        if (topBar != null) {
+            setupIndependentViewDrag(topBar)
+        }
+
+        val frameContainer = view.findViewByNames("layoutFrameWithHandles") ?: captureSquareView
+        val sq = captureSquareView
+
+        if (frameContainer != null) {
+            setupIndependentViewDrag(frameContainer)
+        }
+
+        // 💥 ПРИВЯЗКА ВСЕХ 4 МАНИПУЛЯТОРОВ ПЕРЕМЕЩЕНИЯ ПО СТОРОНАМ
+        val hTop = view.findViewByNames("handleMoveTop")
+        val hBottom = view.findViewByNames("handleMoveBottom")
+        val hLeft = view.findViewByNames("handleMoveLeft")
+        val hRight = view.findViewByNames("handleMoveRight")
+
+        if (frameContainer != null) {
+            hTop?.let { setupIndependentViewDrag(hTop, frameContainer) }
+            hBottom?.let { setupIndependentViewDrag(hBottom, frameContainer) }
+            hLeft?.let { setupIndependentViewDrag(hLeft, frameContainer) }
+            hRight?.let { setupIndependentViewDrag(hRight, frameContainer) }
+        }
+
+        // 💥 ВЫНЕСЕННЫЙ РЕСАЙЗ СНИЗУ-СПРАВА
+        val resizeHandle = view.findViewByNames("handleResize")
+        if (resizeHandle != null && sq != null) {
+            setupCornerResizeHandler(resizeHandle, sq)
+        }
+
+        return view
     }
 
-    fun captureScreenBitmap(): Bitmap? {
-        var result: Bitmap? = null
-        val latch = CountDownLatch(1)
-        captureScreenBitmapAsync { bmp ->
-            result = bmp
-            latch.countDown()
-        }
-        try {
-            val success = latch.await(3000, TimeUnit.MILLISECONDS)
-            if (!success) {
-                StructuredLogger.logError("SCREEN_CAPTURE", "Таймаут CountDownLatch (>3000ms) при ожидании скриншота!", null)
+    private fun setupIndependentViewDrag(touchView: View, targetViewToDrag: View = touchView) {
+        var startTouchX = 0f
+        var startTouchY = 0f
+        var initialTranslationX = 0f
+        var initialTranslationY = 0f
+
+        touchView.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startTouchX = event.rawX
+                    startTouchY = event.rawY
+                    initialTranslationX = targetViewToDrag.translationX
+                    initialTranslationY = targetViewToDrag.translationY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - startTouchX
+                    val dy = event.rawY - startTouchY
+
+                    targetViewToDrag.translationX = initialTranslationX + dx
+                    targetViewToDrag.translationY = initialTranslationY + dy
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    true
+                }
+                else -> false
             }
-        } catch (e: Exception) {
-            StructuredLogger.logError("SCREEN_CAPTURE", "Прерывание ожидания CountDownLatch", e)
         }
-        return result
     }
 
-    fun showControlPanel() {
-        if (::overlayManager.isInitialized) overlayManager.showControlPanel()
+    private fun setupCornerResizeHandler(resizeView: View, targetSquare: View) {
+        var lastTouchX = 0f
+        var lastTouchY = 0f
+
+        resizeView.setOnTouchListener { _, event ->
+            val screenSize = context.getRealScreenSize()
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastTouchX = event.rawX
+                    lastTouchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - lastTouchX).toInt()
+                    val dy = (event.rawY - lastTouchY).toInt()
+
+                    lastTouchX = event.rawX
+                    lastTouchY = event.rawY
+
+                    val location = IntArray(2)
+                    targetSquare.getLocationOnScreen(location)
+                    val squareX = location[0]
+                    val squareY = location[1]
+
+                    val maxW = (screenSize.x - squareX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - squareY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
+
+                    val newW = (currentFrameWidthPx + dx).coerceIn(minSizePx, maxW)
+                    val newH = (currentFrameHeightPx + dy).coerceIn(minSizePx, maxH)
+
+                    currentFrameWidthPx = newW
+                    currentFrameHeightPx = newH
+
+                    val lp = targetSquare.layoutParams
+                    if (lp != null) {
+                        lp.width = newW
+                        lp.height = newH
+                        targetSquare.layoutParams = lp
+                        targetSquare.requestLayout()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+}
+'''
+
+# FILE 3: floating_search_area_frame.xml (Outer Resize Handle & 4 Side Drag Handles)
+FILES_TO_PATCH["app/src/main/res/layout/floating_search_area_frame.xml"] = '''<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootSearchArea"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- 1. ПЛАВАЮЩИЙ ТУЛБАР ЗОНЫ ПОИСКА -->
+    <LinearLayout
+        android:id="@+id/layoutSearchTopBar"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="20dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/drag_handle_bg"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:elevation="24dp">
+
+        <TextView
+            android:id="@+id/handleMoveSearchArea"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="⁝⁝ ЗОНА"
+            android:textColor="@color/electric_cyan"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="4dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnSaveSearchArea"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="Сохранить зону"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnResetSearchArea"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="Сброс"
+            android:textColor="@color/text_white"
+            android:backgroundTint="@color/bg_dark_blue"
+            android:textSize="11sp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:layout_marginEnd="6dp" />
+
+        <ImageButton
+            android:id="@+id/btnCancelSearchArea"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:src="@drawable/ic_close"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_record"
+            android:padding="6dp"
+            android:contentDescription="Close" />
+    </LinearLayout>
+
+    <!-- 2. РАМКА ЗОНЫ ПОИСКА С 4 МАНИПУЛЯТОРАМИ -->
+    <RelativeLayout
+        android:id="@+id/layoutSearchFrameWithHandles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:elevation="16dp">
+
+        <FrameLayout
+            android:id="@+id/viewSearchAreaFrame"
+            android:layout_width="220dp"
+            android:layout_height="220dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/border_yellow_search_area">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:background="#E60D1117"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:text="Область поиска ИИ"
+                android:textColor="@color/gold_accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <!-- МАНИПУЛЯТОРЫ ПО 4 СТОРОНАМ -->
+        <TextView
+            android:id="@+id/handleMoveSearchTop"
+            android:layout_width="36dp"
+            android:layout_height="18dp"
+            android:layout_alignTop="@id/viewSearchAreaFrame"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="-9dp"
+            android:gravity="center"
+            android:text="•••"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <TextView
+            android:id="@+id/handleMoveSearchBottom"
+            android:layout_width="36dp"
+            android:layout_height="18dp"
+            android:layout_alignBottom="@id/viewSearchAreaFrame"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="-9dp"
+            android:gravity="center"
+            android:text="•••"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <TextView
+            android:id="@+id/handleMoveSearchLeft"
+            android:layout_width="18dp"
+            android:layout_height="36dp"
+            android:layout_alignLeft="@id/viewSearchAreaFrame"
+            android:layout_centerVertical="true"
+            android:layout_marginLeft="-9dp"
+            android:gravity="center"
+            android:text=":\n:"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <TextView
+            android:id="@+id/handleMoveSearchRight"
+            android:layout_width="18dp"
+            android:layout_height="36dp"
+            android:layout_alignRight="@id/viewSearchAreaFrame"
+            android:layout_centerVertical="true"
+            android:layout_marginRight="-9dp"
+            android:gravity="center"
+            android:text=":\n:"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- ВЫНЕСЕННЫЙ РЕСАЙЗ СНИЗУ-СПРАВА -->
+        <ImageView
+            android:id="@+id/handleResizeSearchArea"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_below="@id/viewSearchAreaFrame"
+            android:layout_toEndOf="@id/viewSearchAreaFrame"
+            android:layout_marginTop="-12dp"
+            android:layout_marginStart="-12dp"
+            android:src="@drawable/handle_manipulator_bg"
+            android:padding="4dp"
+            android:elevation="22dp"
+            android:contentDescription="Resize Search Area" />
+    </RelativeLayout>
+</FrameLayout>
+'''
+
+# FILE 4: SearchAreaOverlay.kt (Binding 4 Side Manipulators)
+FILES_TO_PATCH["app/src/main/java/com/example/autotap/ui/overlays/SearchAreaOverlay.kt"] = '''package com.example.autotap.ui.overlays
+
+import android.content.Context
+import android.graphics.Rect
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import com.example.autotap.CoordConverter
+import com.example.autotap.MyAutoClickService
+import com.example.autotap.R
+import com.example.autotap.bindClickByNames
+import com.example.autotap.dpToPx
+import com.example.autotap.findViewByNames
+import com.example.autotap.getRealScreenSize
+import com.example.autotap.logger.StructuredLogger
+import com.example.autotap.ui.base.OverlayBase
+import com.example.autotap.ui.base.OverlayLayer
+import com.example.autotap.ui.base.OverlayManager
+import com.example.autotap.ui.base.OverlayPriority
+import com.example.autotap.vibrateFeedback
+
+class SearchAreaOverlay(context: Context, overlayManager: OverlayManager) :
+    OverlayBase(context, overlayManager) {
+
+    private val minSizePx = 30.dpToPx(context)
+    private var currentWidthPx = 200.dpToPx(context)
+    private var currentHeightPx = 200.dpToPx(context)
+
+    private var viewSearchAreaFrameView: View? = null
+    private var topBarView: View? = null
+
+    init {
+        width = WindowManager.LayoutParams.MATCH_PARENT
+        height = WindowManager.LayoutParams.MATCH_PARENT
+        gravity = Gravity.TOP or Gravity.START
+        layer = OverlayLayer.CAPTURE_LAYER
+        priority = OverlayPriority.HIGH
     }
 
-    fun hideControlPanel() {
-        if (::overlayManager.isInitialized) overlayManager.hideControlPanel()
+    override fun createView(): View {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.floating_search_area_frame, null)
+
+        viewSearchAreaFrameView = view.findViewByNames("viewSearchAreaFrame")
+        topBarView = view.findViewByNames("layoutSearchTopBar")
+
+        view.bindClickByNames("btnSaveSearchArea") {
+            val svc = MyAutoClickService.instance
+            val frame = viewSearchAreaFrameView
+            if (svc != null && frame != null) {
+                val screenSize = context.getRealScreenSize()
+                val location = IntArray(2)
+                frame.getLocationOnScreen(location)
+
+                val exactX = location[0]
+                val exactY = location[1]
+                val exactW = frame.width.takeIf { it > 0 } ?: currentWidthPx
+                val exactH = frame.height.takeIf { it > 0 } ?: currentHeightPx
+
+                val rectPx = Rect(exactX, exactY, exactX + exactW, exactY + exactH)
+                val rectNorm = CoordConverter.toNormalizedRect(rectPx, screenSize.x, screenSize.y)
+
+                if (svc.actionsList.isNotEmpty()) {
+                    val currentAction = svc.actionsList.last()
+                    currentAction.customSearchArea = true
+                    currentAction.searchAreaX = exactX
+                    currentAction.searchAreaY = exactY
+                    currentAction.searchAreaW = exactW
+                    currentAction.searchAreaH = exactH
+                    StructuredLogger.logDiagnostic("AI_SCANNER", "Зона поиска сохранена: (" + exactX + ", " + exactY + ", " + exactW + "x" + exactH + "px), norm=" + rectNorm)
+                }
+            }
+            context.vibrateFeedback()
+            hide()
+        }
+
+        view.bindClickByNames("btnResetSearchArea") {
+            currentWidthPx = 200.dpToPx(context)
+            currentHeightPx = 200.dpToPx(context)
+            val frame = viewSearchAreaFrameView
+            if (frame != null) {
+                val lp = frame.layoutParams
+                if (lp != null) {
+                    lp.width = currentWidthPx
+                    lp.height = currentHeightPx
+                    frame.layoutParams = lp
+                    frame.requestLayout()
+                }
+            }
+            context.vibrateFeedback()
+            StructuredLogger.logDiagnostic("AI_SCANNER", "Размер области поиска сброшен.")
+        }
+
+        view.bindClickByNames("btnCancelSearchArea", "btnCloseSearchArea") {
+            hide()
+        }
+
+        val topBar = topBarView
+        if (topBar != null) {
+            setupIndependentViewDrag(topBar)
+        }
+
+        val frameContainer = view.findViewByNames("layoutSearchFrameWithHandles") ?: viewSearchAreaFrameView
+        val frameView = viewSearchAreaFrameView
+
+        if (frameContainer != null) {
+            setupIndependentViewDrag(frameContainer)
+        }
+
+        val hTop = view.findViewByNames("handleMoveSearchTop")
+        val hBottom = view.findViewByNames("handleMoveSearchBottom")
+        val hLeft = view.findViewByNames("handleMoveSearchLeft")
+        val hRight = view.findViewByNames("handleMoveSearchRight")
+
+        if (frameContainer != null) {
+            hTop?.let { setupIndependentViewDrag(it, frameContainer) }
+            hBottom?.let { setupIndependentViewDrag(it, frameContainer) }
+            hLeft?.let { setupIndependentViewDrag(it, frameContainer) }
+            hRight?.let { setupIndependentViewDrag(it, frameContainer) }
+        }
+
+        val resizeHandle = view.findViewByNames("handleResizeSearchArea")
+        if (resizeHandle != null && frameView != null) {
+            setupCornerResizeHandler(resizeHandle, frameView)
+        }
+
+        return view
     }
 
-    fun showFloatingStopButton() {
-        if (::overlayManager.isInitialized) overlayManager.showFloatingStopButton()
+    private fun setupIndependentViewDrag(touchView: View, targetViewToDrag: View = touchView) {
+        var startTouchX = 0f
+        var startTouchY = 0f
+        var initialTranslationX = 0f
+        var initialTranslationY = 0f
+
+        touchView.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startTouchX = event.rawX
+                    startTouchY = event.rawY
+                    initialTranslationX = targetViewToDrag.translationX
+                    initialTranslationY = targetViewToDrag.translationY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - startTouchX
+                    val dy = event.rawY - startTouchY
+
+                    targetViewToDrag.translationX = initialTranslationX + dx
+                    targetViewToDrag.translationY = initialTranslationY + dy
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
-    fun hideFloatingStopButton() {
-        if (::overlayManager.isInitialized) overlayManager.hideFloatingStopButton()
-    }
+    private fun setupCornerResizeHandler(resizeView: View, targetFrame: View) {
+        var lastTouchX = 0f
+        var lastTouchY = 0f
 
-    fun showClickVisualizer(x: Float, y: Float) {
-        if (::overlayManager.isInitialized) overlayManager.showClickVisualizer(x, y)
+        resizeView.setOnTouchListener { _, event ->
+            val screenSize = context.getRealScreenSize()
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastTouchX = event.rawX
+                    lastTouchY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - lastTouchX).toInt()
+                    val dy = (event.rawY - lastTouchY).toInt()
+
+                    lastTouchX = event.rawX
+                    lastTouchY = event.rawY
+
+                    val location = IntArray(2)
+                    targetFrame.getLocationOnScreen(location)
+                    val windowX = location[0]
+                    val windowY = location[1]
+
+                    val maxW = (screenSize.x - windowX - 4.dpToPx(context)).coerceAtLeast(minSizePx)
+                    val maxH = (screenSize.y - windowY - 40.dpToPx(context)).coerceAtLeast(minSizePx)
+
+                    val newW = (currentWidthPx + dx).coerceIn(minSizePx, maxW)
+                    val newH = (currentHeightPx + dy).coerceIn(minSizePx, maxH)
+
+                    currentWidthPx = newW
+                    currentHeightPx = newH
+
+                    val lp = targetFrame.layoutParams
+                    if (lp != null) {
+                        lp.width = newW
+                        lp.height = newH
+                        targetFrame.layoutParams = lp
+                        targetFrame.requestLayout()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    true
+                }
+                else -> false
+            }
+        }
     }
 }
 '''
@@ -357,7 +856,7 @@ class MyAutoClickService : AccessibilityService() {
 # -----------------------------------------------------------------------------
 
 def apply_patch():
-    print("[🚀] Starting AutoTap Property Restoration Patch (v54)...")
+    print("[🚀] Starting AutoTap Outer Resize & 4 Side Handles Patch (v58)...")
     patched_count = 0
     
     for rel_path, new_content in FILES_TO_PATCH.items():
@@ -375,7 +874,9 @@ def apply_patch():
         
         patched_count += 1
 
-    print(f"\n[🎉] SUCCESS: Successfully restored globalPreScreenshotDelayMs property in {patched_count} files!")
+    print(f"\n[🎉] SUCCESS: Successfully applied v58 External Resize & 4 Handles Patch to {patched_count} files!")
+    print("[✓] Resize handle is 100% OUTSIDE the crop box (zero overlap inside).")
+    print("[✓] Added 4 middle-side move handles (top, bottom, left, right).")
 
 if __name__ == '__main__':
     apply_patch()

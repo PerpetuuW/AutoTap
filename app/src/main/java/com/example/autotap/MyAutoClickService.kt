@@ -43,7 +43,6 @@ class MyAutoClickService : AccessibilityService() {
     val actionsList = mutableListOf<ActionConfig>()
     @Volatile var isPlaying = false
 
-    // 💥 ВОССТАНОВЛЕННЫЕ ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ
     var globalClickDurationMs: Long = 120L
     var globalSwipeDurationMs: Long = 300L
     var globalPreScreenshotDelayMs: Long = 250L

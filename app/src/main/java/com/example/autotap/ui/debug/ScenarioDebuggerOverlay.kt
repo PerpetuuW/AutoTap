@@ -19,8 +19,7 @@ import com.example.autotap.R
 import com.example.autotap.dpToPx
 import com.example.autotap.engine.ai.MatchCandidate
 import com.example.autotap.getRealScreenSize
-import com.example.autotap.logger.logDiagnostic
-import com.example.autotap.logger.logError
+import com.example.autotap.logger.StructuredLogger
 import com.example.autotap.model.ActionConfig
 import com.example.autotap.ui.base.OverlayBase
 import com.example.autotap.ui.base.OverlayManager
@@ -94,7 +93,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
                 setOnClickListener {
                     if (currentTemplateIndex >= 0) {
                         MyAutoClickService.instance?.templateRepository?.moveTemplateToTrash(currentTemplateIndex)
-                        logDiagnostic("CALIBRATION", "Маска #" + currentTemplateIndex + " удалена в корзину.")
+                        StructuredLogger.logDiagnostic("CALIBRATION", "Маска #" + currentTemplateIndex + " удалена в корзину.")
                     }
                     overlayManager.candidateOverlay.hide()
                     hide()
@@ -111,7 +110,8 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         return root
     }
 
-    fun startLiveCalibration(templateIndex: Int, directBitmap: Bitmap? = null) {
+    // 💥 КРИТИЧЕСКИЙ ФИКС: Принятие готового fullScreenBitmap (0 повторных запросов скриншота)
+    fun startLiveCalibration(templateIndex: Int, directBitmap: Bitmap? = null, existingFullScreenBitmap: Bitmap? = null) {
         this.currentTemplateIndex = templateIndex
         this.detectedCandidate = null
 
@@ -119,57 +119,64 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         val bitmap = directBitmap ?: svc.templateRepository.loadTemplate(templateIndex)
 
         if (bitmap == null) {
-            logError("CALIBRATION", "Не удалось загрузить Bitmap Маски #" + templateIndex, null)
+            StructuredLogger.logError("CALIBRATION", "Не удалось загрузить Bitmap Маски #" + templateIndex, null)
             Toast.makeText(context, " Ошибка загрузки Маски #" + templateIndex, Toast.LENGTH_SHORT).show()
             return
         }
 
-        // 💥 Сначала снимаем чистый кадр ДО показа оверлея калибровки!
-        svc.captureScreenBitmapAsync { frameBmp ->
+        val runScanOnFrame = { frameBmp: Bitmap ->
             show()
             ivPreview?.setImageBitmap(bitmap)
             ivPreview?.visibility = View.VISIBLE
 
-            if (frameBmp != null) {
-                logDiagnostic("CALIBRATION", "Чистый кадр получен (" + frameBmp.width + "x" + frameBmp.height + "px). Поиск совпадений...")
-                statusText?.text = "Сканирование экрана для Маски #" + templateIndex + "...\nПоиск..."
+            StructuredLogger.logDiagnostic("CALIBRATION", "Мгновенный запуск ИИ-поиска на кадре (" + frameBmp.width + "x" + frameBmp.height + "px)...")
+            statusText?.text = "Сканирование экрана для Маски #" + templateIndex + "...\nПоиск..."
 
-                Thread {
-                    try {
-                        val testAction = ActionConfig(
-                            selectedTemplateIndex = templateIndex,
-                            similarityPercent = 55,
-                            customSearchArea = false
-                        )
-                        val scanResult = svc.aiScannerEngine.scan({ frameBmp }, testAction)
-                        val candidates = scanResult.candidates
+            Thread {
+                try {
+                    val testAction = ActionConfig(
+                        selectedTemplateIndex = templateIndex,
+                        similarityPercent = 55,
+                        customSearchArea = false
+                    )
+                    val scanResult = svc.aiScannerEngine.scan({ frameBmp }, testAction)
+                    val candidates = scanResult.candidates
 
-                        mainHandler.post {
-                            if (candidates.isNotEmpty()) {
-                                val top = candidates.first()
-                                detectedCandidate = top
-                                val percent = "" + (top.score * 100).toInt() + "%"
-                                logDiagnostic("CALIBRATION", "🎯 Найдено совпадений: " + candidates.size + ". Лучшее: " + percent + " в точке (" + top.point.x + ", " + top.point.y + ")")
-                                statusText?.text = "🎯 Найдено совпадений: " + candidates.size + " (" + percent + ")\nНажмите на нужный маяк на экране!"
+                    mainHandler.post {
+                        if (candidates.isNotEmpty()) {
+                            val top = candidates.first()
+                            detectedCandidate = top
+                            val percent = "" + (top.score * 100).toInt() + "%"
+                            StructuredLogger.logDiagnostic("CALIBRATION", "🎯 Найдено совпадений: " + candidates.size + ". Лучшее: " + percent + " в точке (" + top.point.x + ", " + top.point.y + ")")
+                            statusText?.text = "🎯 Найдено совпадений: " + candidates.size + " (" + percent + ")\nНажмите на нужный маяк на экране!"
 
-                                // 💥 Запуск подсвечивающих неоновых радарных колец
-                                overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) { confirmed ->
-                                    detectedCandidate = confirmed
-                                    logDiagnostic("CALIBRATION", "Пользователь выделил объект тапом по маяку: " + confirmed.point)
-                                    confirmSmartMaskGeneration()
-                                }
-                            } else {
-                                logDiagnostic("CALIBRATION", "⚠️ Совпадений с точностью > 55% не найдено.")
-                                statusText?.text = "Маска #" + templateIndex + " создана.\nОбъект не найден на экране. Подтвердите создание."
+                            overlayManager.candidateOverlay.showRadarBeaconCandidates(candidates) { confirmed ->
+                                detectedCandidate = confirmed
+                                StructuredLogger.logDiagnostic("CALIBRATION", "Пользователь выделил объект тапом по маяку: " + confirmed.point)
+                                confirmSmartMaskGeneration()
                             }
+                        } else {
+                            StructuredLogger.logDiagnostic("CALIBRATION", "⚠️ Совпадений с точностью > 55% не найдено.")
+                            statusText?.text = "Маска #" + templateIndex + " создана.\nОбъект не найден на экране. Подтвердите создание."
                         }
-                    } catch (e: Exception) {
-                        logError("CALIBRATION", "Ошибка тестового сканирования калибровки", e)
                     }
-                }.start()
-            } else {
-                logError("CALIBRATION", "Не удалось получить кадр при калибровке!", null)
-                statusText?.text = "❌ Ошибка доступа к экрану (Код 3).\nПерезапустите Спец. возможности!"
+                } catch (e: Exception) {
+                    StructuredLogger.logError("CALIBRATION", "Ошибка тестового сканирования калибровки", e)
+                }
+            }.start()
+        }
+
+        if (existingFullScreenBitmap != null && !existingFullScreenBitmap.isRecycled) {
+            runScanOnFrame(existingFullScreenBitmap)
+        } else {
+            svc.captureScreenBitmapAsync { capturedBmp ->
+                if (capturedBmp != null) {
+                    runScanOnFrame(capturedBmp)
+                } else {
+                    StructuredLogger.logError("CALIBRATION", "Не удалось получить кадр при калибровке!", null)
+                    show()
+                    statusText?.text = "❌ Ошибка доступа к экрану.\nПерезапустите Спец. возможности!"
+                }
             }
         }
     }
@@ -196,7 +203,7 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
                     lastAction.xNorm = (matchedCandidate.point.x / screenSize.x).coerceIn(0f, 1f)
                     lastAction.yNorm = (matchedCandidate.point.y / screenSize.y).coerceIn(0f, 1f)
                 }
-                logDiagnostic("CALIBRATION", "Обновлены параметры шага: selectedTemplateIndex=" + currentTemplateIndex + ", similarityPercent=" + recSim + ", pos=(" + lastAction.xNorm + ", " + lastAction.yNorm + ")")
+                StructuredLogger.logDiagnostic("CALIBRATION", "Обновлены параметры шага: selectedTemplateIndex=" + currentTemplateIndex + ", similarityPercent=" + recSim + ", pos=(" + lastAction.xNorm + ", " + lastAction.yNorm + ")")
             }
 
             Toast.makeText(
@@ -209,8 +216,8 @@ class ScenarioDebuggerOverlay(context: Context, overlayManager: OverlayManager) 
         hide()
     }
 
-    fun showCalibratedTemplate(bitmap: Bitmap, templateIndex: Int, profileName: String, widthPx: Int, heightPx: Int) {
-        startLiveCalibration(templateIndex, bitmap)
+    fun showCalibratedTemplate(bitmap: Bitmap, templateIndex: Int, profileName: String, widthPx: Int, heightPx: Int, existingFullScreenBitmap: Bitmap? = null) {
+        startLiveCalibration(templateIndex, bitmap, existingFullScreenBitmap)
     }
 
     fun showCandidates(candidates: List<MatchCandidate>) {

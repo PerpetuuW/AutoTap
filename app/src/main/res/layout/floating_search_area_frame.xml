@@ -73,36 +73,116 @@
             android:contentDescription="Close" />
     </LinearLayout>
 
-    <!-- 2. РАМКА ЗОНЫ ПОИСКА (АВТОНОМНАЯ) -->
-    <FrameLayout
-        android:id="@+id/viewSearchAreaFrame"
-        android:layout_width="220dp"
-        android:layout_height="220dp"
+    <!-- 2. РАМКА ЗОНЫ ПОИСКА С 4 МАНИПУЛЯТОРАМИ -->
+    <RelativeLayout
+        android:id="@+id/layoutSearchFrameWithHandles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="@drawable/border_yellow_search_area"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:elevation="16dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:background="#E60D1117"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp"
-            android:text="Область поиска ИИ"
-            android:textColor="@color/gold_accent"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+        <FrameLayout
+            android:id="@+id/viewSearchAreaFrame"
+            android:layout_width="220dp"
+            android:layout_height="220dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/border_yellow_search_area">
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:background="#E60D1117"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:text="Область поиска ИИ"
+                android:textColor="@color/gold_accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <!-- МАНИПУЛЯТОРЫ ПО 4 СТОРОНАМ -->
+        <TextView
+            android:id="@+id/handleMoveSearchTop"
+            android:layout_width="36dp"
+            android:layout_height="18dp"
+            android:layout_alignTop="@id/viewSearchAreaFrame"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="-9dp"
+            android:gravity="center"
+            android:text="•••"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <TextView
+            android:id="@+id/handleMoveSearchBottom"
+            android:layout_width="36dp"
+            android:layout_height="18dp"
+            android:layout_alignBottom="@id/viewSearchAreaFrame"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="-9dp"
+            android:gravity="center"
+            android:text="•••"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <TextView
+            android:id="@+id/handleMoveSearchLeft"
+            android:layout_width="18dp"
+            android:layout_height="36dp"
+            android:layout_alignLeft="@id/viewSearchAreaFrame"
+            android:layout_centerVertical="true"
+            android:layout_marginLeft="-9dp"
+            android:gravity="center"
+            android:text=":
+:"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <TextView
+            android:id="@+id/handleMoveSearchRight"
+            android:layout_width="18dp"
+            android:layout_height="36dp"
+            android:layout_alignRight="@id/viewSearchAreaFrame"
+            android:layout_centerVertical="true"
+            android:layout_marginRight="-9dp"
+            android:gravity="center"
+            android:text=":
+:"
+            android:textColor="@color/electric_cyan"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/drag_handle_bg"
+            android:elevation="20dp" />
+
+        <!-- ВЫНЕСЕННЫЙ РЕСАЙЗ СНИЗУ-СПРАВА -->
         <ImageView
             android:id="@+id/handleResizeSearchArea"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_gravity="bottom|end"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_below="@id/viewSearchAreaFrame"
+            android:layout_toEndOf="@id/viewSearchAreaFrame"
+            android:layout_marginTop="-12dp"
+            android:layout_marginStart="-12dp"
             android:src="@drawable/handle_manipulator_bg"
             android:padding="4dp"
+            android:elevation="22dp"
             android:contentDescription="Resize Search Area" />
-    </FrameLayout>
+    </RelativeLayout>
 </FrameLayout>
