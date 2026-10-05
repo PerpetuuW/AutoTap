@@ -124,20 +124,64 @@ object OcrEngine {
     }
 
     /**
+     * Объединение близлежащих боксов слов на одной горизонтальной строке для распознавания составных фраз.
+     */
+    private fun mergeAdjacentLineBoxes(boxes: List<Rect>): List<Rect> {
+        if (boxes.size <= 1) return boxes
+        val sorted = boxes.sortedWith(compareBy({ it.top / 12 }, { it.left }))
+        val merged = mutableListOf<Rect>()
+
+        var current = Rect(sorted[0])
+        for (i in 1 until sorted.size) {
+            val next = sorted[i]
+            val vOverlapMin = maxOf(current.top, next.top)
+            val vOverlapMax = minOf(current.bottom, next.bottom)
+            val vOverlap = vOverlapMax - vOverlapMin
+            val minH = minOf(current.height(), next.height()).coerceAtLeast(1)
+
+            val isSameLine = vOverlap >= minH * 0.45f
+            val hGap = next.left - current.right
+
+            if (isSameLine && hGap in -10..32) {
+                // Объединяем близкие боксы в единую текстовую строку
+                current.left = minOf(current.left, next.left)
+                current.top = minOf(current.top, next.top)
+                current.right = maxOf(current.right, next.right)
+                current.bottom = maxOf(current.bottom, next.bottom)
+            } else {
+                merged.add(Rect(current))
+                current = Rect(next)
+            }
+        }
+        merged.add(Rect(current))
+        return merged
+    }
+
+    /**
      * Предобработка игрового шрифта:
-     * Добавление безопасного паддинга, динамическое растяжение контраста и очистка шумов.
+     * Добавление безопасного паддинга, апскейлинг мелких шрифтов, динамическое растяжение контраста и инверсия фона.
      */
     private fun enhanceGameFontCrop(bitmap: Bitmap): Bitmap {
         val w = bitmap.width
         val h = bitmap.height
         if (w < 4 || h < 4) return bitmap
 
+        // Масштабирование микро-шрифтов HUD (8..20px) для высокой точности распознавания
+        val targetSrc = if (h in 8..22) {
+            Bitmap.createScaledBitmap(bitmap, w * 2, h * 2, true)
+        } else {
+            bitmap
+        }
+
+        val sw = targetSrc.width
+        val sh = targetSrc.height
+
         // 1. Добавление защитного паддинга (6px по краям), чтобы крайние штрихи букв и мягкие знаки не срезались
         val padX = 6
         val padY = 3
-        val padded = Bitmap.createBitmap(w + padX * 2, h + padY * 2, Bitmap.Config.ARGB_8888)
+        val padded = Bitmap.createBitmap(sw + padX * 2, sh + padY * 2, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(padded)
-        canvas.drawBitmap(bitmap, padX.toFloat(), padY.toFloat(), null)
+        canvas.drawBitmap(targetSrc, padX.toFloat(), padY.toFloat(), null)
 
         val pw = padded.width
         val ph = padded.height
@@ -165,6 +209,7 @@ object OcrEngine {
             }
             padded.setPixels(pixels, 0, pw, 0, 0, pw, ph)
         }
+        if (targetSrc != bitmap && !targetSrc.isRecycled) targetSrc.recycle()
         return padded
     }
 
@@ -340,7 +385,7 @@ object OcrEngine {
 
             // Сортировка сверху-вниз, слева-направо
             mergedBoxes.sortBy { it.top * 10000 + it.left }
-            return mergedBoxes
+            return mergeAdjacentLineBoxes(mergedBoxes)
         } catch (e: Throwable) {
             AppLogger.logError(null, "ONNX_DET_RUN", e)
             return fallbackTextBoundingBoxes(bmp)
