@@ -153,7 +153,7 @@ object OcrEngine {
             if (lum > maxLum) maxLum = lum
         }
 
-        if (maxLum - minLum in 15..160) {
+        if (maxLum - minLum in 15..250) {
             val range = max(1, maxLum - minLum)
             for (i in pixels.indices) {
                 val p = pixels[i]
@@ -164,9 +164,6 @@ object OcrEngine {
                 pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
             }
             padded.setPixels(pixels, 0, pw, 0, 0, pw, ph)
-        } else if (maxLum - minLum > 160) {
-            // При сильных бликах интерфейса используем адаптивную бинаризацию и морфологическую очистку
-            return imagePreprocessor.process(padded, windowSize = 11, cValue = 6)
         }
         return padded
     }
@@ -550,12 +547,11 @@ object OcrEngine {
     }
 
     /**
-     * Постобработка: замена ошибочных латинских символов-двойников на русскую кириллицу.
+     * Постобработка: конвертация латинских гомоглифов и цифр-ошибок в русскую кириллицу
+     * с удержанием регистра (заглавные/строчные).
      */
     private fun postProcessRussianText(text: String): String {
         if (text.isBlank()) return text
-        val hasCyrillic = text.any { it in 'а'..'я' || it in 'А'..'Я' || it == 'ё' || it == 'Ё' }
-        if (!hasCyrillic) return text
 
         val sb = StringBuilder()
         for (ch in text) {
@@ -571,6 +567,7 @@ object OcrEngine {
                 'C' -> 'С'
                 'T' -> 'Т'
                 'X' -> 'Х'
+                'Y' -> 'У'
                 'a' -> 'а'
                 'e' -> 'е'
                 'o' -> 'о'
@@ -578,6 +575,11 @@ object OcrEngine {
                 'c' -> 'с'
                 'x' -> 'х'
                 'y' -> 'у'
+                'u' -> 'и'
+                'r' -> 'г'
+                'n' -> 'п'
+                'd' -> 'д'
+                'b' -> 'ь'
                 else -> ch
             }
             sb.append(converted)
@@ -587,7 +589,7 @@ object OcrEngine {
 
     /**
      * Нормализация строки для нечеткого поиска:
-     * Очистка от спецсимволов и приведение кириллических/латинских гомоглифов к единому виду.
+     * Очистка от спецсимволов и свод кириллических/латинских гомоглифов и близких цифровых двойников.
      */
     private fun normalizeString(s: String): String {
         val clean = s.trim()
@@ -605,9 +607,17 @@ object OcrEngine {
             .replace('m', 'м')
             .replace('h', 'н')
             .replace('y', 'у')
-            .replace('b', 'б') // Латинская 'b' мапится на 'б'
+            .replace('u', 'и')
+            .replace('r', 'г')
+            .replace('n', 'п')
+            .replace('d', 'д')
+            .replace('b', 'б')
             .replace('v', 'в')
             .replace('w', 'в')
+            .replace('3', 'з')
+            .replace('0', 'о')
+            .replace('6', 'б')
+            .replace('4', 'ч')
         return clean
     }
 
