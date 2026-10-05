@@ -132,9 +132,9 @@ object OcrEngine {
         val h = bitmap.height
         if (w < 4 || h < 4) return bitmap
 
-        // 1. Добавление защитного паддинга (4px по краям), чтобы крайние штрихи букв не срезались
-        val padX = 4
-        val padY = 2
+        // 1. Добавление защитного паддинга (6px по краям), чтобы крайние штрихи букв и мягкие знаки не срезались
+        val padX = 6
+        val padY = 3
         val padded = Bitmap.createBitmap(w + padX * 2, h + padY * 2, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(padded)
         canvas.drawBitmap(bitmap, padX.toFloat(), padY.toFloat(), null)
@@ -622,8 +622,34 @@ object OcrEngine {
     }
 
     /**
-     * Интеллектуальный Fuzzy Matcher с учетом специфики распознавания игровых шрифтов:
-     * Сравнение по подстрокам, эквивалентам символов (б/в, н/и/м, з/с) и расстоянию Левенштейна.
+     * Вычисление классического расстояния Левенштейна (Dynamic Programming Edit Distance).
+     */
+    fun levenshteinDistance(s1: String, s2: String): Int {
+        val len1 = s1.length
+        val len2 = s2.length
+        val dp = Array(len1 + 1) { IntArray(len2 + 1) }
+
+        for (i in 0..len1) dp[i][0] = i
+        for (j in 0..len2) dp[0][j] = j
+
+        for (i in 1..len1) {
+            for (j in 1..len2) {
+                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
+                dp[i][j] = minOf(
+                    dp[i - 1][j] + 1,       // эрозия / удаление
+                    dp[i][j - 1] + 1,       // вставка
+                    dp[i - 1][j - 1] + cost  // замена
+                )
+            }
+        }
+        return dp[len1][len2]
+    }
+
+    /**
+     * Интеллектуальный Fuzzy Matcher с поддержкой редакционного расстояния Левенштейна:
+     * 1. Защита от ложных совпадений коротких боксов (например, одиночные буквы 'з', 'а' не совпадают с 'альянс').
+     * 2. Нормализация мягких знаков ('алянс' <-> 'альянс').
+     * 3. Допуск пропусков/замен символов через расстояние Левенштейна.
      */
     private fun isFuzzyMatch(candidate: String, query: String): Boolean {
         val normC = normalizeString(candidate)
@@ -631,28 +657,40 @@ object OcrEngine {
         if (normQ.isEmpty()) return true
         if (normC.isEmpty()) return false
 
-        // 1. Точное или подстрочное совпадение
-        if (normC == normQ || normC.contains(normQ) || normQ.contains(normC)) return true
+        // Защита от ложных совпадений: короткие кандидаты (1-2 буквы) не могут совпадать с длинным запросом через contains()
+        if (normC.length <= 2 && normQ.length > 2) {
+            return normC == normQ
+        }
 
-        // 2. Каноническая нормализация путаемых кириллических глифов в мелких шрифтах
-        val canonC = normC.replace('в', 'б').replace('и', 'н').replace('м', 'н').replace('з', 'с')
-        val canonQ = normQ.replace('в', 'б').replace('и', 'н').replace('м', 'н').replace('з', 'с')
-        if (canonC == canonQ || canonC.contains(canonQ) || canonQ.contains(canonC)) return true
+        // 1. Точное или подстрочное совпадение
+        if (normC == normQ || normC.contains(normQ) || (normC.length >= 3 && normQ.contains(normC))) return true
+
+        // 2. Нормализация основ (игнорирование пропущенных или размытых мягких/твердых знаков 'ь' и 'ъ')
+        val stemC = normC.replace("ь", "").replace("ъ", "")
+        val stemQ = normQ.replace("ь", "").replace("ъ", "")
+        if (stemC == stemQ || stemC.contains(stemQ) || (stemC.length >= 3 && stemQ.contains(stemC))) return true
+
+        // 3. Каноническая нормализация путаемых кириллических глифов в мелких шрифтах
+        val canonC = stemC.replace('в', 'б').replace('и', 'н').replace('м', 'н').replace('з', 'с').replace('г', 'р')
+        val canonQ = stemQ.replace('в', 'б').replace('и', 'н').replace('м', 'н').replace('з', 'с').replace('г', 'р')
+        if (canonC == canonQ || canonC.contains(canonQ) || (canonC.length >= 3 && canonQ.contains(canonC))) return true
 
         val qLen = normQ.length
-        if (qLen <= 2) return normC == normQ || canonC == canonQ
+        val maxDist = maxOf(1, qLen / 3)
 
-        // 3. Расстояние Левенштейна (допуск: 1 ошибка на 3-4 символа)
-        val maxDist = max(1, qLen / 3)
-        for (i in 0..max(0, canonC.length - qLen)) {
-            val sub = canonC.substring(i, min(canonC.length, i + qLen))
-            var diff = 0
-            for (j in 0 until min(sub.length, qLen)) {
-                if (sub[j] != canonQ[j]) diff++
-            }
-            diff += abs(sub.length - qLen)
-            if (diff <= maxDist) return true
+        // 4. Оценка честного расстояния Левенштейна
+        if (abs(canonC.length - canonQ.length) <= maxDist) {
+            val dist = levenshteinDistance(canonC, canonQ)
+            if (dist <= maxDist) return true
         }
+
+        // Выравнивание по подстрокам через расстояние Левенштейна
+        for (i in 0..maxOf(0, canonC.length - qLen)) {
+            val sub = canonC.substring(i, minOf(canonC.length, i + qLen))
+            val subDist = levenshteinDistance(sub, canonQ)
+            if (subDist <= maxDist) return true
+        }
+
         return false
     }
 
