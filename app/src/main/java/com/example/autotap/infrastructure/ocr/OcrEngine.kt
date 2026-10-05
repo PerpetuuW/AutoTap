@@ -730,11 +730,13 @@ object OcrEngine {
             bitmap
         }
 
-        val localBmp = if (roi != null) {
-            val safeLeft = roi.left.coerceIn(0, srcBmp.width - 1)
-            val safeTop = roi.top.coerceIn(0, srcBmp.height - 1)
-            val safeWidth = roi.width().coerceIn(1, srcBmp.width - safeLeft)
-            val safeHeight = roi.height().coerceIn(1, srcBmp.height - safeTop)
+        val effectiveRoi = roi ?: service?.let { OcrQueryMetadataManager.getPersistentRoi(it.applicationContext, targetQuery) }
+
+        val localBmp = if (effectiveRoi != null) {
+            val safeLeft = effectiveRoi.left.coerceIn(0, srcBmp.width - 1)
+            val safeTop = effectiveRoi.top.coerceIn(0, srcBmp.height - 1)
+            val safeWidth = effectiveRoi.width().coerceIn(1, srcBmp.width - safeLeft)
+            val safeHeight = effectiveRoi.height().coerceIn(1, srcBmp.height - safeTop)
             Bitmap.createBitmap(srcBmp, safeLeft, safeTop, safeWidth, safeHeight)
         } else {
             srcBmp
@@ -742,11 +744,11 @@ object OcrEngine {
 
         val cleanQuery = targetQuery.trim()
         val stripH = 48
-        val gOffsetX = roi?.left?.coerceIn(0, srcBmp.width - 1) ?: 0
-        val gOffsetY = roi?.top?.coerceIn(0, srcBmp.height - 1) ?: 0
+        val gOffsetX = effectiveRoi?.left?.coerceIn(0, srcBmp.width - 1) ?: 0
+        val gOffsetY = effectiveRoi?.top?.coerceIn(0, srcBmp.height - 1) ?: 0
 
         // 2. Прямое распознавание выделенной области ROI целиком (если ROI задан компактным окном)
-        if (roi != null && localBmp.width in 16..400 && localBmp.height in 12..200) {
+        if (effectiveRoi != null && localBmp.width in 16..400 && localBmp.height in 12..200) {
             val directRec = recognizeTextWithOnnx(localBmp)
             if (!directRec.isNullOrBlank()) {
                 AppLogger.log(null, "OCR_ROI_DIRECT", "Прямое распознавание ROI: '$directRec'")
@@ -768,6 +770,7 @@ object OcrEngine {
                     )
                     val elapsed = System.currentTimeMillis() - perfStart
                     AppLogger.log(null, "OCR", "OCR (Прямой ROI Успех): '$directRec' за ${elapsed}мс")
+                    OcrQueryMetadataManager.registerOcrSuccess(cleanQuery)
                     if (localBmp != srcBmp && !localBmp.isRecycled) localBmp.recycle()
                     if (srcBmp != bitmap && !srcBmp.isRecycled) srcBmp.recycle()
                     return listOf(matchResult)
@@ -790,9 +793,17 @@ object OcrEngine {
 
             for (box in filteredBoxes) {
                 val f = threadPool.submit(java.util.concurrent.Callable {
-                    val bW = box.width()
                     val bH = box.height()
-                    val crop = Bitmap.createBitmap(localBmp, box.left, box.top, bW, bH)
+                    // Добавляем горизонтальный и вертикальный паддинг (25% высоты строки), чтобы предотвратить "проглатывание" первых и последних букв
+                    val padX = (bH * 0.25f).toInt().coerceAtLeast(8)
+                    val padY = (bH * 0.15f).toInt().coerceAtLeast(4)
+
+                    val cropL = (box.left - padX).coerceIn(0, localBmp.width - 1)
+                    val cropT = (box.top - padY).coerceIn(0, localBmp.height - 1)
+                    val cropR = (box.right + padX).coerceIn(cropL + 1, localBmp.width)
+                    val cropB = (box.bottom + padY).coerceIn(cropT + 1, localBmp.height)
+
+                    val crop = Bitmap.createBitmap(localBmp, cropL, cropT, cropR - cropL, cropB - cropT)
                     val rec = recognizeTextWithOnnx(crop)
                     if (crop != localBmp && !crop.isRecycled) crop.recycle()
                     Pair(box, rec)
@@ -832,6 +843,7 @@ object OcrEngine {
                         if (cleanQuery.isNotBlank()) {
                             val elapsed = System.currentTimeMillis() - perfStart
                             AppLogger.log(null, "OCR", "Game OCR Успех: '$rec' (совпало с '$targetQuery') в (${matchResult.clickX}, ${matchResult.clickY}) за ${elapsed}мс")
+                            OcrQueryMetadataManager.registerOcrSuccess(cleanQuery)
                             threadPool.shutdownNow()
                             if (localBmp != srcBmp && !localBmp.isRecycled) localBmp.recycle()
                             if (srcBmp != bitmap && !srcBmp.isRecycled) srcBmp.recycle()

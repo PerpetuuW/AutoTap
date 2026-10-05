@@ -2,6 +2,7 @@ package com.example.autotap.infrastructure.engine
 
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.widget.Toast
 import com.example.autotap.core.logger.AppLogger
 import com.example.autotap.core.math.PathCompressionEngine
 import com.example.autotap.core.safety.SafetyGovernor
@@ -552,6 +553,23 @@ class MacroExecutionEngine(
                                                     matchedOcrRect = Rect(firstMatch.rectLeft, firstMatch.rectTop, firstMatch.rectRight, firstMatch.rectBottom)
                                                     variableContext["last_ocr"] = firstMatch.matchedText
                                                     break
+                                                } else {
+                                                    val shouldTriggerManualRoi = com.example.autotap.infrastructure.ocr.OcrQueryMetadataManager.registerOcrFailure(query)
+                                                    if (shouldTriggerManualRoi) {
+                                                        withContext(Dispatchers.Main) {
+                                                            val appCtx = accessibilityServiceProvider()?.applicationContext
+                                                            if (appCtx != null) {
+                                                                Toast.makeText(appCtx, "Текст '$query' не найден 3 раза подряд. Укажите область расположения текста!", Toast.LENGTH_LONG).show()
+                                                                val orch = com.example.autotap.infrastructure.orchestrator.AutoTapOrchestrator.getInstance(appCtx)
+                                                                orch.startRoiSelector(roi) { selectedRoi ->
+                                                                    if (selectedRoi != null) {
+                                                                        com.example.autotap.infrastructure.ocr.OcrQueryMetadataManager.savePersistentRoi(appCtx, query, selectedRoi)
+                                                                        Toast.makeText(appCtx, "Метаданные ROI и высота для '$query' закреплены за шаблоном!", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                             delay(checkInterval)

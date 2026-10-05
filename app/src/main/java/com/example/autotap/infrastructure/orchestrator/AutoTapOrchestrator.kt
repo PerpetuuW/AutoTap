@@ -761,7 +761,21 @@ class AutoTapOrchestrator private constructor(context: Context) : ControlPanelLi
                                     }
                                     Toast.makeText(appContext, "OCR: '$scorePct%' · '${best.matchedText}'", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    Toast.makeText(appContext, "Текст '${action.targetScriptOrQuery}' не найден", Toast.LENGTH_SHORT).show()
+                                    val query = action.targetScriptOrQuery
+                                    val shouldFallback = com.example.autotap.infrastructure.ocr.OcrQueryMetadataManager.registerOcrFailure(query)
+                                    if (shouldFallback) {
+                                        Toast.makeText(appContext, "Текст '$query' не найден после 3 попыток. Укажите область текста на экране!", Toast.LENGTH_LONG).show()
+                                        startRoiSelector(roi) { selectedRoi ->
+                                            if (selectedRoi != null) {
+                                                com.example.autotap.infrastructure.ocr.OcrQueryMetadataManager.savePersistentRoi(appContext, query, selectedRoi)
+                                                val updated = action.copy(roiLeft = selectedRoi.left, roiTop = selectedRoi.top, roiRight = selectedRoi.right, roiBottom = selectedRoi.bottom)
+                                                targetManager.updateAction(updated)
+                                                Toast.makeText(appContext, "Метаданные ROI и высота для '$query' закреплены за шаблоном!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    } else {
+                                        Toast.makeText(appContext, "Текст '${action.targetScriptOrQuery}' не найден", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         } finally {
