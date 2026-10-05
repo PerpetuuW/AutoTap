@@ -35,6 +35,9 @@ object YandexAdsManager {
     private const val PREFS_NAME = "autotap_ads_prefs"
     private const val KEY_TEST_DEVICE_MODE = "pref_test_device_mode"
 
+    private val isAdLoading = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isAdShowing = java.util.concurrent.atomic.AtomicBoolean(false)
+
     @Volatile
     private var isInitialized = false
 
@@ -76,19 +79,35 @@ object YandexAdsManager {
     ) {
         initialize(activity)
 
-        val effectiveTestMode = forceTestMode || isTestDeviceMode(activity)
-        val primaryUnitId = if (effectiveTestMode) DEMO_REWARDED_AD_UNIT_ID else PROD_REWARDED_AD_UNIT_ID
-        AppLogger.log(null, "YANDEX_ADS", "Запрос показа рекламы: unitId=$primaryUnitId (testMode=$effectiveTestMode)")
-        onStatusMessage("Загрузка рекламного видеоролика Yandex...")
+        if (isAdShowing.get()) {
+            AppLogger.log(null, "YANDEX_ADS", "Игнорирование запроса: реклама уже воспроизводится на экране")
+            onStatusMessage("Реклама уже открыта!")
+            return
+        }
 
-        loadAndShowInternal(
-            activity = activity,
-            adUnitId = primaryUnitId,
-            isFallback = false,
-            forceTestMode = effectiveTestMode,
-            onRewarded = onRewarded,
-            onStatusMessage = onStatusMessage
-        )
+        if (isAdLoading.compareAndSet(false, true)) {
+            val effectiveTestMode = forceTestMode || isTestDeviceMode(activity)
+            val primaryUnitId = if (effectiveTestMode) DEMO_REWARDED_AD_UNIT_ID else PROD_REWARDED_AD_UNIT_ID
+            AppLogger.log(null, "YANDEX_ADS", "Запрос показа рекламы: unitId=$primaryUnitId (testMode=$effectiveTestMode)")
+            onStatusMessage("Загрузка рекламного видеоролика Yandex...")
+
+            loadAndShowInternal(
+                activity = activity,
+                adUnitId = primaryUnitId,
+                isFallback = false,
+                forceTestMode = effectiveTestMode,
+                onRewarded = onRewarded,
+                onStatusMessage = { msg ->
+                    if (msg.contains("Ошибка") || msg.contains("Не удалось")) {
+                        isAdLoading.set(false)
+                    }
+                    onStatusMessage(msg)
+                }
+            )
+        } else {
+            AppLogger.log(null, "YANDEX_ADS", "Игнорирование запроса: реклама уже загружается...")
+            onStatusMessage("Загрузка ролика уже выполняется...")
+        }
     }
 
     private fun loadAndShowInternal(
@@ -113,10 +132,14 @@ object YandexAdsManager {
                 rewardedAd.setAdEventListener(object : RewardedAdEventListener {
                     override fun onAdShown() {
                         adStartTimestamp = System.currentTimeMillis()
+                        isAdShowing.set(true)
+                        isAdLoading.set(false)
                         AppLogger.log(null, "YANDEX_ADS", "Рекламный ролик отображен на экране (старт: $adStartTimestamp)")
                     }
 
                     override fun onAdDismissed() {
+                        isAdShowing.set(false)
+                        isAdLoading.set(false)
                         val durationMs = if (adStartTimestamp > 0L) System.currentTimeMillis() - adStartTimestamp else 0L
                         AppLogger.log(null, "YANDEX_ADS", "Пользователь закрыл рекламный ролик (время просмотра: ${durationMs}мс)")
                         if (adStartTimestamp > 0L && durationMs < MIN_WATCH_DURATION_MS && !rewardClaimed.get()) {
@@ -131,11 +154,15 @@ object YandexAdsManager {
                         if (adStartTimestamp > 0L && durationMs < MIN_WATCH_DURATION_MS) {
                             AppLogger.log(null, "YANDEX_ADS", "Защита 15с: Награда отклонена (просмотрено всего ${durationMs / 1000}с)")
                             onStatusMessage("Просмотр завершен раньше 15 секунд! Награда не зачислена.")
+                            isAdShowing.set(false)
+                            isAdLoading.set(false)
                             return
                         }
 
                         if (rewardClaimed.compareAndSet(false, true)) {
                             AppLogger.log(null, "YANDEX_ADS", "Вознаграждение зачислено (1 ролик, ${durationMs / 1000}с): type=${reward.type}, amount=${reward.amount}")
+                            isAdShowing.set(false)
+                            isAdLoading.set(false)
                             onRewarded()
                         } else {
                             AppLogger.log(null, "YANDEX_ADS", "Предотвращено повторное зачисление рекламы за один показ")
@@ -143,6 +170,8 @@ object YandexAdsManager {
                     }
 
                     override fun onAdFailedToShow(adError: com.yandex.mobile.ads.common.AdError) {
+                        isAdShowing.set(false)
+                        isAdLoading.set(false)
                         AppLogger.log(null, "YANDEX_ADS", "Ошибка показа рекламы: ${adError.description}")
                         onStatusMessage("Ошибка показа видео: ${adError.description}")
                     }
@@ -174,6 +203,8 @@ object YandexAdsManager {
                         onStatusMessage = onStatusMessage
                     )
                 } else {
+                    isAdLoading.set(false)
+                    isAdShowing.set(false)
                     onStatusMessage("Не удалось загрузить рекламный ролик (${error.description}). Попробуйте тестовый режим.")
                 }
             }
