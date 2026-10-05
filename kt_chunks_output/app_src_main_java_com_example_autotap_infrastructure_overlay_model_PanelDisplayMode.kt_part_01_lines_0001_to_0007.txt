@@ -1,0 +1,17 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\model\PanelDisplayMode.kt
+ PART: 1/1 | LINES: 1..7
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.model
+   2 | [D:0] | 
+   3 | [D:0] | enum class PanelDisplayMode {
+   4 | [D:1] |     EXPANDED,            // Полный двухстрочный режим (все инструменты)
+   5 | [D:1] |     COMPACT_SINGLE_ROW,  // Компактная одиночная строка (быстрый доступ)
+   6 | [D:1] |     MINI_BUBBLE          // Минималистичный плавающий бабл
+   7 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_model_PanelDisplayMode.kt_part_01_lines_0001_to_0007.txt
+================================================================================

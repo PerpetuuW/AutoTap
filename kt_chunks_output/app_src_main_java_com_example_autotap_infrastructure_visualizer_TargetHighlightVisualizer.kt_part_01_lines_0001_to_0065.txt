@@ -1,0 +1,75 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\visualizer\TargetHighlightVisualizer.kt
+ PART: 1/1 | LINES: 1..65
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.visualizer
+   2 | [D:0] | 
+   3 | [D:0] | import android.content.Context
+   4 | [D:0] | import android.graphics.Color
+   5 | [D:0] | import android.graphics.Rect
+   6 | [D:0] | import android.graphics.drawable.GradientDrawable
+   7 | [D:0] | import android.os.Handler
+   8 | [D:0] | import android.os.Looper
+   9 | [D:0] | import android.view.Gravity
+  10 | [D:0] | import android.view.View
+  11 | [D:0] | import android.view.WindowManager
+  12 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  13 | [D:0] | 
+  14 | [D:0] | object TargetHighlightVisualizer {
+  15 | [D:1] | 
+  16 | [D:1] |     private val mainHandler = Handler(Looper.getMainLooper())
+  17 | [D:1] | 
+  18 | [D:1] |     fun showSpringHighlight(context: Context, overlayWindowManager: OverlayWindowManager, rect: Rect, durationMs: Long = 1400L) {
+  19 | [D:2] |         val dm = context.resources.displayMetrics
+  20 | [D:2] |         val boxView = View(context).apply {
+  21 | [D:3] |             background = GradientDrawable().apply {
+  22 | [D:4] |                 setStroke((2.5f * dm.density).toInt(), Color.parseColor("#00F5D4"))
+  23 | [D:4] |                 setColor(Color.parseColor("#2500F5D4"))
+  24 | [D:4] |                 cornerRadius = 6f * dm.density
+  25 | [D:3] |             }
+  26 | [D:3] |             scaleX = 1.15f
+  27 | [D:3] |             scaleY = 1.15f
+  28 | [D:3] |             alpha = 0f
+  29 | [D:2] |         }
+  30 | [D:2] | 
+  31 | [D:2] |         val params = overlayWindowManager.createLayoutParams(
+  32 | [D:2] |             width = rect.width(),
+  33 | [D:2] |             height = rect.height(),
+  34 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+  35 | [D:2] |                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+  36 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+  37 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+  38 | [D:2] |         ).apply {
+  39 | [D:3] |             gravity = Gravity.TOP or Gravity.START
+  40 | [D:3] |             x = rect.left
+  41 | [D:3] |             y = rect.top
+  42 | [D:2] |         }
+  43 | [D:2] | 
+  44 | [D:2] |         overlayWindowManager.addViewSafe(boxView, params)
+  45 | [D:2] | 
+  46 | [D:2] |         boxView.animate()
+  47 | [D:2] |             .scaleX(1.0f)
+  48 | [D:2] |             .scaleY(1.0f)
+  49 | [D:2] |             .alpha(1.0f)
+  50 | [D:2] |             .setDuration(160)
+  51 | [D:2] |             .setInterpolator(android.view.animation.DecelerateInterpolator())
+  52 | [D:2] |             .withEndAction {
+  53 | [D:3] |                 mainHandler.postDelayed({
+  54 | [D:4] |                     if (boxView.isAttachedToWindow) {
+  55 | [D:5] |                         boxView.animate().alpha(0f).setDuration(220).withEndAction {
+  56 | [D:6] |                             overlayWindowManager.removeViewSafe(boxView)
+  57 | [D:5] |                         }.start()
+  58 | [D:4] |                     } else {
+  59 | [D:5] |                         overlayWindowManager.removeViewSafe(boxView)
+  60 | [D:4] |                     }
+  61 | [D:3] |                 }, durationMs)
+  62 | [D:2] |             }
+  63 | [D:2] |             .start()
+  64 | [D:1] |     }
+  65 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_visualizer_TargetHighlightVisualizer.kt_part_01_lines_0001_to_0065.txt
+================================================================================

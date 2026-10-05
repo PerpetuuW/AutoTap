@@ -1,0 +1,583 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\capture\MagicWandEditorOverlay.kt
+ PART: 1/1 | LINES: 1..573
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.capture
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Bitmap
+   6 | [D:0] | import android.graphics.Canvas
+   7 | [D:0] | import android.graphics.Color
+   8 | [D:0] | import android.graphics.Paint
+   9 | [D:0] | import android.graphics.Rect
+  10 | [D:0] | import android.graphics.RectF
+  11 | [D:0] | import android.graphics.Typeface
+  12 | [D:0] | import android.graphics.drawable.GradientDrawable
+  13 | [D:0] | import android.view.Gravity
+  14 | [D:0] | import android.view.MotionEvent
+  15 | [D:0] | import android.view.ScaleGestureDetector
+  16 | [D:0] | import android.view.View
+  17 | [D:0] | import android.view.WindowManager
+  18 | [D:0] | import android.widget.Button
+  19 | [D:0] | import android.widget.FrameLayout
+  20 | [D:0] | import android.widget.LinearLayout
+  21 | [D:0] | import android.widget.SeekBar
+  22 | [D:0] | import android.widget.TextView
+  23 | [D:0] | import androidx.core.graphics.toColorInt
+  24 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  25 | [D:0] | import com.example.autotap.infrastructure.vision.SmartMaskEngine
+  26 | [D:0] | import java.util.ArrayDeque
+  27 | [D:0] | import java.util.Locale
+  28 | [D:0] | 
+  29 | [D:0] | @SuppressLint("SetTextI18n", "ClickableViewAccessibility")
+  30 | [D:0] | class MagicWandEditorOverlay(
+  31 | [D:0] |     private val context: Context,
+  32 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  33 | [D:0] |     private val rawBitmap: Bitmap,
+  34 | [D:0] |     initialMask: Bitmap,
+  35 | [D:0] |     private val onApplied: (Bitmap) -> Unit,
+  36 | [D:0] |     private val onCancelled: () -> Unit
+  37 | [D:0] | ) {
+  38 | [D:1] | 
+  39 | [D:1] |     enum class ToolMode { WAND, ERASER, RESTORE }
+  40 | [D:1] | 
+  41 | [D:1] |     private var rootView: FrameLayout? = null
+  42 | [D:1] |     private var currentTool = ToolMode.WAND
+  43 | [D:1] |     private var currentMask = initialMask.copy(Bitmap.Config.ARGB_8888, true)
+  44 | [D:1] |     private val undoStack = ArrayDeque<Bitmap>()
+  45 | [D:1] |     private var wandTolerance = 25
+  46 | [D:1] |     private var brushRadius = 2
+  47 | [D:1] | 
+  48 | [D:1] |     private var zoomFactor = 8f
+  49 | [D:1] |     private var panX = 0f
+  50 | [D:1] |     private var panY = 0f
+  51 | [D:1] | 
+  52 | [D:1] |     private var tvToolParamLabel: TextView? = null
+  53 | [D:1] |     private var sbToolParam: SeekBar? = null
+  54 | [D:1] | 
+  55 | [D:1] |     private val dm = context.resources.displayMetrics
+  56 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  57 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  58 | [D:1] | 
+  59 | [D:1] |     private fun safeReplaceCurrentMask(newMask: Bitmap) {
+  60 | [D:2] |         if (currentMask != newMask && !currentMask.isRecycled && !undoStack.contains(currentMask)) {
+  61 | [D:3] |             currentMask.recycle()
+  62 | [D:2] |         }
+  63 | [D:2] |         currentMask = newMask
+  64 | [D:1] |     }
+  65 | [D:1] | 
+  66 | [D:1] |     fun show() {
+  67 | [D:2] |         val screenW = dm.widthPixels
+  68 | [D:2] |         val cardW = dp(320).coerceAtMost((screenW * 0.94f).toInt())
+  69 | [D:2] | 
+  70 | [D:2] |         val root = FrameLayout(context).apply {
+  71 | [D:3] |             setBackgroundColor("#99000000".toColorInt())
+  72 | [D:2] |         }
+  73 | [D:2] |         rootView = root
+  74 | [D:2] | 
+  75 | [D:2] |         val card = LinearLayout(context).apply {
+  76 | [D:3] |             orientation = LinearLayout.VERTICAL
+  77 | [D:3] |             background = GradientDrawable(
+  78 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+  79 | [D:3] |                 intArrayOf("#F8161B22".toColorInt(), "#F80D1117".toColorInt())
+  80 | [D:3] |             ).apply {
+  81 | [D:4] |                 cornerRadius = dpF(16f)
+  82 | [D:4] |                 setStroke(dp(1), "#C084FC".toColorInt())
+  83 | [D:3] |             }
+  84 | [D:3] |             val p = dp(10)
+  85 | [D:3] |             setPadding(p, p, p, p)
+  86 | [D:3] |             elevation = dpF(24f)
+  87 | [D:2] |         }
+  88 | [D:2] | 
+  89 | [D:2] |         val header = LinearLayout(context).apply {
+  90 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+  91 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+  92 | [D:3] |             setPadding(0, 0, 0, dp(6))
+  93 | [D:2] |         }
+  94 | [D:2] |         val tvTitle = TextView(context).apply {
+  95 | [D:3] |             text = "СТУДИЯ МАСКИ"
+  96 | [D:3] |             setTextColor("#C084FC".toColorInt())
+  97 | [D:3] |             textSize = 10f
+  98 | [D:3] |             typeface = Typeface.MONOSPACE
+  99 | [D:2] |         }
+ 100 | [D:2] |         header.addView(tvTitle, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+ 101 | [D:2] | 
+ 102 | [D:2] |         val tvZoomStatus = TextView(context).apply {
+ 103 | [D:3] |             text = "8.0x"
+ 104 | [D:3] |             setTextColor("#58A6FF".toColorInt())
+ 105 | [D:3] |             textSize = 9.5f
+ 106 | [D:3] |             typeface = Typeface.MONOSPACE
+ 107 | [D:3] |             setPadding(dp(4), 0, dp(4), 0)
+ 108 | [D:2] |         }
+ 109 | [D:2] | 
+ 110 | [D:2] |         lateinit var zoomCanvasView: View
+ 111 | [D:2] | 
+ 112 | [D:2] |         val btnZoomOut = createSmallHeaderBtn("-") {
+ 113 | [D:3] |             if (zoomFactor > 2f) {
+ 114 | [D:4] |                 zoomFactor = (zoomFactor - 2f).coerceAtLeast(2f)
+ 115 | [D:4] |                 tvZoomStatus.text = String.format(Locale.US, "%.1fx", zoomFactor)
+ 116 | [D:4] |                 zoomCanvasView.invalidate()
+ 117 | [D:3] |             }
+ 118 | [D:2] |         }
+ 119 | [D:2] |         header.addView(btnZoomOut)
+ 120 | [D:2] |         header.addView(tvZoomStatus)
+ 121 | [D:2] | 
+ 122 | [D:2] |         val btnZoomIn = createSmallHeaderBtn("+") {
+ 123 | [D:3] |             if (zoomFactor < 24f) {
+ 124 | [D:4] |                 zoomFactor = (zoomFactor + 2f).coerceAtMost(24f)
+ 125 | [D:4] |                 tvZoomStatus.text = String.format(Locale.US, "%.1fx", zoomFactor)
+ 126 | [D:4] |                 zoomCanvasView.invalidate()
+ 127 | [D:3] |             }
+ 128 | [D:2] |         }
+ 129 | [D:2] |         header.addView(btnZoomIn)
+ 130 | [D:2] | 
+ 131 | [D:2] |         val btnResetZoom = createSmallHeaderBtn("СБРОС") {
+ 132 | [D:3] |             zoomFactor = 8f
+ 133 | [D:3] |             panX = 0f
+ 134 | [D:3] |             panY = 0f
+ 135 | [D:3] |             tvZoomStatus.text = "8.0x"
+ 136 | [D:3] |             zoomCanvasView.invalidate()
+ 137 | [D:2] |         }
+ 138 | [D:2] |         header.addView(btnResetZoom)
+ 139 | [D:2] |         card.addView(header)
+ 140 | [D:2] | 
+ 141 | [D:2] |         val zoomView = object : View(context) {
+ 142 | [D:3] |             private val checkerLight = Paint().apply { color = "#281142".toColorInt() }
+ 143 | [D:3] |             private val checkerDark = Paint().apply { color = "#10051C".toColorInt() }
+ 144 | [D:3] |             private val bmpPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+ 145 | [D:3] |             private val gridLinePaint = Paint().apply {
+ 146 | [D:4] |                 color = "#30C084FC".toColorInt()
+ 147 | [D:4] |                 style = Paint.Style.STROKE
+ 148 | [D:4] |                 strokeWidth = 1f
+ 149 | [D:3] |             }
+ 150 | [D:3] |             private val srcR = Rect()
+ 151 | [D:3] |             private val dstR = RectF()
+ 152 | [D:3] | 
+ 153 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 154 | [D:4] |                 super.onDraw(canvas)
+ 155 | [D:4] |                 val w = width.toFloat()
+ 156 | [D:4] |                 val h = height.toFloat()
+ 157 | [D:4] |                 val cellSize = dpF(6f)
+ 158 | [D:4] | 
+ 159 | [D:4] |                 var y = 0f
+ 160 | [D:4] |                 var row = 0
+ 161 | [D:4] |                 while (y < h) {
+ 162 | [D:5] |                     var x = 0f
+ 163 | [D:5] |                     var col = 0
+ 164 | [D:5] |                     while (x < w) {
+ 165 | [D:6] |                         val p = if ((row + col) % 2 == 0) checkerLight else checkerDark
+ 166 | [D:6] |                         canvas.drawRect(x, y, x + cellSize, y + cellSize, p)
+ 167 | [D:6] |                         x += cellSize
+ 168 | [D:6] |                         col++
+ 169 | [D:5] |                     }
+ 170 | [D:5] |                     y += cellSize
+ 171 | [D:5] |                     row++
+ 172 | [D:4] |                 }
+ 173 | [D:4] | 
+ 174 | [D:4] |                 srcR.set(0, 0, currentMask.width, currentMask.height)
+ 175 | [D:4] |                 val baseScale = minOf((w - dpF(8f)) / currentMask.width, (h - dpF(8f)) / currentMask.height)
+ 176 | [D:4] |                 val effectiveScale = baseScale * (zoomFactor / 8f)
+ 177 | [D:4] |                 val drawW = currentMask.width * effectiveScale
+ 178 | [D:4] |                 val drawH = currentMask.height * effectiveScale
+ 179 | [D:4] | 
+ 180 | [D:4] |                 val dx = (w - drawW) / 2f + panX
+ 181 | [D:4] |                 val dy = (h - drawH) / 2f + panY
+ 182 | [D:4] |                 dstR.set(dx, dy, dx + drawW, dy + drawH)
+ 183 | [D:4] |                 canvas.drawBitmap(currentMask, srcR, dstR, bmpPaint)
+ 184 | [D:4] | 
+ 185 | [D:4] |                 if (effectiveScale >= dpF(4f)) {
+ 186 | [D:5] |                     val pxW = drawW / currentMask.width
+ 187 | [D:5] |                     val pxH = drawH / currentMask.height
+ 188 | [D:5] |                     for (gx in 0..currentMask.width) {
+ 189 | [D:6] |                         val lineX = dx + gx * pxW
+ 190 | [D:6] |                         if (lineX in 0f..w) {
+ 191 | [D:7] |                             canvas.drawLine(lineX, dy.coerceAtLeast(0f), lineX, (dy + drawH).coerceAtMost(h), gridLinePaint)
+ 192 | [D:6] |                         }
+ 193 | [D:5] |                     }
+ 194 | [D:5] |                     for (gy in 0..currentMask.height) {
+ 195 | [D:6] |                         val lineY = dy + gy * pxH
+ 196 | [D:6] |                         if (lineY in 0f..h) {
+ 197 | [D:7] |                             canvas.drawLine(dx.coerceAtLeast(0f), lineY, (dx + drawW).coerceAtMost(w), lineY, gridLinePaint)
+ 198 | [D:6] |                         }
+ 199 | [D:5] |                     }
+ 200 | [D:4] |                 }
+ 201 | [D:3] |             }
+ 202 | [D:3] | 
+ 203 | [D:3] |             fun mapTouchToBitmap(touchX: Float, touchY: Float): Pair<Int, Int>? {
+ 204 | [D:4] |                 val baseScale = minOf((width - dpF(8f)) / currentMask.width, (height - dpF(8f)) / currentMask.height)
+ 205 | [D:4] |                 val effectiveScale = baseScale * (zoomFactor / 8f)
+ 206 | [D:4] |                 val drawW = currentMask.width * effectiveScale
+ 207 | [D:4] |                 val drawH = currentMask.height * effectiveScale
+ 208 | [D:4] |                 val dx = (width - drawW) / 2f + panX
+ 209 | [D:4] |                 val dy = (height - drawH) / 2f + panY
+ 210 | [D:4] | 
+ 211 | [D:4] |                 if (touchX in dx..(dx + drawW) && touchY in dy..(dy + drawH)) {
+ 212 | [D:5] |                     val bx = ((touchX - dx) / effectiveScale).toInt().coerceIn(0, currentMask.width - 1)
+ 213 | [D:5] |                     val by = ((touchY - dy) / effectiveScale).toInt().coerceIn(0, currentMask.height - 1)
+ 214 | [D:5] |                     return Pair(bx, by)
+ 215 | [D:4] |                 }
+ 216 | [D:4] |                 return null
+ 217 | [D:3] |             }
+ 218 | [D:2] |         }
+ 219 | [D:2] |         zoomCanvasView = zoomView
+ 220 | [D:2] |         card.addView(zoomView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(210)).apply {
+ 221 | [D:3] |             bottomMargin = dp(6)
+ 222 | [D:2] |         })
+ 223 | [D:2] | 
+ 224 | [D:2] |         fun saveUndo() {
+ 225 | [D:3] |             if (undoStack.size >= 8) {
+ 226 | [D:4] |                 val oldest = undoStack.removeFirst()
+ 227 | [D:4] |                 if (!oldest.isRecycled && oldest != currentMask) oldest.recycle()
+ 228 | [D:3] |             }
+ 229 | [D:3] |             undoStack.push(currentMask.copy(Bitmap.Config.ARGB_8888, true))
+ 230 | [D:2] |         }
+ 231 | [D:2] | 
+ 232 | [D:2] |         var lastTouchX = 0f
+ 233 | [D:2] |         var lastTouchY = 0f
+ 234 | [D:2] |         val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+ 235 | [D:3] |             override fun onScale(detector: ScaleGestureDetector): Boolean {
+ 236 | [D:4] |                 zoomFactor = (zoomFactor * detector.scaleFactor).coerceIn(2f, 24f)
+ 237 | [D:4] |                 tvZoomStatus.text = String.format(Locale.US, "%.1fx", zoomFactor)
+ 238 | [D:4] |                 zoomView.invalidate()
+ 239 | [D:4] |                 return true
+ 240 | [D:3] |             }
+ 241 | [D:2] |         })
+ 242 | [D:2] | 
+ 243 | [D:2] |         zoomView.setOnTouchListener { _, event ->
+ 244 | [D:3] |             scaleDetector.onTouchEvent(event)
+ 245 | [D:3] | 
+ 246 | [D:3] |             if (event.pointerCount >= 2) {
+ 247 | [D:4] |                 when (event.actionMasked) {
+ 248 | [D:5] |                     MotionEvent.ACTION_MOVE -> {
+ 249 | [D:6] |                         val dx = event.x - lastTouchX
+ 250 | [D:6] |                         val dy = event.y - lastTouchY
+ 251 | [D:6] |                         panX += dx
+ 252 | [D:6] |                         panY += dy
+ 253 | [D:6] |                         zoomView.invalidate()
+ 254 | [D:5] |                     }
+ 255 | [D:4] |                 }
+ 256 | [D:4] |                 lastTouchX = event.x
+ 257 | [D:4] |                 lastTouchY = event.y
+ 258 | [D:4] |                 return@setOnTouchListener true
+ 259 | [D:3] |             }
+ 260 | [D:3] | 
+ 261 | [D:3] |             val pt = zoomView.mapTouchToBitmap(event.x, event.y)
+ 262 | [D:3] |             if (pt != null) {
+ 263 | [D:4] |                 when (event.action) {
+ 264 | [D:5] |                     MotionEvent.ACTION_DOWN -> {
+ 265 | [D:6] |                         lastTouchX = event.x
+ 266 | [D:6] |                         lastTouchY = event.y
+ 267 | [D:6] |                         saveUndo()
+ 268 | [D:6] |                         when (currentTool) {
+ 269 | [D:7] |                             ToolMode.WAND -> {
+ 270 | [D:8] |                                 val next = SmartMaskEngine.magicWandEraseAt(currentMask, pt.first, pt.second, wandTolerance)
+ 271 | [D:8] |                                 safeReplaceCurrentMask(next)
+ 272 | [D:8] |                                 zoomView.invalidate()
+ 273 | [D:7] |                             }
+ 274 | [D:7] |                             ToolMode.ERASER -> {
+ 275 | [D:8] |                                 val next = SmartMaskEngine.paintBrushAt(currentMask, null, pt.first, pt.second, brushRadius, true)
+ 276 | [D:8] |                                 safeReplaceCurrentMask(next)
+ 277 | [D:8] |                                 zoomView.invalidate()
+ 278 | [D:7] |                             }
+ 279 | [D:7] |                             ToolMode.RESTORE -> {
+ 280 | [D:8] |                                 val next = SmartMaskEngine.paintBrushAt(currentMask, rawBitmap, pt.first, pt.second, brushRadius, false)
+ 281 | [D:8] |                                 safeReplaceCurrentMask(next)
+ 282 | [D:8] |                                 zoomView.invalidate()
+ 283 | [D:7] |                             }
+ 284 | [D:6] |                         }
+ 285 | [D:6] |                         true
+ 286 | [D:5] |                     }
+ 287 | [D:5] |                     MotionEvent.ACTION_MOVE -> {
+ 288 | [D:6] |                         when (currentTool) {
+ 289 | [D:7] |                             ToolMode.ERASER -> {
+ 290 | [D:8] |                                 val next = SmartMaskEngine.paintBrushAt(currentMask, null, pt.first, pt.second, brushRadius, true)
+ 291 | [D:8] |                                 safeReplaceCurrentMask(next)
+ 292 | [D:8] |                                 zoomView.invalidate()
+ 293 | [D:8] |                                 true
+ 294 | [D:7] |                             }
+ 295 | [D:7] |                             ToolMode.RESTORE -> {
+ 296 | [D:8] |                                 val next = SmartMaskEngine.paintBrushAt(currentMask, rawBitmap, pt.first, pt.second, brushRadius, false)
+ 297 | [D:8] |                                 safeReplaceCurrentMask(next)
+ 298 | [D:8] |                                 zoomView.invalidate()
+ 299 | [D:8] |                                 true
+ 300 | [D:7] |                             }
+ 301 | [D:7] |                             else -> false
+ 302 | [D:6] |                         }
+ 303 | [D:5] |                     }
+ 304 | [D:5] |                     else -> false
+ 305 | [D:4] |                 }
+ 306 | [D:3] |             } else false
+ 307 | [D:2] |         }
+ 308 | [D:2] | 
+ 309 | [D:2] |         val rowTools = LinearLayout(context).apply {
+ 310 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 311 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 312 | [D:3] |             setPadding(0, 0, 0, dp(6))
+ 313 | [D:2] |         }
+ 314 | [D:2] | 
+ 315 | [D:2] |         fun updateSliderForCurrentTool() {
+ 316 | [D:3] |             when (currentTool) {
+ 317 | [D:4] |                 ToolMode.WAND -> {
+ 318 | [D:5] |                     tvToolParamLabel?.text = "ЧУВСТВИТЕЛЬНОСТЬ ПАЛОЧКИ: $wandTolerance"
+ 319 | [D:5] |                     sbToolParam?.max = 70
+ 320 | [D:5] |                     sbToolParam?.progress = wandTolerance - 10
+ 321 | [D:4] |                 }
+ 322 | [D:4] |                 ToolMode.ERASER, ToolMode.RESTORE -> {
+ 323 | [D:5] |                     val name = if (currentTool == ToolMode.ERASER) "ЛАСТИКА" else "КИСТИ"
+ 324 | [D:5] |                     tvToolParamLabel?.text = "РАДИУС $name: ${brushRadius}px"
+ 325 | [D:5] |                     sbToolParam?.max = 14
+ 326 | [D:5] |                     sbToolParam?.progress = brushRadius - 1
+ 327 | [D:4] |                 }
+ 328 | [D:3] |             }
+ 329 | [D:2] |         }
+ 330 | [D:2] | 
+ 331 | [D:2] |         val toolButtons = ArrayList<Button>()
+ 332 | [D:2] |         fun updateToolSelection(activeTool: ToolMode) {
+ 333 | [D:3] |             currentTool = activeTool
+ 334 | [D:3] |             for (b in toolButtons) {
+ 335 | [D:4] |                 val mode = b.tag as? ToolMode ?: continue
+ 336 | [D:4] |                 val isSel = (mode == activeTool)
+ 337 | [D:4] |                 b.setTextColor(if (isSel) Color.BLACK else Color.WHITE)
+ 338 | [D:4] |                 b.background = GradientDrawable().apply {
+ 339 | [D:5] |                     setColor(if (isSel) "#00F5D4".toColorInt() else "#21262D".toColorInt())
+ 340 | [D:5] |                     cornerRadius = dpF(4f)
+ 341 | [D:5] |                     if (!isSel) setStroke(dp(1), "#30363D".toColorInt())
+ 342 | [D:4] |                 }
+ 343 | [D:3] |             }
+ 344 | [D:3] |             updateSliderForCurrentTool()
+ 345 | [D:2] |         }
+ 346 | [D:2] | 
+ 347 | [D:2] |         fun createToolBtn(label: String, tool: ToolMode): Button {
+ 348 | [D:3] |             return Button(context).apply {
+ 349 | [D:4] |                 tag = tool
+ 350 | [D:4] |                 text = label
+ 351 | [D:4] |                 textSize = 8f
+ 352 | [D:4] |                 typeface = Typeface.DEFAULT_BOLD
+ 353 | [D:4] |                 includeFontPadding = false
+ 354 | [D:4] |                 minHeight = 0
+ 355 | [D:4] |                 minimumHeight = 0
+ 356 | [D:4] |                 setPadding(dp(3), dp(3), dp(3), dp(3))
+ 357 | [D:4] |                 setOnClickListener { updateToolSelection(tool) }
+ 358 | [D:3] |             }
+ 359 | [D:2] |         }
+ 360 | [D:2] | 
+ 361 | [D:2] |         val btnWand = createToolBtn("ПАЛОЧКА", ToolMode.WAND)
+ 362 | [D:2] |         toolButtons.add(btnWand)
+ 363 | [D:2] |         rowTools.addView(btnWand, LinearLayout.LayoutParams(0, dp(30), 1.1f).apply { marginEnd = dp(2) })
+ 364 | [D:2] | 
+ 365 | [D:2] |         val btnEraser = createToolBtn("ЛАСТИК", ToolMode.ERASER)
+ 366 | [D:2] |         toolButtons.add(btnEraser)
+ 367 | [D:2] |         rowTools.addView(btnEraser, LinearLayout.LayoutParams(0, dp(30), 1f).apply { marginEnd = dp(2) })
+ 368 | [D:2] | 
+ 369 | [D:2] |         val btnRestore = createToolBtn("КИСТЬ", ToolMode.RESTORE)
+ 370 | [D:2] |         toolButtons.add(btnRestore)
+ 371 | [D:2] |         rowTools.addView(btnRestore, LinearLayout.LayoutParams(0, dp(30), 1f).apply { marginEnd = dp(2) })
+ 372 | [D:2] | 
+ 373 | [D:2] |         val btnAuto = Button(context).apply {
+ 374 | [D:3] |             text = "ЗНАК"
+ 375 | [D:3] |             textSize = 8f
+ 376 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 377 | [D:3] |             includeFontPadding = false
+ 378 | [D:3] |             setTextColor(Color.BLACK)
+ 379 | [D:3] |             background = GradientDrawable().apply {
+ 380 | [D:4] |                 setColor("#00F5D4".toColorInt())
+ 381 | [D:4] |                 cornerRadius = dpF(4f)
+ 382 | [D:3] |             }
+ 383 | [D:3] |             minHeight = 0
+ 384 | [D:3] |             minimumHeight = 0
+ 385 | [D:3] |             setOnClickListener {
+ 386 | [D:4] |                 saveUndo()
+ 387 | [D:4] |                 val next = SmartMaskEngine.autoExtractGlyph(rawBitmap)
+ 388 | [D:4] |                 safeReplaceCurrentMask(next)
+ 389 | [D:4] |                 zoomView.invalidate()
+ 390 | [D:3] |             }
+ 391 | [D:2] |         }
+ 392 | [D:2] |         rowTools.addView(btnAuto, LinearLayout.LayoutParams(0, dp(30), 0.9f).apply { marginEnd = dp(2) })
+ 393 | [D:2] | 
+ 394 | [D:2] |         val btnInvert = Button(context).apply {
+ 395 | [D:3] |             text = "ИНВЕРСИЯ"
+ 396 | [D:3] |             textSize = 7.5f
+ 397 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 398 | [D:3] |             includeFontPadding = false
+ 399 | [D:3] |             setTextColor(Color.WHITE)
+ 400 | [D:3] |             background = GradientDrawable().apply {
+ 401 | [D:4] |                 setColor("#21262D".toColorInt())
+ 402 | [D:4] |                 cornerRadius = dpF(4f)
+ 403 | [D:4] |                 setStroke(dp(1), "#FFB703".toColorInt())
+ 404 | [D:3] |             }
+ 405 | [D:3] |             minHeight = 0
+ 406 | [D:3] |             minimumHeight = 0
+ 407 | [D:3] |             setOnClickListener {
+ 408 | [D:4] |                 saveUndo()
+ 409 | [D:4] |                 val next = SmartMaskEngine.invertMask(currentMask, rawBitmap)
+ 410 | [D:4] |                 safeReplaceCurrentMask(next)
+ 411 | [D:4] |                 zoomView.invalidate()
+ 412 | [D:3] |             }
+ 413 | [D:2] |         }
+ 414 | [D:2] |         rowTools.addView(btnInvert, LinearLayout.LayoutParams(dp(62), dp(30)).apply { marginEnd = dp(2) })
+ 415 | [D:2] | 
+ 416 | [D:2] |         val btnUndo = Button(context).apply {
+ 417 | [D:3] |             text = "ОТМЕНА"
+ 418 | [D:3] |             textSize = 7.5f
+ 419 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 420 | [D:3] |             includeFontPadding = false
+ 421 | [D:3] |             setTextColor("#C9D1D9".toColorInt())
+ 422 | [D:3] |             background = GradientDrawable().apply {
+ 423 | [D:4] |                 setColor("#21262D".toColorInt())
+ 424 | [D:4] |                 cornerRadius = dpF(4f)
+ 425 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 426 | [D:3] |             }
+ 427 | [D:3] |             minHeight = 0
+ 428 | [D:3] |             minimumHeight = 0
+ 429 | [D:3] |             setOnClickListener {
+ 430 | [D:4] |                 if (undoStack.isNotEmpty()) {
+ 431 | [D:5] |                     val restored = undoStack.pop()
+ 432 | [D:5] |                     if (!currentMask.isRecycled && currentMask != restored) {
+ 433 | [D:6] |                         currentMask.recycle()
+ 434 | [D:5] |                     }
+ 435 | [D:5] |                     currentMask = restored
+ 436 | [D:5] |                     zoomView.invalidate()
+ 437 | [D:4] |                 }
+ 438 | [D:3] |             }
+ 439 | [D:2] |         }
+ 440 | [D:2] |         rowTools.addView(btnUndo, LinearLayout.LayoutParams(dp(48), dp(30)))
+ 441 | [D:2] |         card.addView(rowTools)
+ 442 | [D:2] | 
+ 443 | [D:2] |         val tvSlider = TextView(context).apply {
+ 444 | [D:3] |             text = "ЧУВСТВИТЕЛЬНОСТЬ ПАЛОЧКИ: $wandTolerance"
+ 445 | [D:3] |             setTextColor("#58A6FF".toColorInt())
+ 446 | [D:3] |             textSize = 9f
+ 447 | [D:3] |             typeface = Typeface.MONOSPACE
+ 448 | [D:3] |             includeFontPadding = false
+ 449 | [D:3] |             setPadding(0, dp(2), 0, 0)
+ 450 | [D:2] |         }
+ 451 | [D:2] |         tvToolParamLabel = tvSlider
+ 452 | [D:2] |         card.addView(tvSlider)
+ 453 | [D:2] | 
+ 454 | [D:2] |         val sbTol = SeekBar(context).apply {
+ 455 | [D:3] |             max = 70
+ 456 | [D:3] |             progress = wandTolerance - 10
+ 457 | [D:3] |             setPadding(dp(4), 0, dp(4), dp(4))
+ 458 | [D:3] |             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+ 459 | [D:4] |                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+ 460 | [D:5] |                     when (currentTool) {
+ 461 | [D:6] |                         ToolMode.WAND -> {
+ 462 | [D:7] |                             wandTolerance = progress + 10
+ 463 | [D:7] |                             tvSlider.text = "ЧУВСТВИТЕЛЬНОСТЬ ПАЛОЧКИ: $wandTolerance"
+ 464 | [D:6] |                         }
+ 465 | [D:6] |                         ToolMode.ERASER, ToolMode.RESTORE -> {
+ 466 | [D:7] |                             brushRadius = progress + 1
+ 467 | [D:7] |                             val name = if (currentTool == ToolMode.ERASER) "ЛАСТИКА" else "КИСТИ"
+ 468 | [D:7] |                             tvSlider.text = "РАДИУС $name: ${brushRadius}px"
+ 469 | [D:6] |                         }
+ 470 | [D:5] |                     }
+ 471 | [D:4] |                 }
+ 472 | [D:4] |                 override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+ 473 | [D:4] |                 override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+ 474 | [D:3] |             })
+ 475 | [D:2] |         }
+ 476 | [D:2] |         sbToolParam = sbTol
+ 477 | [D:2] |         card.addView(sbTol)
+ 478 | [D:2] |         updateToolSelection(ToolMode.WAND)
+ 479 | [D:2] | 
+ 480 | [D:2] |         val btnRow = LinearLayout(context).apply {
+ 481 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 482 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 483 | [D:3] |             setPadding(0, dp(4), 0, 0)
+ 484 | [D:2] |         }
+ 485 | [D:2] | 
+ 486 | [D:2] |         val btnApply = Button(context).apply {
+ 487 | [D:3] |             text = "ПРИМЕНИТЬ МАСКУ"
+ 488 | [D:3] |             textSize = 9.5f
+ 489 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 490 | [D:3] |             setTextColor(Color.WHITE)
+ 491 | [D:3] |             background = GradientDrawable().apply {
+ 492 | [D:4] |                 setColor("#10B981".toColorInt())
+ 493 | [D:4] |                 cornerRadius = dpF(6f)
+ 494 | [D:3] |             }
+ 495 | [D:3] |             minHeight = 0
+ 496 | [D:3] |             minimumHeight = 0
+ 497 | [D:3] |             setOnClickListener {
+ 498 | [D:4] |                 val finalMaskResult = currentMask.copy(Bitmap.Config.ARGB_8888, true)
+ 499 | [D:4] |                 dismiss()
+ 500 | [D:4] |                 onApplied(finalMaskResult)
+ 501 | [D:3] |             }
+ 502 | [D:2] |         }
+ 503 | [D:2] |         btnRow.addView(btnApply, LinearLayout.LayoutParams(0, dp(36), 1.5f).apply { marginEnd = dp(4) })
+ 504 | [D:2] | 
+ 505 | [D:2] |         val btnCancel = Button(context).apply {
+ 506 | [D:3] |             text = "ОТМЕНА"
+ 507 | [D:3] |             textSize = 9.5f
+ 508 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 509 | [D:3] |             setTextColor("#F04438".toColorInt())
+ 510 | [D:3] |             background = GradientDrawable().apply {
+ 511 | [D:4] |                 setColor("#21262D".toColorInt())
+ 512 | [D:4] |                 cornerRadius = dpF(6f)
+ 513 | [D:4] |                 setStroke(dp(1), "#F04438".toColorInt())
+ 514 | [D:3] |             }
+ 515 | [D:3] |             minHeight = 0
+ 516 | [D:3] |             minimumHeight = 0
+ 517 | [D:3] |             setOnClickListener {
+ 518 | [D:4] |                 dismiss()
+ 519 | [D:4] |                 onCancelled()
+ 520 | [D:3] |             }
+ 521 | [D:2] |         }
+ 522 | [D:2] |         btnRow.addView(btnCancel, LinearLayout.LayoutParams(0, dp(36), 1f))
+ 523 | [D:2] |         card.addView(btnRow)
+ 524 | [D:2] | 
+ 525 | [D:2] |         root.addView(card, FrameLayout.LayoutParams(cardW, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+ 526 | [D:2] | 
+ 527 | [D:2] |         val params = overlayWindowManager.createLayoutParams(
+ 528 | [D:2] |             width = WindowManager.LayoutParams.MATCH_PARENT,
+ 529 | [D:2] |             height = WindowManager.LayoutParams.MATCH_PARENT,
+ 530 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+ 531 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+ 532 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+ 533 | [D:2] |         )
+ 534 | [D:2] |         overlayWindowManager.addViewSafe(root, params)
+ 535 | [D:1] |     }
+ 536 | [D:1] | 
+ 537 | [D:1] |     private fun createSmallHeaderBtn(label: String, onClick: () -> Unit): View {
+ 538 | [D:2] |         return Button(context).apply {
+ 539 | [D:3] |             text = label
+ 540 | [D:3] |             textSize = 8.5f
+ 541 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 542 | [D:3] |             setTextColor(Color.WHITE)
+ 543 | [D:3] |             background = GradientDrawable().apply {
+ 544 | [D:4] |                 setColor("#21262D".toColorInt())
+ 545 | [D:4] |                 cornerRadius = dpF(3f)
+ 546 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 547 | [D:3] |             }
+ 548 | [D:3] |             minHeight = 0
+ 549 | [D:3] |             minimumHeight = 0
+ 550 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(22)).apply {
+ 551 | [D:4] |                 marginStart = dp(2)
+ 552 | [D:3] |             }
+ 553 | [D:3] |             setPadding(dp(4), 0, dp(4), 0)
+ 554 | [D:3] |             setOnClickListener { onClick() }
+ 555 | [D:2] |         }
+ 556 | [D:1] |     }
+ 557 | [D:1] | 
+ 558 | [D:1] |     fun dismiss() {
+ 559 | [D:2] |         rootView?.let {
+ 560 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 561 | [D:3] |             rootView = null
+ 562 | [D:2] |         }
+ 563 | [D:2] |         while (undoStack.isNotEmpty()) {
+ 564 | [D:3] |             val bmp = undoStack.pop()
+ 565 | [D:3] |             if (!bmp.isRecycled && bmp != currentMask) {
+ 566 | [D:4] |                 bmp.recycle()
+ 567 | [D:3] |             }
+ 568 | [D:2] |         }
+ 569 | [D:2] |         if (!currentMask.isRecycled) {
+ 570 | [D:3] |             currentMask.recycle()
+ 571 | [D:2] |         }
+ 572 | [D:1] |     }
+ 573 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_capture_MagicWandEditorOverlay.kt_part_01_lines_0001_to_0573.txt
+================================================================================

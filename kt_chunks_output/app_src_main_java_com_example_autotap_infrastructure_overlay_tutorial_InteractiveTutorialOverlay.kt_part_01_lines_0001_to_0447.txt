@@ -1,0 +1,457 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\tutorial\InteractiveTutorialOverlay.kt
+ PART: 1/1 | LINES: 1..447
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.tutorial
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Canvas
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.DashPathEffect
+   8 | [D:0] | import android.graphics.Paint
+   9 | [D:0] | import android.graphics.Path
+  10 | [D:0] | import android.graphics.Rect
+  11 | [D:0] | import android.graphics.RectF
+  12 | [D:0] | import android.graphics.Typeface
+  13 | [D:0] | import android.graphics.drawable.GradientDrawable
+  14 | [D:0] | import android.view.Gravity
+  15 | [D:0] | import android.view.View
+  16 | [D:0] | import android.view.WindowManager
+  17 | [D:0] | import android.widget.Button
+  18 | [D:0] | import android.widget.FrameLayout
+  19 | [D:0] | import android.widget.LinearLayout
+  20 | [D:0] | import android.widget.ScrollView
+  21 | [D:0] | import android.widget.TextView
+  22 | [D:0] | import androidx.core.graphics.toColorInt
+  23 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  24 | [D:0] | import kotlin.math.sin
+  25 | [D:0] | 
+  26 | [D:0] | @SuppressLint("SetTextI18n", "ClickableViewAccessibility")
+  27 | [D:0] | class InteractiveTutorialOverlay(
+  28 | [D:0] |     private val context: Context,
+  29 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  30 | [D:0] |     private val mode: TutorialMode = TutorialMode.CONTROL_PANEL,
+  31 | [D:0] |     private val hostViewProvider: (() -> View?)? = null,
+  32 | [D:0] |     private val onHighlightStep: ((stepIndex: Int) -> Unit)? = null,
+  33 | [D:0] |     private val onFinished: (() -> Unit)? = null
+  34 | [D:0] | ) {
+  35 | [D:1] | 
+  36 | [D:1] |     enum class TutorialMode {
+  37 | [D:2] |         CONTROL_PANEL, CALIBRATION, CAPTURE, ROI_SELECTOR, EDIT_STEP, SETTINGS, SCRIPTS, JOYSTICK
+  38 | [D:1] |     }
+  39 | [D:1] | 
+  40 | [D:1] |     private var rootView: FrameLayout? = null
+  41 | [D:1] |     private var spotlightView: SpotlightCanvasView? = null
+  42 | [D:1] |     private var cardView: LinearLayout? = null
+  43 | [D:1] |     private var currentStep = 0
+  44 | [D:1] | 
+  45 | [D:1] |     private val dm = context.resources.displayMetrics
+  46 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  47 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  48 | [D:1] | 
+  49 | [D:1] |     private val steps: List<Triple<String, String, String>> = when (mode) {
+  50 | [D:2] |         TutorialMode.CONTROL_PANEL -> listOf(
+  51 | [D:2] |             Triple("РУЧКА ПЕРЕМЕЩЕНИЯ", "Потяните за эту кнопку, чтобы свободно переместить пульт в любое удобное место экрана.", "BTN_DRAG"),
+  52 | [D:2] |             Triple("СТАРТ И ПАУЗА", "Запуск выполнения макроса. Долгое нажатие открывает пошаговый отладчик.", "BTN_PLAY_VIEW"),
+  53 | [D:2] |             Triple("ДОБАВИТЬ ШАГ", "Добавляет новую мишень клика, свайпа или ИИ-триггера в центр экрана.", "BTN_ADD"),
+  54 | [D:2] |             Triple("ЗАПИСЬ ЖЕСТОВ", "Включает живую запись нажатий и траекторий прямо по экрану.", "BTN_RECORD"),
+  55 | [D:2] |             Triple("ВЫРЕЗКА ШАБЛОНА", "Открывает сенсорный видоискатель для точного захвата иконки ИИ.", "BTN_CAPTURE"),
+  56 | [D:2] |             Triple("РЕЖИМ ПАНЕЛИ", "Сворачивает пульт в компактную строку или плавающий мини-бабл.", "BTN_TOGGLE_VIEW"),
+  57 | [D:2] |             Triple("ЗАКРЫТЬ", "Скрывает все плавающие оверлеи и останавливает работу кликера.", "BTN_CLOSE"),
+  58 | [D:2] |             Triple("МЕНЕДЖЕР СКРИПТОВ", "Сохранение схемы в JSON, экспорт/импорт ZIP и автопривязка сценария к игре.", "BTN_SCRIPTS"),
+  59 | [D:2] |             Triple("НАСТРОЙКИ", "Глобальная длительность клика, свайпа и параметры безопасности.", "BTN_SETTINGS"),
+  60 | [D:2] |             Triple("ДЖОЙСТИК", "Виртуальный аналоговый стик 360 градусов для непрерывного управления движением в играх.", "BTN_JOYSTICK"),
+  61 | [D:2] |             Triple("AFK ЗАМОК", "AMOLED-режим защиты от ложных касаний в кармане (удержание 3с для разблокировки).", "BTN_LOCK"),
+  62 | [D:2] |             Triple("СКРЫТЬ НОМЕРА", "Скрывает цифры на мишенях для чистого обзора игрового поля.", "BTN_HIDE"),
+  63 | [D:2] |             Triple("ОЧИСТИТЬ ВСЕ", "Удаляет все установленные на экране мишени.", "BTN_CLEAR"),
+  64 | [D:2] |             Triple("ОБУЧЕНИЕ", "Открывает интерактивное пошаговое руководство с подсветкой кнопок.", "BTN_TUTORIAL")
+  65 | [D:2] |         )
+  66 | [D:2] |         TutorialMode.CALIBRATION -> listOf(
+  67 | [D:2] |             Triple("ПЕРЕМЕЩЕНИЕ И СТУДИЯ", "Тяните за шапку для сдвига окна или нажмите [СТУДИЯ] для попиксельной доработки маски.", "HEADER"),
+  68 | [D:2] |             Triple("ПРЕВЬЮ 1:1 (МАСКА vs ЭКРАН)", "Слева отображается вырезанная контурная маска, справа — распознанная цель на экране в реальном времени.", "PREVIEW"),
+  69 | [D:2] |             Triple("РЕЖИМЫ (КОНТУР / КАРТИНКА)", "Переключает умное выделение контура для видеорекламы, цельное сопоставление или круг.", "MODES"),
+  70 | [D:2] |             Triple("ЧУВСТВИТЕЛЬНОСТЬ КОНТУРА", "Регулирует границы внешнего контура. Все внутренние пиксели сохраняются целиком.", "CONTOUR"),
+  71 | [D:2] |             Triple("ПОРОГ СОВПАДЕНИЯ", "Минимальный порог уверенности ИИ. Все найденные цели на экране подсвечиваются живыми рамками.", "SIMILARITY"),
+  72 | [D:2] |             Triple("ТЕСТ КЛИКА", "Моментально нажимает по найденной цели для живой проверки прямо из калибровки.", "TEST"),
+  73 | [D:2] |             Triple("СОХРАНИТЬ ЦЕЛЬ", "Записывает настроенный шаблон и координаты в сценарий кликера.", "APPLY")
+  74 | [D:2] |         )
+  75 | [D:2] |         TutorialMode.CAPTURE -> listOf(
+  76 | [D:2] |             Triple("СЕНСОРНЫЙ ТРЕКПАД", "Касайтесь в любой точке экрана и двигайте рамку: палец не закрывает мелкую цель.", "TRACKPAD"),
+  77 | [D:2] |             Triple("МАНИПУЛЯТОР РАЗМЕРА", "Вынесен за правый нижний угол (+18dp). Тяните за синий кружок для изменения размера.", "RESIZE"),
+  78 | [D:2] |             Triple("ВЫРЕЗАТЬ ШАБЛОН", "Делает моментальный снимок выделенной области и передает в калибровку.", "SNAP"),
+  79 | [D:2] |             Triple("ФОРМА РАМКИ", "Переключает форму выделения между прямоугольником и кругом.", "SHAPE"),
+  80 | [D:2] |             Triple("ПОМОЩЬ", "Показывает подсказки по работе с рамкой захвата.", "HELP"),
+  81 | [D:2] |             Triple("ОТМЕНА", "Закрывает рамку и возвращает панель управления.", "CANCEL")
+  82 | [D:2] |         )
+  83 | [D:2] |         TutorialMode.ROI_SELECTOR -> listOf(
+  84 | [D:2] |             Triple("ЗОНА ИНТЕРЕСА (ROI)", "Ограничивает область поиска на экране, ускоряя распознавание в 10-15 раз.", "ROI_BOX"),
+  85 | [D:2] |             Triple("МАНИПУЛЯТОР РАЗМЕРА", "Тяните за угол рамки для изменения границ зоны поиска.", "RESIZE"),
+  86 | [D:2] |             Triple("ПОДТВЕРДИТЬ", "Фиксирует выбранную область для текущего шага OCR или триггера.", "OK"),
+  87 | [D:2] |             Triple("СБРОСИТЬ", "Сбрасывает ограничение и возвращает поиск по всему экрану.", "RESET"),
+  88 | [D:2] |             Triple("ОТМЕНА", "Закрывает выбор без сохранения изменений.", "CANCEL")
+  89 | [D:2] |         )
+  90 | [D:2] |         TutorialMode.EDIT_STEP -> listOf(
+  91 | [D:2] |             Triple("НАВИГАЦИЯ ПО ШАГАМ", "Кнопки Влево и Вправо переключают редактирование между всеми шагами сценария.", "NAV"),
+  92 | [D:2] |             Triple("СЕТКА 9 ТИПОВ ДЕЙСТВИЯ", "Клик, Удержание, Свайп, ИИ-триггер, OCR-текст, Проверка цвета, Путь, Подпрограмма, Возврат.", "TYPES"),
+  93 | [D:2] |             Triple("ТУРНИРНАЯ КАРУСЕЛЬ", "Выберите один или несколько шаблонов для параллельного поиска ИИ.", "CAROUSEL"),
+  94 | [D:2] |             Triple("ПАРАМЕТРЫ ТАЙМИНГОВ", "Пауза перед шагом, длительность нажатия, повторения и рандомизация радиуса.", "TIMINGS"),
+  95 | [D:2] |             Triple("БЕСКОНЕЧНЫЙ ТАЙМАУТ", "Тумблер [БЕСКОНЕЧНО] ждет появления цели без ограничения по времени.", "TIMEOUT_SECTION"),
+  96 | [D:2] |             Triple("УСЛОВИЕ И ВЕТВЛЕНИЕ", "Создает связанный под-шаг или переходит по условию если.", "JUMPS_SECTION"),
+  97 | [D:2] |             Triple("ПАНЕЛЬ ДЕЙСТВИЙ", "Клонирование, калибровка, зона ROI, удаление и сохранение шага.", "ACTIONS")
+  98 | [D:2] |         )
+  99 | [D:2] |         TutorialMode.SETTINGS -> listOf(
+ 100 | [D:2] |             Triple("ГЛОБАЛЬНЫЕ НАСТРОЙКИ", "Параметры, действующие на все шаги сценария по умолчанию.", "HEADER"),
+ 101 | [D:2] |             Triple("ДЛИТЕЛЬНОСТЬ КЛИКА", "Базовое время касания экрана пальцем в миллисекундах (100-150 мс).", "CLICK"),
+ 102 | [D:2] |             Triple("ДЛИТЕЛЬНОСТЬ СВАЙПА", "Базовая скорость выполнения свайпов по кривым Безье (300-500 мс).", "SWIPE"),
+ 103 | [D:2] |             Triple("СОХРАНИТЬ", "Применяет глобальные параметры для текущей сессии.", "SAVE"),
+ 104 | [D:2] |             Triple("ОТМЕНА", "Закрывает настройки без сохранения изменений.", "CANCEL")
+ 105 | [D:2] |         )
+ 106 | [D:2] |         TutorialMode.SCRIPTS -> listOf(
+ 107 | [D:2] |             Triple("ИМЯ СЦЕНАРИЯ", "Введите название схемы для сохранения текущего набора мишеней на диск.", "NAME"),
+ 108 | [D:2] |             Triple("СОХРАНИТЬ СХЕМУ", "Записывает все координаты, шаблоны и настройки шагов в JSON файл.", "SAVE"),
+ 109 | [D:2] |             Triple("СПИСОК СЦЕНАРИЕВ", "Нажмите на имя для загрузки, (+) для автопривязки к игре, стрелку для экспорта в ZIP.", "LIST")
+ 110 | [D:2] |         )
+ 111 | [D:2] |         TutorialMode.JOYSTICK -> listOf(
+ 112 | [D:2] |             Triple("ЗАГОЛОВОК ДЖОЙСТИКА", "Потяните за верхнюю планку для перемещения стика в удобное место экрана.", "HEADER"),
+ 113 | [D:2] |             Triple("ВИРТУАЛЬНЫЙ СТИК", "Аналоговый джойстик (360 градусов) для плавного непрерывного управления персонажем.", "STICK"),
+ 114 | [D:2] |             Triple("ЗАПИСЬ ПУТИ", "Записывает векторную траекторию движения стика и сохраняет ее в действие PATH.", "RECORD")
+ 115 | [D:2] |         )
+ 116 | [D:1] |     }
+ 117 | [D:1] | 
+ 118 | [D:1] |     private inner class SpotlightCanvasView(context: Context) : View(context) {
+ 119 | [D:2] |         private val maskPaint = Paint().apply {
+ 120 | [D:3] |             color = "#C80B0F17".toColorInt()
+ 121 | [D:3] |             style = Paint.Style.FILL
+ 122 | [D:2] |         }
+ 123 | [D:2] |         private val neonBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+ 124 | [D:3] |             color = "#00F5D4".toColorInt()
+ 125 | [D:3] |             style = Paint.Style.STROKE
+ 126 | [D:3] |             strokeWidth = dpF(2.5f)
+ 127 | [D:2] |         }
+ 128 | [D:2] |         private val sonarPulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+ 129 | [D:3] |             color = "#00F5D4".toColorInt()
+ 130 | [D:3] |             style = Paint.Style.STROKE
+ 131 | [D:3] |             strokeWidth = dpF(2f)
+ 132 | [D:2] |         }
+ 133 | [D:2] |         private val laserPointerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+ 134 | [D:3] |             color = "#58A6FF".toColorInt()
+ 135 | [D:3] |             style = Paint.Style.STROKE
+ 136 | [D:3] |             strokeWidth = dpF(1.8f)
+ 137 | [D:3] |             pathEffect = DashPathEffect(floatArrayOf(dpF(6f), dpF(4f)), 0f)
+ 138 | [D:2] |         }
+ 139 | [D:2] |         private val laserDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+ 140 | [D:3] |             color = "#00F5D4".toColorInt()
+ 141 | [D:3] |             style = Paint.Style.FILL
+ 142 | [D:2] |         }
+ 143 | [D:2] | 
+ 144 | [D:2] |         private val dimPath = Path()
+ 145 | [D:2] |         private val targetRectF = RectF()
+ 146 | [D:2] |         private val pulseRect = RectF()
+ 147 | [D:2] |         private val cardLoc = IntArray(2)
+ 148 | [D:2] | 
+ 149 | [D:2] |         var currentHighlightRect: Rect? = null
+ 150 | [D:2] |             set(value) {
+ 151 | [D:3] |                 field = value
+ 152 | [D:3] |                 invalidate()
+ 153 | [D:2] |             }
+ 154 | [D:2] | 
+ 155 | [D:2] |         private var animTime = 0f
+ 156 | [D:2] | 
+ 157 | [D:2] |         init {
+ 158 | [D:3] |             setWillNotDraw(false)
+ 159 | [D:2] |         }
+ 160 | [D:2] | 
+ 161 | [D:2] |         override fun onDraw(canvas: Canvas) {
+ 162 | [D:3] |             super.onDraw(canvas)
+ 163 | [D:3] |             animTime += 0.05f
+ 164 | [D:3] | 
+ 165 | [D:3] |             val w = width.toFloat()
+ 166 | [D:3] |             val h = height.toFloat()
+ 167 | [D:3] |             if (w <= 0f || h <= 0f) return
+ 168 | [D:3] | 
+ 169 | [D:3] |             dimPath.rewind()
+ 170 | [D:3] |             dimPath.fillType = Path.FillType.EVEN_ODD
+ 171 | [D:3] |             dimPath.addRect(0f, 0f, w, h, Path.Direction.CW)
+ 172 | [D:3] | 
+ 173 | [D:3] |             val rect = currentHighlightRect
+ 174 | [D:3] |             if (rect != null) {
+ 175 | [D:4] |                 val pad = dpF(6f)
+ 176 | [D:4] |                 targetRectF.set(
+ 177 | [D:4] |                     rect.left.toFloat() - pad,
+ 178 | [D:4] |                     rect.top.toFloat() - pad,
+ 179 | [D:4] |                     rect.right.toFloat() + pad,
+ 180 | [D:4] |                     rect.bottom.toFloat() + pad
+ 181 | [D:4] |                 )
+ 182 | [D:4] |                 val radius = dpF(10f)
+ 183 | [D:4] |                 dimPath.addRoundRect(targetRectF, radius, radius, Path.Direction.CW)
+ 184 | [D:4] |                 canvas.drawPath(dimPath, maskPaint)
+ 185 | [D:4] | 
+ 186 | [D:4] |                 canvas.drawRoundRect(targetRectF, radius, radius, neonBorderPaint)
+ 187 | [D:4] | 
+ 188 | [D:4] |                 val pulsePhase = (sin(animTime.toDouble()).toFloat() + 1f) / 2f
+ 189 | [D:4] |                 val pulseExpand = pulsePhase * dpF(16f)
+ 190 | [D:4] |                 val pulseAlpha = ((1f - pulsePhase) * 220).toInt().coerceIn(0, 255)
+ 191 | [D:4] |                 sonarPulsePaint.alpha = pulseAlpha
+ 192 | [D:4] |                 pulseRect.set(
+ 193 | [D:4] |                     targetRectF.left - pulseExpand,
+ 194 | [D:4] |                     targetRectF.top - pulseExpand,
+ 195 | [D:4] |                     targetRectF.right + pulseExpand,
+ 196 | [D:4] |                     targetRectF.bottom + pulseExpand
+ 197 | [D:4] |                 )
+ 198 | [D:4] |                 canvas.drawRoundRect(pulseRect, radius + pulseExpand, radius + pulseExpand, sonarPulsePaint)
+ 199 | [D:4] | 
+ 200 | [D:4] |                 cardView?.let { card ->
+ 201 | [D:5] |                     card.getLocationOnScreen(cardLoc)
+ 202 | [D:5] |                     val cardCenterX = cardLoc[0] + card.width / 2f
+ 203 | [D:5] |                     val cardY = if (cardLoc[1] > targetRectF.bottom) cardLoc[1].toFloat() else (cardLoc[1] + card.height).toFloat()
+ 204 | [D:5] |                     val targetCenterX = targetRectF.centerX()
+ 205 | [D:5] |                     val targetY = if (cardLoc[1] > targetRectF.bottom) targetRectF.bottom else targetRectF.top
+ 206 | [D:5] | 
+ 207 | [D:5] |                     canvas.drawLine(cardCenterX, cardY, targetCenterX, targetY, laserPointerPaint)
+ 208 | [D:5] |                     canvas.drawCircle(targetCenterX, targetY, dpF(4f), laserDotPaint)
+ 209 | [D:4] |                 }
+ 210 | [D:3] |             } else {
+ 211 | [D:4] |                 canvas.drawPath(dimPath, maskPaint)
+ 212 | [D:3] |             }
+ 213 | [D:3] | 
+ 214 | [D:3] |             postInvalidateOnAnimation()
+ 215 | [D:2] |         }
+ 216 | [D:1] |     }
+ 217 | [D:1] | 
+ 218 | [D:1] |     fun show() {
+ 219 | [D:2] |         if (rootView != null) return
+ 220 | [D:2] | 
+ 221 | [D:2] |         val root = FrameLayout(context).apply {
+ 222 | [D:3] |             clipChildren = false
+ 223 | [D:3] |             clipToPadding = false
+ 224 | [D:2] |         }
+ 225 | [D:2] |         rootView = root
+ 226 | [D:2] | 
+ 227 | [D:2] |         val spotlight = SpotlightCanvasView(context)
+ 228 | [D:2] |         spotlightView = spotlight
+ 229 | [D:2] |         root.addView(spotlight, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+ 230 | [D:2] | 
+ 231 | [D:2] |         val screenW = dm.widthPixels
+ 232 | [D:2] |         val cardW = dp(300).coerceAtMost((screenW * 0.94f).toInt())
+ 233 | [D:2] | 
+ 234 | [D:2] |         val card = LinearLayout(context).apply {
+ 235 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 236 | [D:3] |             background = GradientDrawable(
+ 237 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 238 | [D:3] |                 intArrayOf("#F8161B22".toColorInt(), "#F80D1117".toColorInt())
+ 239 | [D:3] |             ).apply {
+ 240 | [D:4] |                 cornerRadius = dpF(16f)
+ 241 | [D:4] |                 setStroke(dp(1), "#00F5D4".toColorInt())
+ 242 | [D:3] |             }
+ 243 | [D:3] |             val p = dp(12)
+ 244 | [D:3] |             setPadding(p, p, p, p)
+ 245 | [D:3] |             elevation = dpF(24f)
+ 246 | [D:3] |             setOnTouchListener { _, _ -> true }
+ 247 | [D:2] |         }
+ 248 | [D:2] |         cardView = card
+ 249 | [D:2] | 
+ 250 | [D:2] |         val tvTitle = TextView(context).apply {
+ 251 | [D:3] |             textSize = 11.5f
+ 252 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 253 | [D:3] |             includeFontPadding = false
+ 254 | [D:3] |             setTextColor("#00F5D4".toColorInt())
+ 255 | [D:3] |             setPadding(0, 0, 0, dp(4))
+ 256 | [D:2] |         }
+ 257 | [D:2] |         card.addView(tvTitle)
+ 258 | [D:2] | 
+ 259 | [D:2] |         val tvDesc = TextView(context).apply {
+ 260 | [D:3] |             textSize = 10f
+ 261 | [D:3] |             includeFontPadding = false
+ 262 | [D:3] |             setTextColor(Color.WHITE)
+ 263 | [D:3] |             setLineSpacing(dpF(2.5f), 1.1f)
+ 264 | [D:3] |             setPadding(0, 0, 0, dp(10))
+ 265 | [D:2] |         }
+ 266 | [D:2] |         card.addView(tvDesc)
+ 267 | [D:2] | 
+ 268 | [D:2] |         val navRow = LinearLayout(context).apply {
+ 269 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 270 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 271 | [D:2] |         }
+ 272 | [D:2] | 
+ 273 | [D:2] |         val btnPrev = Button(context).apply {
+ 274 | [D:3] |             text = "НАЗАД"
+ 275 | [D:3] |             textSize = 9f
+ 276 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 277 | [D:3] |             includeFontPadding = false
+ 278 | [D:3] |             setTextColor(Color.WHITE)
+ 279 | [D:3] |             background = GradientDrawable(
+ 280 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 281 | [D:3] |                 intArrayOf("#21262D".toColorInt(), "#161B22".toColorInt())
+ 282 | [D:3] |             ).apply {
+ 283 | [D:4] |                 cornerRadius = dpF(6f)
+ 284 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 285 | [D:3] |             }
+ 286 | [D:3] |             minHeight = 0
+ 287 | [D:3] |             minimumHeight = 0
+ 288 | [D:3] |             setPadding(dp(8), dp(4), dp(8), dp(4))
+ 289 | [D:2] |         }
+ 290 | [D:2] |         navRow.addView(btnPrev, LinearLayout.LayoutParams(0, dp(34), 1f).apply { marginEnd = dp(3) })
+ 291 | [D:2] | 
+ 292 | [D:2] |         val btnNext = Button(context).apply {
+ 293 | [D:3] |             text = "ДАЛЕЕ"
+ 294 | [D:3] |             textSize = 9f
+ 295 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 296 | [D:3] |             includeFontPadding = false
+ 297 | [D:3] |             setTextColor(Color.WHITE)
+ 298 | [D:3] |             background = GradientDrawable(
+ 299 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 300 | [D:3] |                 intArrayOf("#1F6FEB".toColorInt(), "#161B22".toColorInt())
+ 301 | [D:3] |             ).apply {
+ 302 | [D:4] |                 cornerRadius = dpF(6f)
+ 303 | [D:4] |                 setStroke(dp(1), "#58A6FF".toColorInt())
+ 304 | [D:3] |             }
+ 305 | [D:3] |             minHeight = 0
+ 306 | [D:3] |             minimumHeight = 0
+ 307 | [D:3] |             setPadding(dp(8), dp(4), dp(8), dp(4))
+ 308 | [D:2] |         }
+ 309 | [D:2] |         navRow.addView(btnNext, LinearLayout.LayoutParams(0, dp(34), 1f).apply { marginEnd = dp(3) })
+ 310 | [D:2] | 
+ 311 | [D:2] |         val btnClose = Button(context).apply {
+ 312 | [D:3] |             text = "ЗАКРЫТЬ"
+ 313 | [D:3] |             textSize = 9f
+ 314 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 315 | [D:3] |             includeFontPadding = false
+ 316 | [D:3] |             setTextColor("#F04438".toColorInt())
+ 317 | [D:3] |             background = GradientDrawable(
+ 318 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 319 | [D:3] |                 intArrayOf("#21262D".toColorInt(), "#161B22".toColorInt())
+ 320 | [D:3] |             ).apply {
+ 321 | [D:4] |                 cornerRadius = dpF(6f)
+ 322 | [D:4] |                 setStroke(dp(1), "#F04438".toColorInt())
+ 323 | [D:3] |             }
+ 324 | [D:3] |             minHeight = 0
+ 325 | [D:3] |             minimumHeight = 0
+ 326 | [D:3] |             setPadding(dp(10), dp(4), dp(10), dp(4))
+ 327 | [D:3] |             setOnClickListener { dismiss() }
+ 328 | [D:2] |         }
+ 329 | [D:2] |         navRow.addView(btnClose, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)))
+ 330 | [D:2] |         card.addView(navRow)
+ 331 | [D:2] | 
+ 332 | [D:2] |         val cardLayoutParams = FrameLayout.LayoutParams(cardW, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START)
+ 333 | [D:2] |         root.addView(card, cardLayoutParams)
+ 334 | [D:2] | 
+ 335 | [D:2] |         val targetLoc = IntArray(2)
+ 336 | [D:2] | 
+ 337 | [D:2] |         fun resolveHighlightRect(): Rect? {
+ 338 | [D:3] |             val host = hostViewProvider?.invoke() ?: return null
+ 339 | [D:3] |             if (!host.isAttachedToWindow) return null
+ 340 | [D:3] | 
+ 341 | [D:3] |             val tagOrKey = steps.getOrNull(currentStep)?.third ?: ""
+ 342 | [D:3] |             if (tagOrKey.isEmpty()) return null
+ 343 | [D:3] | 
+ 344 | [D:3] |             val targetView = host.findViewWithTag<View>(tagOrKey)
+ 345 | [D:3] |             if (targetView != null && targetView.visibility == View.VISIBLE && targetView.width > 0 && targetView.height > 0) {
+ 346 | [D:4] |                 var parent = targetView.parent
+ 347 | [D:4] |                 while (parent != null) {
+ 348 | [D:5] |                     if (parent is ScrollView) {
+ 349 | [D:6] |                         parent.requestChildFocus(targetView, targetView)
+ 350 | [D:6] |                         break
+ 351 | [D:5] |                     }
+ 352 | [D:5] |                     parent = parent.parent
+ 353 | [D:4] |                 }
+ 354 | [D:4] | 
+ 355 | [D:4] |                 targetView.getLocationOnScreen(targetLoc)
+ 356 | [D:4] |                 val left = targetLoc[0]
+ 357 | [D:4] |                 val top = targetLoc[1]
+ 358 | [D:4] |                 val right = left + targetView.width
+ 359 | [D:4] |                 val bottom = top + targetView.height
+ 360 | [D:4] |                 return Rect(left, top, right, bottom)
+ 361 | [D:3] |             }
+ 362 | [D:3] | 
+ 363 | [D:3] |             if (host.tag == tagOrKey && host.width > 0 && host.height > 0) {
+ 364 | [D:4] |                 host.getLocationOnScreen(targetLoc)
+ 365 | [D:4] |                 return Rect(targetLoc[0], targetLoc[1], targetLoc[0] + host.width, targetLoc[1] + host.height)
+ 366 | [D:3] |             }
+ 367 | [D:3] | 
+ 368 | [D:3] |             return null
+ 369 | [D:2] |         }
+ 370 | [D:2] | 
+ 371 | [D:2] |         fun updateStepVisuals() {
+ 372 | [D:3] |             val (title, desc, _) = steps[currentStep]
+ 373 | [D:3] |             tvTitle.text = "[${currentStep + 1}/${steps.size}] $title"
+ 374 | [D:3] |             tvDesc.text = desc
+ 375 | [D:3] |             btnNext.text = if (currentStep == steps.size - 1) "ГОТОВО" else "ДАЛЕЕ"
+ 376 | [D:3] | 
+ 377 | [D:3] |             val targetRect = resolveHighlightRect()
+ 378 | [D:3] |             spotlightView?.currentHighlightRect = targetRect
+ 379 | [D:3] | 
+ 380 | [D:3] |             val screenWidth = dm.widthPixels
+ 381 | [D:3] |             val screenHeight = dm.heightPixels
+ 382 | [D:3] |             val margin = dp(14)
+ 383 | [D:3] |             val safeTop = dp(35)
+ 384 | [D:3] |             val cardHeightEstimate = dp(140)
+ 385 | [D:3] | 
+ 386 | [D:3] |             if (targetRect != null) {
+ 387 | [D:4] |                 val posX = (targetRect.centerX() - cardW / 2).coerceIn(margin, screenWidth - cardW - margin)
+ 388 | [D:4] |                 val posY = if (targetRect.bottom + cardHeightEstimate + margin <= screenHeight - dp(30)) {
+ 389 | [D:5] |                     targetRect.bottom + dp(16)
+ 390 | [D:4] |                 } else {
+ 391 | [D:5] |                     (targetRect.top - cardHeightEstimate - dp(16)).coerceIn(safeTop, (screenHeight - cardHeightEstimate - dp(30)).coerceAtLeast(safeTop))
+ 392 | [D:4] |                 }
+ 393 | [D:4] |                 cardLayoutParams.leftMargin = posX
+ 394 | [D:4] |                 cardLayoutParams.topMargin = posY
+ 395 | [D:3] |             } else {
+ 396 | [D:4] |                 cardLayoutParams.leftMargin = (screenWidth - cardW) / 2
+ 397 | [D:4] |                 cardLayoutParams.topMargin = (screenHeight - cardHeightEstimate) / 2
+ 398 | [D:3] |             }
+ 399 | [D:3] |             card.layoutParams = cardLayoutParams
+ 400 | [D:3] | 
+ 401 | [D:3] |             onHighlightStep?.invoke(currentStep)
+ 402 | [D:2] |         }
+ 403 | [D:2] | 
+ 404 | [D:2] |         btnPrev.setOnClickListener {
+ 405 | [D:3] |             if (currentStep > 0) {
+ 406 | [D:4] |                 currentStep--
+ 407 | [D:4] |                 updateStepVisuals()
+ 408 | [D:4] |                 root.postDelayed({ updateStepVisuals() }, 150L)
+ 409 | [D:3] |             }
+ 410 | [D:2] |         }
+ 411 | [D:2] | 
+ 412 | [D:2] |         btnNext.setOnClickListener {
+ 413 | [D:3] |             if (currentStep < steps.size - 1) {
+ 414 | [D:4] |                 currentStep++
+ 415 | [D:4] |                 updateStepVisuals()
+ 416 | [D:4] |                 root.postDelayed({ updateStepVisuals() }, 150L)
+ 417 | [D:3] |             } else {
+ 418 | [D:4] |                 dismiss()
+ 419 | [D:3] |             }
+ 420 | [D:2] |         }
+ 421 | [D:2] | 
+ 422 | [D:2] |         val params = overlayWindowManager.createLayoutParams(
+ 423 | [D:2] |             width = WindowManager.LayoutParams.MATCH_PARENT,
+ 424 | [D:2] |             height = WindowManager.LayoutParams.MATCH_PARENT,
+ 425 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+ 426 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+ 427 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+ 428 | [D:2] |             gravity = Gravity.TOP or Gravity.START
+ 429 | [D:2] |         )
+ 430 | [D:2] | 
+ 431 | [D:2] |         overlayWindowManager.addViewSafe(root, params)
+ 432 | [D:2] |         root.post { 
+ 433 | [D:3] |             updateStepVisuals() 
+ 434 | [D:3] |             root.postDelayed({ updateStepVisuals() }, 150L)
+ 435 | [D:2] |         }
+ 436 | [D:1] |     }
+ 437 | [D:1] | 
+ 438 | [D:1] |     fun dismiss() {
+ 439 | [D:2] |         rootView?.let {
+ 440 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 441 | [D:3] |             rootView = null
+ 442 | [D:3] |             spotlightView = null
+ 443 | [D:3] |             cardView = null
+ 444 | [D:3] |             onFinished?.invoke()
+ 445 | [D:2] |         }
+ 446 | [D:1] |     }
+ 447 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_tutorial_InteractiveTutorialOverlay.kt_part_01_lines_0001_to_0447.txt
+================================================================================

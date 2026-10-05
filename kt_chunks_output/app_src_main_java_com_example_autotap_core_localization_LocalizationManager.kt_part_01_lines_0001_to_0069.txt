@@ -1,0 +1,79 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\core\localization\LocalizationManager.kt
+ PART: 1/1 | LINES: 1..69
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.core.localization
+   2 | [D:0] | 
+   3 | [D:0] | import android.content.Context
+   4 | [D:0] | import android.content.SharedPreferences
+   5 | [D:0] | import android.content.res.Configuration
+   6 | [D:0] | import android.os.Build
+   7 | [D:0] | import android.os.LocaleList
+   8 | [D:0] | import java.util.Locale
+   9 | [D:0] | 
+  10 | [D:0] | object LocalizationManager {
+  11 | [D:1] | 
+  12 | [D:1] |     private const val PREF_KEY = "app_lang"
+  13 | [D:1] |     const val LANG_RU = "ru"
+  14 | [D:1] |     const val LANG_EN = "en"
+  15 | [D:1] | 
+  16 | [D:1] |     fun getLanguage(context: Context): String {
+  17 | [D:2] |         val prefs: SharedPreferences = context.getSharedPreferences("autotap_settings", Context.MODE_PRIVATE)
+  18 | [D:2] |         return prefs.getString(PREF_KEY, LANG_RU) ?: LANG_RU
+  19 | [D:1] |     }
+  20 | [D:1] | 
+  21 | [D:1] |     fun setLanguage(context: Context, lang: String) {
+  22 | [D:2] |         val prefs: SharedPreferences = context.getSharedPreferences("autotap_settings", Context.MODE_PRIVATE)
+  23 | [D:2] |         prefs.edit().putString(PREF_KEY, lang).apply()
+  24 | [D:2] |         applyLocale(context)
+  25 | [D:1] |     }
+  26 | [D:1] | 
+  27 | [D:1] |     fun isRussian(context: Context): Boolean = getLanguage(context) == LANG_RU
+  28 | [D:1] | 
+  29 | [D:1] |     fun toggleLanguage(context: Context): String {
+  30 | [D:2] |         val next = if (isRussian(context)) LANG_EN else LANG_RU
+  31 | [D:2] |         setLanguage(context, next)
+  32 | [D:2] |         return next
+  33 | [D:1] |     }
+  34 | [D:1] | 
+  35 | [D:1] |     fun applyLocale(context: Context) {
+  36 | [D:2] |         val lang = getLanguage(context)
+  37 | [D:2] |         val locale = Locale(lang)
+  38 | [D:2] |         Locale.setDefault(locale)
+  39 | [D:2] | 
+  40 | [D:2] |         val resources = context.resources
+  41 | [D:2] |         val config = Configuration(resources.configuration)
+  42 | [D:2] |         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+  43 | [D:3] |             config.setLocales(LocaleList(locale))
+  44 | [D:2] |         } else {
+  45 | [D:3] |             @Suppress("DEPRECATION")
+  46 | [D:3] |             config.locale = locale
+  47 | [D:2] |         }
+  48 | [D:2] |         @Suppress("DEPRECATION")
+  49 | [D:2] |         resources.updateConfiguration(config, resources.displayMetrics)
+  50 | [D:1] |     }
+  51 | [D:1] | 
+  52 | [D:1] |     fun wrapContext(context: Context): Context {
+  53 | [D:2] |         val lang = getLanguage(context)
+  54 | [D:2] |         val locale = Locale(lang)
+  55 | [D:2] |         Locale.setDefault(locale)
+  56 | [D:2] | 
+  57 | [D:2] |         val config = Configuration(context.resources.configuration)
+  58 | [D:2] |         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+  59 | [D:3] |             config.setLocales(LocaleList(locale))
+  60 | [D:3] |             context.createConfigurationContext(config)
+  61 | [D:2] |         } else {
+  62 | [D:3] |             @Suppress("DEPRECATION")
+  63 | [D:3] |             config.locale = locale
+  64 | [D:3] |             @Suppress("DEPRECATION")
+  65 | [D:3] |             context.resources.updateConfiguration(config, context.resources.displayMetrics)
+  66 | [D:3] |             context
+  67 | [D:2] |         }
+  68 | [D:1] |     }
+  69 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_core_localization_LocalizationManager.kt_part_01_lines_0001_to_0069.txt
+================================================================================

@@ -1,0 +1,247 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\accessibility\AutoTapAccessibilityService.kt
+ PART: 1/1 | LINES: 1..237
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.accessibility
+   2 | [D:0] | 
+   3 | [D:0] | import android.accessibilityservice.AccessibilityService
+   4 | [D:0] | import android.accessibilityservice.AccessibilityServiceInfo
+   5 | [D:0] | import android.content.Intent
+   6 | [D:0] | import android.content.pm.PackageManager
+   7 | [D:0] | import android.graphics.Bitmap
+   8 | [D:0] | import android.os.Build
+   9 | [D:0] | import android.view.Display
+  10 | [D:0] | import android.view.KeyEvent
+  11 | [D:0] | import android.view.accessibility.AccessibilityEvent
+  12 | [D:0] | import com.example.autotap.core.logger.AppLogger
+  13 | [D:0] | import com.example.autotap.domain.model.ExecutionState
+  14 | [D:0] | import com.example.autotap.infrastructure.gesture.GestureDispatcher
+  15 | [D:0] | import com.example.autotap.infrastructure.orchestrator.AutoTapOrchestrator
+  16 | [D:0] | import com.example.autotap.infrastructure.visualizer.GestureVisualizerManager
+  17 | [D:0] | import java.lang.ref.WeakReference
+  18 | [D:0] | import java.util.concurrent.CountDownLatch
+  19 | [D:0] | import java.util.concurrent.Executors
+  20 | [D:0] | import java.util.concurrent.TimeUnit
+  21 | [D:0] | import java.util.concurrent.atomic.AtomicBoolean
+  22 | [D:0] | 
+  23 | [D:0] | class AutoTapAccessibilityService : AccessibilityService() {
+  24 | [D:1] | 
+  25 | [D:1] |     companion object {
+  26 | [D:2] |         @Volatile
+  27 | [D:2] |         private var serviceRef: WeakReference<AutoTapAccessibilityService>? = null
+  28 | [D:2] | 
+  29 | [D:2] |         val instance: AutoTapAccessibilityService?
+  30 | [D:2] |             get() = serviceRef?.get()
+  31 | [D:2] | 
+  32 | [D:2] |         val isLiveRunning: Boolean
+  33 | [D:2] |             get() = instance != null && instance?.isServiceConnectedState == true
+  34 | [D:1] |     }
+  35 | [D:1] | 
+  36 | [D:1] |     private val bgScreenshotExecutor = Executors.newSingleThreadExecutor()
+  37 | [D:1] |     val visualizerManager by lazy { GestureVisualizerManager(this) }
+  38 | [D:1] |     val gestureDispatcher by lazy { GestureDispatcher({ this }, visualizerManager) }
+  39 | [D:1] | 
+  40 | [D:1] |     @Volatile
+  41 | [D:1] |     var isServiceConnectedState = false
+  42 | [D:1] |         private set
+  43 | [D:1] | 
+  44 | [D:1] |     @Volatile
+  45 | [D:1] |     private var lastForegroundPackage: String = ""
+  46 | [D:1] | 
+  47 | [D:1] |     val currentForegroundPackage: String
+  48 | [D:1] |         get() = lastForegroundPackage
+  49 | [D:1] | 
+  50 | [D:1] |     private val isScreenshotInProgress = AtomicBoolean(false)
+  51 | [D:1] |     private var lastScreenshotCallTime = 0L
+  52 | [D:1] | 
+  53 | [D:1] |     private val externalStoreAndBrowsers = setOf(
+  54 | [D:1] |         "com.android.vending", "com.android.chrome", "org.mozilla.firefox",
+  55 | [D:1] |         "com.opera.browser", "com.yandex.browser", "com.sec.android.app.sbrowser",
+  56 | [D:1] |         "com.google.android.packageinstaller"
+  57 | [D:1] |     )
+  58 | [D:1] | 
+  59 | [D:1] |     override fun onCreate() {
+  60 | [D:2] |         super.onCreate()
+  61 | [D:2] |         try {
+  62 | [D:3] |             val canStartDaemon = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+  63 | [D:4] |                 checkSelfPermission("android.permission.FOREGROUND_SERVICE_SPECIAL_USE") == PackageManager.PERMISSION_GRANTED
+  64 | [D:3] |             } else {
+  65 | [D:4] |                 true
+  66 | [D:3] |             }
+  67 | [D:3] | 
+  68 | [D:3] |             if (canStartDaemon) {
+  69 | [D:4] |                 val daemonIntent = Intent(this, KeepAliveDaemonService::class.java)
+  70 | [D:4] |                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+  71 | [D:5] |                     startForegroundService(daemonIntent)
+  72 | [D:4] |                 } else {
+  73 | [D:5] |                     startService(daemonIntent)
+  74 | [D:4] |                 }
+  75 | [D:4] |                 AppLogger.log(this, "DAEMON", "KeepAliveDaemonService успешно запущен")
+  76 | [D:3] |             } else {
+  77 | [D:4] |                 AppLogger.log(this, "DAEMON", "Запуск KeepAliveDaemonService пропущен: отсутствует FOREGROUND_SERVICE_SPECIAL_USE")
+  78 | [D:3] |             }
+  79 | [D:2] |         } catch (e: Throwable) {
+  80 | [D:3] |             AppLogger.logError(this, "DAEMON", e)
+  81 | [D:2] |         }
+  82 | [D:1] |     }
+  83 | [D:1] | 
+  84 | [D:1] |     override fun onServiceConnected() {
+  85 | [D:2] |         super.onServiceConnected()
+  86 | [D:2] |         try {
+  87 | [D:3] |             serviceRef = WeakReference(this)
+  88 | [D:3] |             isServiceConnectedState = true
+  89 | [D:3] |             val info = serviceInfo ?: AccessibilityServiceInfo()
+  90 | [D:3] |             info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS or
+  91 | [D:3] |                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+  92 | [D:3] |             serviceInfo = info
+  93 | [D:3] |             AppLogger.log(this, "ACCESSIBILITY", "Служба кликера успешно подключена и активна")
+  94 | [D:2] |         } catch (e: Throwable) {
+  95 | [D:3] |             AppLogger.logError(this, "ACCESSIBILITY", e)
+  96 | [D:2] |         }
+  97 | [D:1] |     }
+  98 | [D:1] | 
+  99 | [D:1] |     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+ 100 | [D:2] |         return START_STICKY
+ 101 | [D:1] |     }
+ 102 | [D:1] | 
+ 103 | [D:1] |     override fun onTaskRemoved(rootIntent: Intent?) {
+ 104 | [D:2] |         super.onTaskRemoved(rootIntent)
+ 105 | [D:2] |         AppLogger.log(this, "ACCESSIBILITY", "onTaskRemoved: Приложение смахнули из Recents. Экстренная зачистка WindowManager...")
+ 106 | [D:2] |         try {
+ 107 | [D:3] |             val orchestrator = AutoTapOrchestrator.getInstance(this)
+ 108 | [D:3] |             orchestrator.hideOverlays()
+ 109 | [D:3] |             orchestrator.overlayWindowManager.removeAll()
+ 110 | [D:2] |         } catch (e: Throwable) {
+ 111 | [D:3] |             AppLogger.logError(this, "ACCESSIBILITY", e)
+ 112 | [D:2] |         }
+ 113 | [D:1] |     }
+ 114 | [D:1] | 
+ 115 | [D:1] |     override fun onUnbind(intent: Intent?): Boolean {
+ 116 | [D:2] |         isServiceConnectedState = false
+ 117 | [D:2] |         serviceRef = null
+ 118 | [D:2] |         try {
+ 119 | [D:3] |             val orchestrator = AutoTapOrchestrator.getInstance(this)
+ 120 | [D:3] |             orchestrator.hideOverlays()
+ 121 | [D:3] |             orchestrator.overlayWindowManager.removeAll()
+ 122 | [D:2] |         } catch (e: Throwable) {
+ 123 | [D:3] |             AppLogger.logError(this, "ACCESSIBILITY", e)
+ 124 | [D:2] |         }
+ 125 | [D:2] |         return super.onUnbind(intent)
+ 126 | [D:1] |     }
+ 127 | [D:1] | 
+ 128 | [D:1] |     override fun onRebind(intent: Intent?) {
+ 129 | [D:2] |         super.onRebind(intent)
+ 130 | [D:2] |         serviceRef = WeakReference(this)
+ 131 | [D:2] |         isServiceConnectedState = true
+ 132 | [D:1] |     }
+ 133 | [D:1] | 
+ 134 | [D:1] |     override fun onDestroy() {
+ 135 | [D:2] |         isServiceConnectedState = false
+ 136 | [D:2] |         serviceRef = null
+ 137 | [D:2] |         try {
+ 138 | [D:3] |             bgScreenshotExecutor.shutdownNow()
+ 139 | [D:3] |             val orchestrator = AutoTapOrchestrator.getInstance(this)
+ 140 | [D:3] |             orchestrator.hideOverlays()
+ 141 | [D:3] |             orchestrator.overlayWindowManager.removeAll()
+ 142 | [D:2] |         } catch (_: Throwable) {}
+ 143 | [D:2] |         super.onDestroy()
+ 144 | [D:1] |     }
+ 145 | [D:1] | 
+ 146 | [D:1] |     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+ 147 | [D:2] |         try {
+ 148 | [D:3] |             if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+ 149 | [D:4] |                 val pkg = event.packageName?.toString() ?: return
+ 150 | [D:4] |                 if (pkg != packageName && pkg != "com.android.systemui" && pkg != lastForegroundPackage) {
+ 151 | [D:5] |                     lastForegroundPackage = pkg
+ 152 | [D:5] |                     val orchestrator = AutoTapOrchestrator.getInstance(this)
+ 153 | [D:5] |                     val isRunning = orchestrator.macroEngine.executionState.value is ExecutionState.Running
+ 154 | [D:5] |                     if (isRunning && externalStoreAndBrowsers.contains(pkg)) {
+ 155 | [D:6] |                         performGlobalAction(GLOBAL_ACTION_BACK)
+ 156 | [D:6] |                         return
+ 157 | [D:5] |                     }
+ 158 | [D:5] |                     val boundScriptName = orchestrator.profileDetector.getScriptForPackage(pkg)
+ 159 | [D:5] |                     if (boundScriptName != null) {
+ 160 | [D:6] |                         val scenario = orchestrator.scenarioRepository.loadScenario(boundScriptName)
+ 161 | [D:6] |                         if (scenario != null) orchestrator.targetManager.loadActions(scenario.actions)
+ 162 | [D:5] |                     }
+ 163 | [D:4] |                 }
+ 164 | [D:3] |             }
+ 165 | [D:2] |         } catch (_: Throwable) {}
+ 166 | [D:1] |     }
+ 167 | [D:1] | 
+ 168 | [D:1] |     override fun onInterrupt() {}
+ 169 | [D:1] | 
+ 170 | [D:1] |     override fun onKeyEvent(event: KeyEvent?): Boolean {
+ 171 | [D:2] |         try {
+ 172 | [D:3] |             if (event?.action == KeyEvent.ACTION_DOWN) {
+ 173 | [D:4] |                 val orchestrator = AutoTapOrchestrator.getInstance(this)
+ 174 | [D:4] |                 when (event.keyCode) {
+ 175 | [D:5] |                     KeyEvent.KEYCODE_VOLUME_DOWN -> {
+ 176 | [D:6] |                         gestureDispatcher.vibrateFeedback(40L)
+ 177 | [D:6] |                         orchestrator.macroEngine.stop()
+ 178 | [D:6] |                         orchestrator.hideOverlays()
+ 179 | [D:6] |                         orchestrator.showOverlays()
+ 180 | [D:6] |                         return true
+ 181 | [D:5] |                     }
+ 182 | [D:5] |                     KeyEvent.KEYCODE_VOLUME_UP -> {
+ 183 | [D:6] |                         gestureDispatcher.vibrateFeedback(25L)
+ 184 | [D:6] |                         val curState = orchestrator.macroEngine.executionState.value
+ 185 | [D:6] |                         if (curState is ExecutionState.Running) orchestrator.macroEngine.pause()
+ 186 | [D:6] |                         else if (curState is ExecutionState.Paused) orchestrator.macroEngine.resume()
+ 187 | [D:6] |                         else orchestrator.onPlayClicked()
+ 188 | [D:6] |                         return true
+ 189 | [D:5] |                     }
+ 190 | [D:4] |                 }
+ 191 | [D:3] |             }
+ 192 | [D:2] |         } catch (_: Throwable) {}
+ 193 | [D:2] |         return super.onKeyEvent(event)
+ 194 | [D:1] |     }
+ 195 | [D:1] | 
+ 196 | [D:1] |     fun captureScreenshotSync(timeoutMs: Long = 1500L): Bitmap? {
+ 197 | [D:2] |         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+ 198 | [D:2] |         val now = System.currentTimeMillis()
+ 199 | [D:2] |         if (now - lastScreenshotCallTime < 30L) return null
+ 200 | [D:2] |         if (!isScreenshotInProgress.compareAndSet(false, true)) return null
+ 201 | [D:2] |         lastScreenshotCallTime = now
+ 202 | [D:2] |         val latch = CountDownLatch(1)
+ 203 | [D:2] |         var capturedBitmap: Bitmap? = null
+ 204 | [D:2] | 
+ 205 | [D:2] |         val orchestrator = AutoTapOrchestrator.getInstance(this)
+ 206 | [D:2] |         val lockScreenShowing = orchestrator.screenLockOverlay.isShowing()
+ 207 | [D:2] |         if (lockScreenShowing) {
+ 208 | [D:3] |             orchestrator.screenLockOverlay.setTemporarilyTransparent(true)
+ 209 | [D:2] |         }
+ 210 | [D:2] | 
+ 211 | [D:2] |         try {
+ 212 | [D:3] |             takeScreenshot(Display.DEFAULT_DISPLAY, bgScreenshotExecutor, object : AccessibilityService.TakeScreenshotCallback {
+ 213 | [D:4] |                 override fun onSuccess(screenshotResult: AccessibilityService.ScreenshotResult) {
+ 214 | [D:5] |                     val hwBuffer = screenshotResult.hardwareBuffer
+ 215 | [D:5] |                     var hwBitmap: Bitmap? = null
+ 216 | [D:5] |                     try {
+ 217 | [D:6] |                         val colorSpace = screenshotResult.colorSpace
+ 218 | [D:6] |                         hwBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Bitmap.wrapHardwareBuffer(hwBuffer, colorSpace) else null
+ 219 | [D:6] |                         capturedBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+ 220 | [D:5] |                     } catch (_: Throwable) {
+ 221 | [D:5] |                     } finally {
+ 222 | [D:6] |                         hwBitmap?.let { if (!it.isRecycled) it.recycle() }
+ 223 | [D:6] |                         try { hwBuffer.close() } catch (_: Throwable) {}
+ 224 | [D:6] |                         latch.countDown()
+ 225 | [D:5] |                     }
+ 226 | [D:4] |                 }
+ 227 | [D:4] |                 override fun onFailure(errorCode: Int) { latch.countDown() }
+ 228 | [D:3] |             })
+ 229 | [D:3] |             try { latch.await(timeoutMs, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) {}
+ 230 | [D:2] |         } catch (_: Throwable) {
+ 231 | [D:2] |         } finally {
+ 232 | [D:3] |             if (lockScreenShowing) orchestrator.screenLockOverlay.setTemporarilyTransparent(false)
+ 233 | [D:3] |             isScreenshotInProgress.set(false)
+ 234 | [D:2] |         }
+ 235 | [D:2] |         return capturedBitmap
+ 236 | [D:1] |     }
+ 237 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_accessibility_AutoTapAccessibilityService.kt_part_01_lines_0001_to_0237.txt
+================================================================================

@@ -1,0 +1,69 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\core\math\CoordinateNormalizer.kt
+ PART: 1/1 | LINES: 1..59
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.core.math
+   2 | [D:0] | 
+   3 | [D:0] | import android.graphics.Rect
+   4 | [D:0] | import com.example.autotap.domain.model.DeviceDisplaySpecs
+   5 | [D:0] | import com.example.autotap.domain.model.Point2D
+   6 | [D:0] | import kotlin.math.min
+   7 | [D:0] | 
+   8 | [D:0] | object CoordinateNormalizer {
+   9 | [D:1] | 
+  10 | [D:1] |     data class ScaleTransform(
+  11 | [D:1] |         val scale: Float,
+  12 | [D:1] |         val offsetX: Float,
+  13 | [D:1] |         val offsetY: Float
+  14 | [D:1] |     )
+  15 | [D:1] | 
+  16 | [D:1] |     fun calculateTransform(src: DeviceDisplaySpecs, dst: DeviceDisplaySpecs): ScaleTransform {
+  17 | [D:2] |         var srcW = src.screenWidth
+  18 | [D:2] |         var srcH = src.screenHeight
+  19 | [D:2] | 
+  20 | [D:2] |         if (src.isLandscape != dst.isLandscape) {
+  21 | [D:3] |             val temp = srcW
+  22 | [D:3] |             srcW = srcH
+  23 | [D:3] |             srcH = temp
+  24 | [D:2] |         }
+  25 | [D:2] | 
+  26 | [D:2] |         if (srcW <= 0 || srcH <= 0 || dst.screenWidth <= 0 || dst.screenHeight <= 0) {
+  27 | [D:3] |             return ScaleTransform(1.0f, 0f, 0f)
+  28 | [D:2] |         }
+  29 | [D:2] | 
+  30 | [D:2] |         val sX = dst.screenWidth.toFloat() / srcW.toFloat()
+  31 | [D:2] |         val sY = dst.screenHeight.toFloat() / srcH.toFloat()
+  32 | [D:2] |         val uniformScale = min(sX, sY)
+  33 | [D:2] |         val offsetX = (dst.screenWidth - srcW * uniformScale) / 2f
+  34 | [D:2] |         val offsetY = (dst.screenHeight - srcH * uniformScale) / 2f
+  35 | [D:2] | 
+  36 | [D:2] |         return ScaleTransform(uniformScale, offsetX, offsetY)
+  37 | [D:1] |     }
+  38 | [D:1] | 
+  39 | [D:1] |     fun mapPoint(point: Point2D, transform: ScaleTransform, boundsW: Int, boundsH: Int): Point2D {
+  40 | [D:2] |         val mappedX = (point.x * transform.scale + transform.offsetX).coerceIn(0f, boundsW.toFloat())
+  41 | [D:2] |         val mappedY = (point.y * transform.scale + transform.offsetY).coerceIn(0f, boundsH.toFloat())
+  42 | [D:2] |         return Point2D(mappedX, mappedY)
+  43 | [D:1] |     }
+  44 | [D:1] | 
+  45 | [D:1] |     fun mapRect(left: Int, top: Int, right: Int, bottom: Int, transform: ScaleTransform, boundsW: Int, boundsH: Int): IntArray {
+  46 | [D:2] |         val p1 = mapPoint(Point2D(left.toFloat(), top.toFloat()), transform, boundsW, boundsH)
+  47 | [D:2] |         val p2 = mapPoint(Point2D(right.toFloat(), bottom.toFloat()), transform, boundsW, boundsH)
+  48 | [D:2] |         val l = minOf(p1.x, p2.x).toInt()
+  49 | [D:2] |         val t = minOf(p1.y, p2.y).toInt()
+  50 | [D:2] |         val r = maxOf(p1.x, p2.x).toInt().coerceAtLeast(l + 1)
+  51 | [D:2] |         val b = maxOf(p1.y, p2.y).toInt().coerceAtLeast(t + 1)
+  52 | [D:2] |         return intArrayOf(l, t, r, b)
+  53 | [D:1] |     }
+  54 | [D:1] | 
+  55 | [D:1] |     fun mapRect(rect: Rect, transform: ScaleTransform, boundsW: Int, boundsH: Int): Rect {
+  56 | [D:2] |         val arr = mapRect(rect.left, rect.top, rect.right, rect.bottom, transform, boundsW, boundsH)
+  57 | [D:2] |         return Rect(arr[0], arr[1], arr[2], arr[3])
+  58 | [D:1] |     }
+  59 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_core_math_CoordinateNormalizer.kt_part_01_lines_0001_to_0059.txt
+================================================================================

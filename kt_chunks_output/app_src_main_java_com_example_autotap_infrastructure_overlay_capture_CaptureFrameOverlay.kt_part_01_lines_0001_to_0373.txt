@@ -1,0 +1,383 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\capture\CaptureFrameOverlay.kt
+ PART: 1/1 | LINES: 1..373
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.capture
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Canvas
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.DashPathEffect
+   8 | [D:0] | import android.graphics.Paint
+   9 | [D:0] | import android.graphics.Path
+  10 | [D:0] | import android.graphics.Rect
+  11 | [D:0] | import android.graphics.RectF
+  12 | [D:0] | import android.graphics.Typeface
+  13 | [D:0] | import android.graphics.drawable.GradientDrawable
+  14 | [D:0] | import android.view.Gravity
+  15 | [D:0] | import android.view.MotionEvent
+  16 | [D:0] | import android.view.View
+  17 | [D:0] | import android.view.WindowManager
+  18 | [D:0] | import android.widget.FrameLayout
+  19 | [D:0] | import android.widget.LinearLayout
+  20 | [D:0] | import androidx.core.graphics.toColorInt
+  21 | [D:0] | import com.example.autotap.core.logger.AppLogger
+  22 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  23 | [D:0] | import com.example.autotap.infrastructure.overlay.tutorial.InteractiveTutorialOverlay
+  24 | [D:0] | import com.example.autotap.infrastructure.overlay.ui.VectorIconDrawer
+  25 | [D:0] | import kotlin.math.hypot
+  26 | [D:0] | 
+  27 | [D:0] | @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
+  28 | [D:0] | class CaptureFrameOverlay(
+  29 | [D:0] |     private val context: Context,
+  30 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  31 | [D:0] |     private val onCaptureTriggered: (cropX: Int, cropY: Int, cropW: Int, cropH: Int, isCircle: Boolean) -> Unit,
+  32 | [D:0] |     private val onCancelled: () -> Unit
+  33 | [D:0] | ) {
+  34 | [D:1] | 
+  35 | [D:1] |     private var rootView: FrameLayout? = null
+  36 | [D:1] |     private var isCircle = true
+  37 | [D:1] |     private var cropRect = Rect()
+  38 | [D:1] | 
+  39 | [D:1] |     private var touchTrackX = -1f
+  40 | [D:1] |     private var touchTrackY = -1f
+  41 | [D:1] |     private var isTouching = false
+  42 | [D:1] | 
+  43 | [D:1] |     private val dm = context.resources.displayMetrics
+  44 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  45 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  46 | [D:1] | 
+  47 | [D:1] |     fun show() {
+  48 | [D:2] |         AppLogger.log(context, "CAPTURE", "Открыт экран точного позиционирования шаблона")
+  49 | [D:2] |         val screenW = dm.widthPixels
+  50 | [D:2] |         val screenH = dm.heightPixels
+  51 | [D:2] | 
+  52 | [D:2] |         val cx = screenW / 2
+  53 | [D:2] |         val cy = screenH / 2
+  54 | [D:2] |         val initialHalfW = 20
+  55 | [D:2] |         val initialHalfH = 20
+  56 | [D:2] |         cropRect.set(cx - initialHalfW, cy - initialHalfH, cx + initialHalfW, cy + initialHalfH)
+  57 | [D:2] | 
+  58 | [D:2] |         val root = object : FrameLayout(context) {
+  59 | [D:3] |             private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  60 | [D:4] |                 style = Paint.Style.STROKE
+  61 | [D:4] |                 strokeWidth = dpF(2.5f)
+  62 | [D:4] |                 color = "#00F5D4".toColorInt()
+  63 | [D:3] |             }
+  64 | [D:3] |             private val handleBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  65 | [D:4] |                 style = Paint.Style.FILL
+  66 | [D:4] |                 color = "#1F6FEB".toColorInt()
+  67 | [D:3] |             }
+  68 | [D:3] |             private val handleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  69 | [D:4] |                 style = Paint.Style.STROKE
+  70 | [D:4] |                 strokeWidth = dpF(1.5f)
+  71 | [D:4] |                 color = "#58A6FF".toColorInt()
+  72 | [D:3] |             }
+  73 | [D:3] |             private val connectorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  74 | [D:4] |                 style = Paint.Style.STROKE
+  75 | [D:4] |                 strokeWidth = dpF(1.5f)
+  76 | [D:4] |                 color = "#00F5D4".toColorInt()
+  77 | [D:4] |                 pathEffect = DashPathEffect(floatArrayOf(dpF(4f), dpF(3f)), 0f)
+  78 | [D:3] |             }
+  79 | [D:3] |             private val dimPaint = Paint().apply {
+  80 | [D:4] |                 style = Paint.Style.FILL
+  81 | [D:4] |                 color = "#77000000".toColorInt()
+  82 | [D:3] |             }
+  83 | [D:3] |             private val laserPointerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  84 | [D:4] |                 style = Paint.Style.STROKE
+  85 | [D:4] |                 strokeWidth = dpF(1.5f)
+  86 | [D:4] |                 color = "#58A6FF".toColorInt()
+  87 | [D:4] |                 pathEffect = DashPathEffect(floatArrayOf(dpF(6f), dpF(4f)), 0f)
+  88 | [D:3] |             }
+  89 | [D:3] |             private val touchFeedbackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  90 | [D:4] |                 style = Paint.Style.STROKE
+  91 | [D:4] |                 strokeWidth = dpF(2f)
+  92 | [D:4] |                 color = "#38BDF8".toColorInt()
+  93 | [D:3] |             }
+  94 | [D:3] | 
+  95 | [D:3] |             private val badgeBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  96 | [D:4] |                 color = "#F00B0F17".toColorInt()
+  97 | [D:4] |                 style = Paint.Style.FILL
+  98 | [D:3] |             }
+  99 | [D:3] |             private val badgeBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+ 100 | [D:4] |                 color = "#30363D".toColorInt()
+ 101 | [D:4] |                 style = Paint.Style.STROKE
+ 102 | [D:4] |                 strokeWidth = dpF(1f)
+ 103 | [D:3] |             }
+ 104 | [D:3] |             private val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+ 105 | [D:4] |                 color = "#00F5D4".toColorInt()
+ 106 | [D:4] |                 textSize = dpF(9.5f)
+ 107 | [D:4] |                 typeface = Typeface.MONOSPACE
+ 108 | [D:4] |                 textAlign = Paint.Align.CENTER
+ 109 | [D:3] |             }
+ 110 | [D:3] | 
+ 111 | [D:3] |             private val dimHolePath = Path()
+ 112 | [D:3] |             private val handleBounds = RectF()
+ 113 | [D:3] |             private val preallocatedCropRectF = RectF()
+ 114 | [D:3] |             private val badgeRectF = RectF()
+ 115 | [D:3] | 
+ 116 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 117 | [D:4] |                 super.onDraw(canvas)
+ 118 | [D:4] | 
+ 119 | [D:4] |                 preallocatedCropRectF.set(cropRect.left.toFloat(), cropRect.top.toFloat(), cropRect.right.toFloat(), cropRect.bottom.toFloat())
+ 120 | [D:4] | 
+ 121 | [D:4] |                 dimHolePath.rewind()
+ 122 | [D:4] |                 dimHolePath.fillType = Path.FillType.EVEN_ODD
+ 123 | [D:4] |                 dimHolePath.addRect(0f, 0f, width.toFloat(), height.toFloat(), Path.Direction.CW)
+ 124 | [D:4] | 
+ 125 | [D:4] |                 val cX = cropRect.centerX().toFloat()
+ 126 | [D:4] |                 val cY = cropRect.centerY().toFloat()
+ 127 | [D:4] | 
+ 128 | [D:4] |                 if (isCircle) {
+ 129 | [D:5] |                     dimHolePath.addOval(preallocatedCropRectF, Path.Direction.CW)
+ 130 | [D:4] |                 } else {
+ 131 | [D:5] |                     dimHolePath.addRect(preallocatedCropRectF, Path.Direction.CW)
+ 132 | [D:4] |                 }
+ 133 | [D:4] |                 canvas.drawPath(dimHolePath, dimPaint)
+ 134 | [D:4] | 
+ 135 | [D:4] |                 if (isCircle) {
+ 136 | [D:5] |                     canvas.drawOval(preallocatedCropRectF, borderPaint)
+ 137 | [D:4] |                 } else {
+ 138 | [D:5] |                     canvas.drawRect(preallocatedCropRectF, borderPaint)
+ 139 | [D:4] |                 }
+ 140 | [D:4] | 
+ 141 | [D:4] |                 val dimText = "${cropRect.width()} x ${cropRect.height()} px"
+ 142 | [D:4] |                 val textW = badgeTextPaint.measureText(dimText)
+ 143 | [D:4] |                 val badgeW = textW + dpF(14f)
+ 144 | [D:4] |                 val badgeH = dpF(18f)
+ 145 | [D:4] |                 val badgeCenterX = cX.coerceIn(badgeW / 2f + dpF(8f), width - badgeW / 2f - dpF(8f))
+ 146 | [D:4] | 
+ 147 | [D:4] |                 val badgeTop = if (cropRect.top.toFloat() >= badgeH + dpF(10f)) {
+ 148 | [D:5] |                     cropRect.top.toFloat() - badgeH - dpF(6f)
+ 149 | [D:4] |                 } else {
+ 150 | [D:5] |                     cropRect.bottom.toFloat() + dpF(8f)
+ 151 | [D:4] |                 }
+ 152 | [D:4] | 
+ 153 | [D:4] |                 badgeRectF.set(badgeCenterX - badgeW / 2f, badgeTop, badgeCenterX + badgeW / 2f, badgeTop + badgeH)
+ 154 | [D:4] |                 canvas.drawRoundRect(badgeRectF, dpF(5f), dpF(5f), badgeBgPaint)
+ 155 | [D:4] |                 canvas.drawRoundRect(badgeRectF, dpF(5f), dpF(5f), badgeBorderPaint)
+ 156 | [D:4] |                 canvas.drawText(dimText, badgeCenterX, badgeTop + badgeH / 2f + dpF(3.5f), badgeTextPaint)
+ 157 | [D:4] | 
+ 158 | [D:4] |                 if (isTouching && touchTrackX >= 0 && touchTrackY >= 0) {
+ 159 | [D:5] |                     canvas.drawLine(touchTrackX, touchTrackY, cX, cY, laserPointerPaint)
+ 160 | [D:5] |                     canvas.drawCircle(touchTrackX, touchTrackY, dpF(14f), touchFeedbackPaint)
+ 161 | [D:4] |                 }
+ 162 | [D:4] | 
+ 163 | [D:4] |                 val handleSz = dpF(28f)
+ 164 | [D:4] |                 val rawHx = cropRect.right.toFloat() + dpF(18f)
+ 165 | [D:4] |                 val rawHy = cropRect.bottom.toFloat() + dpF(18f)
+ 166 | [D:4] | 
+ 167 | [D:4] |                 val hx = rawHx.coerceIn(dpF(16f), screenW - dpF(16f))
+ 168 | [D:4] |                 val hy = rawHy.coerceIn(dpF(16f), screenH - dpF(16f))
+ 169 | [D:4] | 
+ 170 | [D:4] |                 canvas.drawLine(cropRect.right.toFloat(), cropRect.bottom.toFloat(), hx, hy, connectorPaint)
+ 171 | [D:4] |                 canvas.drawCircle(hx, hy, handleSz / 2f, handleBgPaint)
+ 172 | [D:4] |                 canvas.drawCircle(hx, hy, handleSz / 2f, handleStrokePaint)
+ 173 | [D:4] | 
+ 174 | [D:4] |                 handleBounds.set(hx - handleSz / 2f + dpF(5f), hy - handleSz / 2f + dpF(5f), hx + handleSz / 2f - dpF(5f), hy + handleSz / 2f - dpF(5f))
+ 175 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, VectorIconDrawer.IconType.RESIZE, handleBounds, Color.WHITE, dpF(2f))
+ 176 | [D:3] |             }
+ 177 | [D:2] |         }
+ 178 | [D:2] |         root.setWillNotDraw(false)
+ 179 | [D:2] |         rootView = root
+ 180 | [D:2] | 
+ 181 | [D:2] |         val controls = LinearLayout(context).apply {
+ 182 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 183 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 184 | [D:3] |             background = GradientDrawable(
+ 185 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 186 | [D:3] |                 intArrayOf("#F8161B22".toColorInt(), "#F80D1117".toColorInt())
+ 187 | [D:3] |             ).apply {
+ 188 | [D:4] |                 cornerRadius = dpF(14f)
+ 189 | [D:4] |                 setStroke(dp(1), "#58A6FF".toColorInt())
+ 190 | [D:3] |             }
+ 191 | [D:3] |             val p = dp(5)
+ 192 | [D:3] |             setPadding(p, p, p, p)
+ 193 | [D:3] |             elevation = dpF(16f)
+ 194 | [D:3] |             setOnTouchListener { _, _ -> true }
+ 195 | [D:2] |         }
+ 196 | [D:2] | 
+ 197 | [D:2] |         val btnSnap = createIconButton(VectorIconDrawer.IconType.CAPTURE, "#1F6FEB", "#FFFFFF", dp(38), "SNAP") {
+ 198 | [D:3] |             root.visibility = View.GONE
+ 199 | [D:3] |             val capturedCrop = Rect(cropRect)
+ 200 | [D:3] |             val isCirc = isCircle
+ 201 | [D:3] |             dismiss()
+ 202 | [D:3] |             onCaptureTriggered(capturedCrop.left, capturedCrop.top, capturedCrop.width(), capturedCrop.height(), isCirc)
+ 203 | [D:2] |         }
+ 204 | [D:2] |         controls.addView(btnSnap, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginEnd = dp(4) })
+ 205 | [D:2] | 
+ 206 | [D:2] |         val btnToggleShape = object : View(context) {
+ 207 | [D:3] |             private val bounds = RectF()
+ 208 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 209 | [D:4] |                 super.onDraw(canvas)
+ 210 | [D:4] |                 bounds.set(dpF(8f), dpF(8f), width - dpF(8f), height - dpF(8f))
+ 211 | [D:4] |                 val type = if (isCircle) VectorIconDrawer.IconType.SHAPE_CIRCLE else VectorIconDrawer.IconType.SHAPE_RECT
+ 212 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, type, bounds, "#FFB703".toColorInt(), dpF(2f))
+ 213 | [D:3] |             }
+ 214 | [D:2] |         }.apply {
+ 215 | [D:3] |             tag = "SHAPE"
+ 216 | [D:3] |             background = GradientDrawable(
+ 217 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 218 | [D:3] |                 intArrayOf("#21262D".toColorInt(), "#161B22".toColorInt())
+ 219 | [D:3] |             ).apply {
+ 220 | [D:4] |                 cornerRadius = dpF(8f)
+ 221 | [D:4] |                 setStroke(dp(1), "#FFB703".toColorInt())
+ 222 | [D:3] |             }
+ 223 | [D:3] |             layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginEnd = dp(4) }
+ 224 | [D:3] |             elevation = dpF(4f)
+ 225 | [D:3] |             setOnClickListener {
+ 226 | [D:4] |                 isCircle = !isCircle
+ 227 | [D:4] |                 invalidate()
+ 228 | [D:4] |                 root.invalidate()
+ 229 | [D:3] |             }
+ 230 | [D:2] |         }
+ 231 | [D:2] |         controls.addView(btnToggleShape)
+ 232 | [D:2] | 
+ 233 | [D:2] |         val btnHelp = createIconButton(VectorIconDrawer.IconType.HELP, "#21262D", "#00F5D4", dp(38), "HELP") {
+ 234 | [D:3] |             InteractiveTutorialOverlay(
+ 235 | [D:3] |                 context = context,
+ 236 | [D:3] |                 overlayWindowManager = overlayWindowManager,
+ 237 | [D:3] |                 mode = InteractiveTutorialOverlay.TutorialMode.CAPTURE,
+ 238 | [D:3] |                 hostViewProvider = { rootView }
+ 239 | [D:3] |             ).show()
+ 240 | [D:2] |         }
+ 241 | [D:2] |         controls.addView(btnHelp, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginEnd = dp(4) })
+ 242 | [D:2] | 
+ 243 | [D:2] |         val btnCancel = createIconButton(VectorIconDrawer.IconType.CLOSE, "#21262D", "#F04438", dp(38), "CANCEL") {
+ 244 | [D:3] |             dismiss()
+ 245 | [D:3] |             onCancelled()
+ 246 | [D:2] |         }
+ 247 | [D:2] |         controls.addView(btnCancel, LinearLayout.LayoutParams(dp(38), dp(38)))
+ 248 | [D:2] | 
+ 249 | [D:2] |         root.addView(controls, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+ 250 | [D:2] | 
+ 251 | [D:2] |         fun updateFloatingControlsPosition() {
+ 252 | [D:3] |             val ctrlW = dp(184)
+ 253 | [D:3] |             val ctrlH = dp(48)
+ 254 | [D:3] |             val margin = dp(10)
+ 255 | [D:3] |             val safeTop = dp(35)
+ 256 | [D:3] |             val safeBottom = dp(35)
+ 257 | [D:3] | 
+ 258 | [D:3] |             val posX = (cropRect.centerX() - ctrlW / 2).coerceIn(margin, (screenW - ctrlW - margin).coerceAtLeast(margin))
+ 259 | [D:3] |             val posY = if (cropRect.top - ctrlH - dp(32) >= safeTop) {
+ 260 | [D:4] |                 cropRect.top - ctrlH - dp(32)
+ 261 | [D:3] |             } else if (cropRect.bottom + dp(50) + ctrlH <= screenH - safeBottom) {
+ 262 | [D:4] |                 cropRect.bottom + dp(50)
+ 263 | [D:3] |             } else {
+ 264 | [D:4] |                 (screenH - ctrlH - safeBottom).coerceAtLeast(safeTop)
+ 265 | [D:3] |             }
+ 266 | [D:3] | 
+ 267 | [D:3] |             controls.translationX = posX.toFloat()
+ 268 | [D:3] |             controls.translationY = posY.toFloat()
+ 269 | [D:2] |         }
+ 270 | [D:2] | 
+ 271 | [D:2] |         updateFloatingControlsPosition()
+ 272 | [D:2] | 
+ 273 | [D:2] |         var isResizing = false
+ 274 | [D:2] |         var startTouchX = 0f
+ 275 | [D:2] |         var startTouchY = 0f
+ 276 | [D:2] |         val handleRadiusPx = dpF(36f)
+ 277 | [D:2] |         val minCropSize = 16
+ 278 | [D:2] | 
+ 279 | [D:2] |         root.setOnTouchListener { _, event ->
+ 280 | [D:3] |             val tx = event.rawX
+ 281 | [D:3] |             val ty = event.rawY
+ 282 | [D:3] | 
+ 283 | [D:3] |             when (event.action) {
+ 284 | [D:4] |                 MotionEvent.ACTION_DOWN -> {
+ 285 | [D:5] |                     startTouchX = tx
+ 286 | [D:5] |                     startTouchY = ty
+ 287 | [D:5] |                     touchTrackX = tx
+ 288 | [D:5] |                     touchTrackY = ty
+ 289 | [D:5] |                     isTouching = true
+ 290 | [D:5] | 
+ 291 | [D:5] |                     val handleCenterX = (cropRect.right.toFloat() + dpF(18f)).coerceIn(dpF(16f), screenW - dpF(16f))
+ 292 | [D:5] |                     val handleCenterY = (cropRect.bottom.toFloat() + dpF(18f)).coerceIn(dpF(16f), screenH - dpF(16f))
+ 293 | [D:5] |                     val distToHandle = hypot((tx - handleCenterX).toDouble(), (ty - handleCenterY).toDouble())
+ 294 | [D:5] |                     isResizing = distToHandle <= handleRadiusPx
+ 295 | [D:5] |                     root.invalidate()
+ 296 | [D:5] |                     true
+ 297 | [D:4] |                 }
+ 298 | [D:4] |                 MotionEvent.ACTION_MOVE -> {
+ 299 | [D:5] |                     val dx = (tx - startTouchX).toInt()
+ 300 | [D:5] |                     val dy = (ty - startTouchY).toInt()
+ 301 | [D:5] | 
+ 302 | [D:5] |                     touchTrackX = tx
+ 303 | [D:5] |                     touchTrackY = ty
+ 304 | [D:5] | 
+ 305 | [D:5] |                     if (isResizing) {
+ 306 | [D:6] |                         cropRect.right = (cropRect.right + dx).coerceIn(cropRect.left + minCropSize, screenW)
+ 307 | [D:6] |                         cropRect.bottom = (cropRect.bottom + dy).coerceIn(cropRect.top + minCropSize, screenH)
+ 308 | [D:5] |                     } else {
+ 309 | [D:6] |                         cropRect.offset(dx, dy)
+ 310 | [D:6] |                         if (cropRect.left < 0) cropRect.offset(-cropRect.left, 0)
+ 311 | [D:6] |                         if (cropRect.top < 0) cropRect.offset(0, -cropRect.top)
+ 312 | [D:6] |                         if (cropRect.right > screenW) cropRect.offset(screenW - cropRect.right, 0)
+ 313 | [D:6] |                         if (cropRect.bottom > screenH) cropRect.offset(0, screenH - cropRect.bottom)
+ 314 | [D:5] |                     }
+ 315 | [D:5] | 
+ 316 | [D:5] |                     startTouchX = tx
+ 317 | [D:5] |                     startTouchY = ty
+ 318 | [D:5] |                     updateFloatingControlsPosition()
+ 319 | [D:5] |                     root.invalidate()
+ 320 | [D:5] |                     true
+ 321 | [D:4] |                 }
+ 322 | [D:4] |                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+ 323 | [D:5] |                     isResizing = false
+ 324 | [D:5] |                     isTouching = false
+ 325 | [D:5] |                     touchTrackX = -1f
+ 326 | [D:5] |                     touchTrackY = -1f
+ 327 | [D:5] |                     root.invalidate()
+ 328 | [D:5] |                     true
+ 329 | [D:4] |                 }
+ 330 | [D:4] |                 else -> false
+ 331 | [D:3] |             }
+ 332 | [D:2] |         }
+ 333 | [D:2] | 
+ 334 | [D:2] |         val params = overlayWindowManager.createLayoutParams(
+ 335 | [D:2] |             width = WindowManager.LayoutParams.MATCH_PARENT,
+ 336 | [D:2] |             height = WindowManager.LayoutParams.MATCH_PARENT,
+ 337 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+ 338 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+ 339 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+ 340 | [D:2] |         )
+ 341 | [D:2] |         overlayWindowManager.addViewSafe(root, params)
+ 342 | [D:1] |     }
+ 343 | [D:1] | 
+ 344 | [D:1] |     fun dismiss() {
+ 345 | [D:2] |         rootView?.let {
+ 346 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 347 | [D:3] |             rootView = null
+ 348 | [D:2] |         }
+ 349 | [D:1] |     }
+ 350 | [D:1] | 
+ 351 | [D:1] |     private fun createIconButton(type: VectorIconDrawer.IconType, bgHex: String, iconHex: String, sizePx: Int, tagStr: String = "", onClick: () -> Unit): View {
+ 352 | [D:2] |         return object : View(context) {
+ 353 | [D:3] |             private val bounds = RectF()
+ 354 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 355 | [D:4] |                 super.onDraw(canvas)
+ 356 | [D:4] |                 bounds.set(dpF(8f), dpF(8f), width - dpF(8f), height - dpF(8f))
+ 357 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, type, bounds, iconHex.toColorInt(), dpF(2f))
+ 358 | [D:3] |             }
+ 359 | [D:2] |         }.apply {
+ 360 | [D:3] |             tag = tagStr
+ 361 | [D:3] |             background = GradientDrawable(
+ 362 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 363 | [D:3] |                 intArrayOf(bgHex.toColorInt(), "#161B22".toColorInt())
+ 364 | [D:3] |             ).apply {
+ 365 | [D:4] |                 cornerRadius = dpF(8f)
+ 366 | [D:4] |                 setStroke(dp(1), iconHex.toColorInt())
+ 367 | [D:3] |             }
+ 368 | [D:3] |             layoutParams = LinearLayout.LayoutParams(sizePx, sizePx)
+ 369 | [D:3] |             elevation = dpF(4f)
+ 370 | [D:3] |             setOnClickListener { onClick() }
+ 371 | [D:2] |         }
+ 372 | [D:1] |     }
+ 373 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_capture_CaptureFrameOverlay.kt_part_01_lines_0001_to_0373.txt
+================================================================================

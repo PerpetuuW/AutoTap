@@ -1,0 +1,51 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\vision\ScreenStabilityDetector.kt
+ PART: 1/1 | LINES: 1..41
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.vision
+   2 | [D:0] | 
+   3 | [D:0] | import android.graphics.Bitmap
+   4 | [D:0] | 
+   5 | [D:0] | object ScreenStabilityDetector {
+   6 | [D:1] | 
+   7 | [D:1] |     fun computeFastHash(pixels: IntArray, width: Int, height: Int): Long {
+   8 | [D:2] |         if (pixels.isEmpty() || width <= 0 || height <= 0) return 0L
+   9 | [D:2] |         var hash = 1125899906842597L
+  10 | [D:2] |         val stepX = (width / 16).coerceAtLeast(1)
+  11 | [D:2] |         val stepY = (height / 16).coerceAtLeast(1)
+  12 | [D:2] | 
+  13 | [D:2] |         for (y in 0 until height step stepY) {
+  14 | [D:3] |             val rowOffset = y * width
+  15 | [D:3] |             for (x in 0 until width step stepX) {
+  16 | [D:4] |                 val idx = rowOffset + x
+  17 | [D:4] |                 if (idx < pixels.size) {
+  18 | [D:5] |                     val color = pixels[idx]
+  19 | [D:5] |                     val lum = (((color ushr 16) and 0xFF) * 299 + ((color ushr 8) and 0xFF) * 587 + (color and 0xFF) * 114) / 1000
+  20 | [D:5] |                     hash = 31L * hash + lum
+  21 | [D:4] |                 }
+  22 | [D:3] |             }
+  23 | [D:2] |         }
+  24 | [D:2] |         return hash
+  25 | [D:1] |     }
+  26 | [D:1] | 
+  27 | [D:1] |     fun computeFastHash(bitmap: Bitmap): Long {
+  28 | [D:2] |         if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) return 0L
+  29 | [D:2] |         val w = bitmap.width
+  30 | [D:2] |         val h = bitmap.height
+  31 | [D:2] |         val pixels = PixelBufferPool.obtain(w * h)
+  32 | [D:2] |         try {
+  33 | [D:3] |             bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+  34 | [D:3] |             return computeFastHash(pixels, w, h)
+  35 | [D:2] |         } catch (_: Exception) {
+  36 | [D:3] |             return 0L
+  37 | [D:2] |         } finally {
+  38 | [D:3] |             PixelBufferPool.release(pixels)
+  39 | [D:2] |         }
+  40 | [D:1] |     }
+  41 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_vision_ScreenStabilityDetector.kt_part_01_lines_0001_to_0041.txt
+================================================================================

@@ -1,0 +1,366 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\ui\VectorIconDrawer.kt
+ PART: 1/1 | LINES: 1..356
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.ui
+   2 | [D:0] | 
+   3 | [D:0] | import android.graphics.Canvas
+   4 | [D:0] | import android.graphics.Paint
+   5 | [D:0] | import android.graphics.Path
+   6 | [D:0] | import android.graphics.RectF
+   7 | [D:0] | import kotlin.math.PI
+   8 | [D:0] | import kotlin.math.cos
+   9 | [D:0] | import kotlin.math.sin
+  10 | [D:0] | 
+  11 | [D:0] | object VectorIconDrawer {
+  12 | [D:1] | 
+  13 | [D:1] |     enum class IconType {
+  14 | [D:2] |         PLAY, PAUSE, STOP, PLUS, RECORD, CAPTURE, SCRIPTS, SETTINGS, JOYSTICK,
+  15 | [D:2] |         LOCK, VISIBILITY, CLEAR, DRAG_HANDLE, CLOSE, WAND, SHAPE_RECT,
+  16 | [D:2] |         SHAPE_CIRCLE, HEATMAP, STEP_NEXT, STEP_PREV, CHECK, DELETE, TEST,
+  17 | [D:2] |         CALIBRATE, LOGS, COPY, SHARE, RESIZE, HELP, NUDGE_UP, NUDGE_DOWN,
+  18 | [D:2] |         NUDGE_LEFT, NUDGE_RIGHT, SELECT_ALL, DESELECT_ALL, INSET_SHAVE,
+  19 | [D:2] |         PANEL_COLLAPSE, PANEL_EXPAND, IMAGE, CONTOUR, GRAPH_TREE
+  20 | [D:1] |     }
+  21 | [D:1] | 
+  22 | [D:1] |     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+  23 | [D:1] |     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  24 | [D:2] |         style = Paint.Style.STROKE
+  25 | [D:2] |         strokeCap = Paint.Cap.ROUND
+  26 | [D:2] |         strokeJoin = Paint.Join.ROUND
+  27 | [D:1] |     }
+  28 | [D:1] |     private val path = Path()
+  29 | [D:1] | 
+  30 | [D:1] |     fun drawIcon(canvas: Canvas, type: IconType, bounds: RectF, color: Int, strokeWidthPx: Float = 4f) {
+  31 | [D:2] |         synchronized(this) {
+  32 | [D:3] |             val cx = bounds.centerX()
+  33 | [D:3] |             val cy = bounds.centerY()
+  34 | [D:3] |             val w = bounds.width()
+  35 | [D:3] |             val h = bounds.height()
+  36 | [D:3] |             val r = minOf(w, h) / 2f
+  37 | [D:3] | 
+  38 | [D:3] |             fillPaint.color = color
+  39 | [D:3] |             strokePaint.color = color
+  40 | [D:3] |             strokePaint.strokeWidth = strokeWidthPx
+  41 | [D:3] | 
+  42 | [D:3] |             when (type) {
+  43 | [D:4] |                 IconType.PLAY -> {
+  44 | [D:5] |                     path.rewind()
+  45 | [D:5] |                     val p = r * 0.72f
+  46 | [D:5] |                     path.moveTo(cx - p * 0.55f, cy - p)
+  47 | [D:5] |                     path.lineTo(cx + p * 0.9f, cy)
+  48 | [D:5] |                     path.lineTo(cx - p * 0.55f, cy + p)
+  49 | [D:5] |                     path.close()
+  50 | [D:5] |                     canvas.drawPath(path, fillPaint)
+  51 | [D:4] |                 }
+  52 | [D:4] |                 IconType.PAUSE -> {
+  53 | [D:5] |                     val bw = r * 0.34f
+  54 | [D:5] |                     val bh = r * 1.25f
+  55 | [D:5] |                     val gap = r * 0.28f
+  56 | [D:5] |                     canvas.drawRoundRect(RectF(cx - gap - bw, cy - bh / 2f, cx - gap, cy + bh / 2f), 4f, 4f, fillPaint)
+  57 | [D:5] |                     canvas.drawRoundRect(RectF(cx + gap, cy - bh / 2f, cx + gap + bw, cy + bh / 2f), 4f, 4f, fillPaint)
+  58 | [D:4] |                 }
+  59 | [D:4] |                 IconType.STOP -> {
+  60 | [D:5] |                     canvas.drawRoundRect(RectF(cx - r * 0.58f, cy - r * 0.58f, cx + r * 0.58f, cy + r * 0.58f), 6f, 6f, fillPaint)
+  61 | [D:4] |                 }
+  62 | [D:4] |                 IconType.PLUS -> {
+  63 | [D:5] |                     canvas.drawLine(cx - r * 0.75f, cy, cx + r * 0.75f, cy, strokePaint)
+  64 | [D:5] |                     canvas.drawLine(cx, cy - r * 0.75f, cx, cy + r * 0.75f, strokePaint)
+  65 | [D:4] |                 }
+  66 | [D:4] |                 IconType.RECORD -> {
+  67 | [D:5] |                     canvas.drawCircle(cx, cy, r * 0.55f, fillPaint)
+  68 | [D:5] |                     canvas.drawCircle(cx, cy, r * 0.88f, strokePaint)
+  69 | [D:4] |                 }
+  70 | [D:4] |                 IconType.CAPTURE -> {
+  71 | [D:5] |                     val s = r * 0.78f
+  72 | [D:5] |                     val c = s * 0.45f
+  73 | [D:5] |                     canvas.drawLine(cx - s, cy - s, cx - s + c, cy - s, strokePaint)
+  74 | [D:5] |                     canvas.drawLine(cx - s, cy - s, cx - s, cy - s + c, strokePaint)
+  75 | [D:5] |                     canvas.drawLine(cx + s, cy - s, cx + s - c, cy - s, strokePaint)
+  76 | [D:5] |                     canvas.drawLine(cx + s, cy - s, cx + s, cy - s + c, strokePaint)
+  77 | [D:5] |                     canvas.drawLine(cx - s, cy + s, cx - s + c, cy + s, strokePaint)
+  78 | [D:5] |                     canvas.drawLine(cx - s, cy + s, cx - s, cy + s - c, strokePaint)
+  79 | [D:5] |                     canvas.drawLine(cx + s, cy + s, cx + s - c, cy + s, strokePaint)
+  80 | [D:5] |                     canvas.drawLine(cx + s, cy + s, cx + s, cy + s - c, strokePaint)
+  81 | [D:5] |                     canvas.drawCircle(cx, cy, r * 0.30f, strokePaint)
+  82 | [D:5] |                     canvas.drawCircle(cx, cy, strokeWidthPx * 0.7f, fillPaint)
+  83 | [D:4] |                 }
+  84 | [D:4] |                 IconType.SCRIPTS -> {
+  85 | [D:5] |                     val p = r * 0.78f
+  86 | [D:5] |                     path.rewind()
+  87 | [D:5] |                     path.moveTo(cx - p, cy - p * 0.4f)
+  88 | [D:5] |                     path.lineTo(cx - p * 0.3f, cy - p * 0.4f)
+  89 | [D:5] |                     path.lineTo(cx - p * 0.1f, cy - p * 0.7f)
+  90 | [D:5] |                     path.lineTo(cx + p, cy - p * 0.7f)
+  91 | [D:5] |                     path.lineTo(cx + p, cy + p * 0.75f)
+  92 | [D:5] |                     path.lineTo(cx - p, cy + p * 0.75f)
+  93 | [D:5] |                     path.close()
+  94 | [D:5] |                     canvas.drawPath(path, strokePaint)
+  95 | [D:5] |                     canvas.drawLine(cx - p * 0.5f, cy + p * 0.1f, cx + p * 0.5f, cy + p * 0.1f, strokePaint)
+  96 | [D:4] |                 }
+  97 | [D:4] |                 IconType.SETTINGS -> {
+  98 | [D:5] |                     canvas.drawCircle(cx, cy, r * 0.38f, strokePaint)
+  99 | [D:5] |                     for (i in 0 until 6) {
+ 100 | [D:6] |                         val angle = i * (PI / 3.0)
+ 101 | [D:6] |                         canvas.drawLine(
+ 102 | [D:6] |                             (cx + (r * 0.45f) * cos(angle)).toFloat(),
+ 103 | [D:6] |                             (cy + (r * 0.45f) * sin(angle)).toFloat(),
+ 104 | [D:6] |                             (cx + (r * 0.88f) * cos(angle)).toFloat(),
+ 105 | [D:6] |                             (cy + (r * 0.88f) * sin(angle)).toFloat(),
+ 106 | [D:6] |                             strokePaint
+ 107 | [D:6] |                         )
+ 108 | [D:5] |                     }
+ 109 | [D:4] |                 }
+ 110 | [D:4] |                 IconType.JOYSTICK -> {
+ 111 | [D:5] |                     val p = r * 0.8f
+ 112 | [D:5] |                     val b = p * 0.35f
+ 113 | [D:5] |                     path.rewind()
+ 114 | [D:5] |                     path.moveTo(cx - b, cy - p)
+ 115 | [D:5] |                     path.lineTo(cx + b, cy - p)
+ 116 | [D:5] |                     path.lineTo(cx + b, cy - b)
+ 117 | [D:5] |                     path.lineTo(cx + p, cy - b)
+ 118 | [D:5] |                     path.lineTo(cx + p, cy + b)
+ 119 | [D:5] |                     path.lineTo(cx + b, cy + b)
+ 120 | [D:5] |                     path.lineTo(cx + b, cy + p)
+ 121 | [D:5] |                     path.lineTo(cx - b, cy + p)
+ 122 | [D:5] |                     path.lineTo(cx - b, cy + b)
+ 123 | [D:5] |                     path.lineTo(cx - p, cy + b)
+ 124 | [D:5] |                     path.lineTo(cx - p, cy - b)
+ 125 | [D:5] |                     path.lineTo(cx - b, cy - b)
+ 126 | [D:5] |                     path.close()
+ 127 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 128 | [D:5] |                     canvas.drawCircle(cx, cy, strokeWidthPx * 0.75f, fillPaint)
+ 129 | [D:4] |                 }
+ 130 | [D:4] |                 IconType.LOCK -> {
+ 131 | [D:5] |                     val bw = r * 0.68f
+ 132 | [D:5] |                     val bh = r * 0.55f
+ 133 | [D:5] |                     canvas.drawRoundRect(RectF(cx - bw, cy - bh * 0.1f, cx + bw, cy + bh * 1.25f), 5f, 5f, fillPaint)
+ 134 | [D:5] |                     canvas.drawArc(RectF(cx - bw * 0.60f, cy - bh * 1.05f, cx + bw * 0.60f, cy + bh * 0.2f), 180f, 180f, false, strokePaint)
+ 135 | [D:5] |                     canvas.drawCircle(cx, cy + bh * 0.4f, strokeWidthPx * 0.8f, strokePaint)
+ 136 | [D:4] |                 }
+ 137 | [D:4] |                 IconType.VISIBILITY -> {
+ 138 | [D:5] |                     path.rewind()
+ 139 | [D:5] |                     path.moveTo(cx - r * 0.85f, cy)
+ 140 | [D:5] |                     path.quadTo(cx, cy - r * 0.65f, cx + r * 0.85f, cy)
+ 141 | [D:5] |                     path.quadTo(cx, cy + r * 0.65f, cx - r * 0.85f, cy)
+ 142 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 143 | [D:5] |                     canvas.drawCircle(cx, cy, r * 0.32f, fillPaint)
+ 144 | [D:4] |                 }
+ 145 | [D:4] |                 IconType.CLEAR, IconType.DELETE -> {
+ 146 | [D:5] |                     val p = r * 0.68f
+ 147 | [D:5] |                     canvas.drawRoundRect(RectF(cx - p * 0.75f, cy - p * 0.4f, cx + p * 0.75f, cy + p), 4f, 4f, strokePaint)
+ 148 | [D:5] |                     canvas.drawLine(cx - p * 0.95f, cy - p * 0.4f, cx + p * 0.95f, cy - p * 0.4f, strokePaint)
+ 149 | [D:5] |                     canvas.drawLine(cx - p * 0.35f, cy - p * 0.75f, cx + p * 0.35f, cy - p * 0.75f, strokePaint)
+ 150 | [D:5] |                     canvas.drawLine(cx - p * 0.3f, cy - p * 0.1f, cx - p * 0.3f, cy + p * 0.65f, strokePaint)
+ 151 | [D:5] |                     canvas.drawLine(cx + p * 0.3f, cy - p * 0.1f, cx + p * 0.3f, cy + p * 0.65f, strokePaint)
+ 152 | [D:4] |                 }
+ 153 | [D:4] |                 IconType.DRAG_HANDLE -> {
+ 154 | [D:5] |                     val p = r * 0.55f
+ 155 | [D:5] |                     for (dx in listOf(-p * 0.55f, p * 0.55f)) {
+ 156 | [D:6] |                         for (dy in listOf(-p * 0.75f, 0f, p * 0.75f)) {
+ 157 | [D:7] |                             canvas.drawCircle(cx + dx, cy + dy, strokeWidthPx * 0.8f, fillPaint)
+ 158 | [D:6] |                         }
+ 159 | [D:5] |                     }
+ 160 | [D:4] |                 }
+ 161 | [D:4] |                 IconType.CLOSE -> {
+ 162 | [D:5] |                     val p = r * 0.60f
+ 163 | [D:5] |                     canvas.drawLine(cx - p, cy - p, cx + p, cy + p, strokePaint)
+ 164 | [D:5] |                     canvas.drawLine(cx + p, cy - p, cx - p, cy + p, strokePaint)
+ 165 | [D:4] |                 }
+ 166 | [D:4] |                 IconType.WAND -> {
+ 167 | [D:5] |                     val p = r * 0.75f
+ 168 | [D:5] |                     canvas.drawLine(cx - p * 0.9f, cy + p * 0.9f, cx + p * 0.5f, cy - p * 0.5f, strokePaint)
+ 169 | [D:5] |                     canvas.drawCircle(cx + p * 0.7f, cy - p * 0.7f, 3.5f, fillPaint)
+ 170 | [D:5] |                     canvas.drawCircle(cx - p * 0.2f, cy - p * 0.6f, 2.5f, fillPaint)
+ 171 | [D:5] |                     canvas.drawCircle(cx + p * 0.6f, cy + p * 0.1f, 2.5f, fillPaint)
+ 172 | [D:4] |                 }
+ 173 | [D:4] |                 IconType.SHAPE_RECT -> {
+ 174 | [D:5] |                     canvas.drawRoundRect(RectF(cx - r * 0.75f, cy - r * 0.7f, cx + r * 0.75f, cy + r * 0.7f), 4f, 4f, strokePaint)
+ 175 | [D:4] |                 }
+ 176 | [D:4] |                 IconType.SHAPE_CIRCLE -> {
+ 177 | [D:5] |                     canvas.drawCircle(cx, cy, r * 0.75f, strokePaint)
+ 178 | [D:4] |                 }
+ 179 | [D:4] |                 IconType.HEATMAP -> {
+ 180 | [D:5] |                     canvas.drawCircle(cx - r * 0.32f, cy, r * 0.42f, strokePaint)
+ 181 | [D:5] |                     canvas.drawCircle(cx + r * 0.32f, cy, r * 0.42f, strokePaint)
+ 182 | [D:4] |                 }
+ 183 | [D:4] |                 IconType.STEP_NEXT -> {
+ 184 | [D:5] |                     val p = r * 0.55f
+ 185 | [D:5] |                     path.rewind()
+ 186 | [D:5] |                     path.moveTo(cx - p * 0.5f, cy - p)
+ 187 | [D:5] |                     path.lineTo(cx + p * 0.5f, cy)
+ 188 | [D:5] |                     path.lineTo(cx - p * 0.5f, cy + p)
+ 189 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 190 | [D:4] |                 }
+ 191 | [D:4] |                 IconType.STEP_PREV -> {
+ 192 | [D:5] |                     val p = r * 0.55f
+ 193 | [D:5] |                     path.rewind()
+ 194 | [D:5] |                     path.moveTo(cx + p * 0.5f, cy - p)
+ 195 | [D:5] |                     path.lineTo(cx - p * 0.5f, cy)
+ 196 | [D:5] |                     path.lineTo(cx + p * 0.5f, cy + p)
+ 197 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 198 | [D:4] |                 }
+ 199 | [D:4] |                 IconType.CHECK -> {
+ 200 | [D:5] |                     val p = r * 0.68f
+ 201 | [D:5] |                     path.rewind()
+ 202 | [D:5] |                     path.moveTo(cx - p * 0.8f, cy)
+ 203 | [D:5] |                     path.lineTo(cx - p * 0.2f, cy + p * 0.7f)
+ 204 | [D:5] |                     path.lineTo(cx + p * 0.9f, cy - p * 0.7f)
+ 205 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 206 | [D:4] |                 }
+ 207 | [D:4] |                 IconType.TEST -> {
+ 208 | [D:5] |                     val p = r * 0.65f
+ 209 | [D:5] |                     path.rewind()
+ 210 | [D:5] |                     path.moveTo(cx - p * 0.5f, cy - p)
+ 211 | [D:5] |                     path.lineTo(cx + p, cy)
+ 212 | [D:5] |                     path.lineTo(cx - p * 0.5f, cy + p)
+ 213 | [D:5] |                     path.close()
+ 214 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 215 | [D:4] |                 }
+ 216 | [D:4] |                 IconType.CALIBRATE -> {
+ 217 | [D:5] |                     val p = r * 0.75f
+ 218 | [D:5] |                     canvas.drawCircle(cx, cy, p * 0.9f, strokePaint)
+ 219 | [D:5] |                     canvas.drawCircle(cx, cy, p * 0.35f, strokePaint)
+ 220 | [D:5] |                     canvas.drawLine(cx - p * 1.15f, cy, cx + p * 1.15f, cy, strokePaint)
+ 221 | [D:5] |                     canvas.drawLine(cx, cy - p * 1.15f, cx, cy + p * 1.15f, strokePaint)
+ 222 | [D:4] |                 }
+ 223 | [D:4] |                 IconType.LOGS -> {
+ 224 | [D:5] |                     val p = r * 0.75f
+ 225 | [D:5] |                     canvas.drawRoundRect(RectF(cx - p * 0.7f, cy - p, cx + p * 0.7f, cy + p), 4f, 4f, strokePaint)
+ 226 | [D:5] |                     canvas.drawLine(cx - p * 0.35f, cy - p * 0.45f, cx + p * 0.35f, cy - p * 0.45f, strokePaint)
+ 227 | [D:5] |                     canvas.drawLine(cx - p * 0.35f, cy, cx + p * 0.35f, cy, strokePaint)
+ 228 | [D:5] |                     canvas.drawLine(cx - p * 0.35f, cy + p * 0.45f, cx + p * 0.1f, cy + p * 0.45f, strokePaint)
+ 229 | [D:4] |                 }
+ 230 | [D:4] |                 IconType.COPY -> {
+ 231 | [D:5] |                     val p = r * 0.68f
+ 232 | [D:5] |                     canvas.drawRoundRect(RectF(cx - p * 0.8f, cy - p * 0.8f, cx + p * 0.35f, cy + p * 0.35f), 4f, 4f, strokePaint)
+ 233 | [D:5] |                     canvas.drawRoundRect(RectF(cx - p * 0.35f, cy - p * 0.35f, cx + p * 0.8f, cy + p * 0.8f), 4f, 4f, strokePaint)
+ 234 | [D:4] |                 }
+ 235 | [D:4] |                 IconType.SHARE -> {
+ 236 | [D:5] |                     val p = r * 0.72f
+ 237 | [D:5] |                     canvas.drawCircle(cx - p * 0.6f, cy, 3.5f, fillPaint)
+ 238 | [D:5] |                     canvas.drawCircle(cx + p * 0.6f, cy - p * 0.6f, 3.5f, fillPaint)
+ 239 | [D:5] |                     canvas.drawCircle(cx + p * 0.6f, cy + p * 0.6f, 3.5f, fillPaint)
+ 240 | [D:5] |                     canvas.drawLine(cx - p * 0.6f, cy, cx + p * 0.6f, cy - p * 0.6f, strokePaint)
+ 241 | [D:5] |                     canvas.drawLine(cx - p * 0.6f, cy, cx + p * 0.6f, cy + p * 0.6f, strokePaint)
+ 242 | [D:4] |                 }
+ 243 | [D:4] |                 IconType.RESIZE -> {
+ 244 | [D:5] |                     val p = r * 0.75f
+ 245 | [D:5] |                     canvas.drawLine(cx - p, cy + p, cx + p, cy - p, strokePaint)
+ 246 | [D:5] |                     canvas.drawLine(cx + p * 0.4f, cy - p, cx + p, cy - p, strokePaint)
+ 247 | [D:5] |                     canvas.drawLine(cx + p, cy - p * 0.4f, cx + p, cy - p, strokePaint)
+ 248 | [D:5] |                     canvas.drawLine(cx - p * 0.4f, cy + p, cx - p, cy + p, strokePaint)
+ 249 | [D:5] |                     canvas.drawLine(cx - p, cy + p * 0.4f, cx - p, cy + p, strokePaint)
+ 250 | [D:4] |                 }
+ 251 | [D:4] |                 IconType.HELP -> {
+ 252 | [D:5] |                     path.rewind()
+ 253 | [D:5] |                     path.moveTo(cx - r * 0.4f, cy - r * 0.45f)
+ 254 | [D:5] |                     path.quadTo(cx, cy - r * 0.85f, cx + r * 0.4f, cy - r * 0.45f)
+ 255 | [D:5] |                     path.quadTo(cx + r * 0.4f, cy - r * 0.1f, cx, cy + (0.15f * r))
+ 256 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 257 | [D:5] |                     canvas.drawCircle(cx, cy + r * 0.65f, strokeWidthPx * 0.8f, fillPaint)
+ 258 | [D:4] |                 }
+ 259 | [D:4] |                 IconType.NUDGE_UP -> {
+ 260 | [D:5] |                     path.rewind()
+ 261 | [D:5] |                     path.moveTo(cx - r * 0.55f, cy + r * 0.3f)
+ 262 | [D:5] |                     path.lineTo(cx, cy - r * 0.45f)
+ 263 | [D:5] |                     path.lineTo(cx + r * 0.55f, cy + r * 0.3f)
+ 264 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 265 | [D:4] |                 }
+ 266 | [D:4] |                 IconType.NUDGE_DOWN -> {
+ 267 | [D:5] |                     path.rewind()
+ 268 | [D:5] |                     path.moveTo(cx - r * 0.55f, cy - r * 0.3f)
+ 269 | [D:5] |                     path.lineTo(cx, cy + r * 0.45f)
+ 270 | [D:5] |                     path.lineTo(cx + r * 0.55f, cy - r * 0.3f)
+ 271 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 272 | [D:4] |                 }
+ 273 | [D:4] |                 IconType.NUDGE_LEFT -> {
+ 274 | [D:5] |                     path.rewind()
+ 275 | [D:5] |                     path.moveTo(cx + r * 0.3f, cy - r * 0.55f)
+ 276 | [D:5] |                     path.lineTo(cx - r * 0.45f, cy)
+ 277 | [D:5] |                     path.lineTo(cx + r * 0.3f, cy + r * 0.55f)
+ 278 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 279 | [D:4] |                 }
+ 280 | [D:4] |                 IconType.NUDGE_RIGHT -> {
+ 281 | [D:5] |                     path.rewind()
+ 282 | [D:5] |                     path.moveTo(cx - r * 0.3f, cy - r * 0.55f)
+ 283 | [D:5] |                     path.lineTo(cx + r * 0.45f, cy)
+ 284 | [D:5] |                     path.lineTo(cx - r * 0.3f, cy + r * 0.55f)
+ 285 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 286 | [D:4] |                 }
+ 287 | [D:4] |                 IconType.SELECT_ALL -> {
+ 288 | [D:5] |                     canvas.drawRoundRect(RectF(cx - r * 0.7f, cy - r * 0.7f, cx + r * 0.7f, cy + r * 0.7f), 4f, 4f, strokePaint)
+ 289 | [D:5] |                     canvas.drawCircle(cx, cy, 3.5f, fillPaint)
+ 290 | [D:4] |                 }
+ 291 | [D:4] |                 IconType.DESELECT_ALL -> {
+ 292 | [D:5] |                     canvas.drawRoundRect(RectF(cx - r * 0.7f, cy - r * 0.7f, cx + r * 0.7f, cy + r * 0.7f), 4f, 4f, strokePaint)
+ 293 | [D:5] |                     canvas.drawLine(cx - r * 0.35f, cy - r * 0.35f, cx + r * 0.35f, cy + r * 0.35f, strokePaint)
+ 294 | [D:4] |                 }
+ 295 | [D:4] |                 IconType.INSET_SHAVE -> {
+ 296 | [D:5] |                     val p = r * 0.75f
+ 297 | [D:5] |                     canvas.drawRect(cx - p, cy - p, cx + p, cy + p, strokePaint)
+ 298 | [D:5] |                     canvas.drawRect(cx - p * 0.45f, cy - p * 0.45f, cx + p * 0.45f, cy + p * 0.45f, strokePaint)
+ 299 | [D:4] |                 }
+ 300 | [D:4] |                 IconType.PANEL_COLLAPSE -> {
+ 301 | [D:5] |                     val p = r * 0.55f
+ 302 | [D:5] |                     path.rewind()
+ 303 | [D:5] |                     path.moveTo(cx - p, cy - p * 0.3f)
+ 304 | [D:5] |                     path.lineTo(cx, cy + p * 0.4f)
+ 305 | [D:5] |                     path.lineTo(cx + p, cy - p * 0.3f)
+ 306 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 307 | [D:4] |                 }
+ 308 | [D:4] |                 IconType.PANEL_EXPAND -> {
+ 309 | [D:5] |                     val p = r * 0.55f
+ 310 | [D:5] |                     path.rewind()
+ 311 | [D:5] |                     path.moveTo(cx - p, cy + p * 0.3f)
+ 312 | [D:5] |                     path.lineTo(cx, cy - p * 0.4f)
+ 313 | [D:5] |                     path.lineTo(cx + p, cy + p * 0.3f)
+ 314 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 315 | [D:4] |                 }
+ 316 | [D:4] |                 IconType.IMAGE -> {
+ 317 | [D:5] |                     val p = r * 0.75f
+ 318 | [D:5] |                     canvas.drawRoundRect(RectF(cx - p, cy - p * 0.75f, cx + p, cy + p * 0.75f), 4f, 4f, strokePaint)
+ 319 | [D:5] |                     canvas.drawCircle(cx - p * 0.4f, cy - p * 0.25f, 2.5f, fillPaint)
+ 320 | [D:5] |                     path.rewind()
+ 321 | [D:5] |                     path.moveTo(cx - p * 0.7f, cy + p * 0.45f)
+ 322 | [D:5] |                     path.lineTo(cx - p * 0.1f, cy - p * 0.1f)
+ 323 | [D:5] |                     path.lineTo(cx + p * 0.3f, cy + p * 0.25f)
+ 324 | [D:5] |                     path.lineTo(cx + p * 0.75f, cy - p * 0.2f)
+ 325 | [D:5] |                     path.lineTo(cx + p * 0.75f, cy + p * 0.55f)
+ 326 | [D:5] |                     path.lineTo(cx - p * 0.7f, cy + p * 0.55f)
+ 327 | [D:5] |                     path.close()
+ 328 | [D:5] |                     canvas.drawPath(path, fillPaint)
+ 329 | [D:4] |                 }
+ 330 | [D:4] |                 IconType.CONTOUR -> {
+ 331 | [D:5] |                     val p = r * 0.75f
+ 332 | [D:5] |                     path.rewind()
+ 333 | [D:5] |                     path.moveTo(cx - p * 0.7f, cy)
+ 334 | [D:5] |                     path.quadTo(cx, cy - p * 0.8f, cx + p * 0.7f, cy)
+ 335 | [D:5] |                     path.quadTo(cx, cy + p * 0.8f, cx - p * 0.7f, cy)
+ 336 | [D:5] |                     canvas.drawPath(path, strokePaint)
+ 337 | [D:5] |                     canvas.drawCircle(cx, cy, 3f, fillPaint)
+ 338 | [D:4] |                 }
+ 339 | [D:4] |                 IconType.GRAPH_TREE -> {
+ 340 | [D:5] |                     val p = r * 0.75f
+ 341 | [D:5] |                     val topX = cx
+ 342 | [D:5] |                     val topY = cy - p * 0.6f
+ 343 | [D:5] |                     val b1X = cx - p * 0.65f
+ 344 | [D:5] |                     val b1Y = cy + p * 0.6f
+ 345 | [D:5] |                     val b2X = cx + p * 0.65f
+ 346 | [D:5] |                     val b2Y = cy + p * 0.6f
+ 347 | [D:5] |                     canvas.drawLine(topX, topY, b1X, b1Y, strokePaint)
+ 348 | [D:5] |                     canvas.drawLine(topX, topY, b2X, b2Y, strokePaint)
+ 349 | [D:5] |                     canvas.drawCircle(topX, topY, strokeWidthPx * 1.5f, fillPaint)
+ 350 | [D:5] |                     canvas.drawCircle(b1X, b1Y, strokeWidthPx * 1.2f, fillPaint)
+ 351 | [D:5] |                     canvas.drawCircle(b2X, b2Y, strokeWidthPx * 1.2f, fillPaint)
+ 352 | [D:4] |                 }
+ 353 | [D:3] |             }
+ 354 | [D:2] |         }
+ 355 | [D:1] |     }
+ 356 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_ui_VectorIconDrawer.kt_part_01_lines_0001_to_0356.txt
+================================================================================

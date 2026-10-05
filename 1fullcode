@@ -1,0 +1,4144 @@
+В компоновке было выявлено и исправлено 3 ключевых причины смещения элементов:
+
+1.  Конфликт MaterialButton в мини-кнопках: По умолчанию компоненты
+    MaterialButton навязывали стандартный минимальный размер (64×48dp) и
+    внутренние отступы insetTop/insetBottom. Кнопки джойстика захвата (🔘, ◄, ►,
+    ✏️, 🗑) и шагов перекашивались, выходя за границы своих ячеек. Добавлены
+    обнуления минимальных габаритов (minWidth="0dp", minHeight="0dp",
+    insetTop="0dp", insetBottom="0dp").
+2.  Сворачивание ScrollView при wrap_content: В floating_edit_dialog.xml
+    контейнер имел layout_height="wrap_content", а ScrollView — 0dp с
+    weight="1". В системах Android это приводит к схлопыванию рабочей области
+    настроек в нулевую высоту или к хаотичным разрывам. В MyAutoClickService.kt
+    размер окна четко зафиксирован (320dp × 460dp), гарантируя стандартное
+    отображение со скроллингом центральной части и зафиксированной нижней
+    панелью.
+3.  Организация блоков ИИ-параметров: Раньше поля ИИ-настроек были частично
+    помещены в убираемый блок расширенного режима (layoutAdvancedParameters).
+    При переключении на "Быстрый режим" (по умолчанию) настройки ИИ скрывались
+    полностью. Все элементы ИИ-шага перенесены в единый блок
+    layoutAiParametersBlock, который корректно показывается при выборе типа «ИИ»
+    и скрывается при «Клик»/«Свайп».
+4.  Смещение угловых манипуляторов ⤢ рамки: Отрицательные layout_marginEnd /
+    layout_marginBottom в RelativeLayout некорректно отрабатывали на ряде
+    экранов. Переведено на чистый расчет смещения через translationX и
+    translationY (с выносом ручек ровно на 14dp за углы рамки).
+5.  Интерактивные слушатели событий: В меню редактирования добавлены
+    отсутствовавшие обработчики нажатий на переключатели типов действия («Клик»,
+    «Зажатие», «Свайп», «ИИ») и стрелки листания масок (◄ / ►), обеспечивающие
+    мгновенное обновление формы в реальном времени.
+
+Обновленные файлы проекта
+
+--- START OF FILE: app/src/main/res/layout/floating_capture_frame.xml ---
+
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layoutCaptureContainer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:padding="32dp">
+
+    <!-- Центральный кадр ИИ-захвата (Круг или Квадрат) -->
+    <FrameLayout
+        android:id="@+id/captureSquare"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_centerInParent="true"
+        android:background="@drawable/border_capture" />
+
+    <!-- Верхняя ось: Значок Переноса ✥ -->
+    <TextView
+        android:id="@+id/handleMoveFrame"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_above="@id/captureSquare"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="8dp"
+        android:gravity="center"
+        android:text="✥"
+        android:textColor="#FFB703"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:background="@drawable/drag_handle_bg"
+        android:elevation="12dp" />
+
+    <!-- Нижняя ось: Кнопка Снимка 📸 -->
+    <ImageButton
+        android:id="@+id/btnDoCapture"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:layout_below="@id/captureSquare"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="8dp"
+        android:src="@drawable/ic_camera"
+        android:scaleType="centerInside"
+        android:background="@drawable/btn_premium_primary"
+        android:padding="8dp"
+        android:elevation="12dp"
+        android:contentDescription="DoCapture" />
+
+    <!-- Левая ось: Тумблер Формы (🔲 / 🔘) -->
+    <Button
+        android:id="@+id/btnToggleCaptureShape"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:layout_toStartOf="@id/captureSquare"
+        android:layout_centerVertical="true"
+        android:layout_marginEnd="8dp"
+        android:gravity="center"
+        android:text="🔘"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="@color/accent_blue"
+        android:textSize="16sp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:insetLeft="0dp"
+        android:insetRight="0dp"
+        android:padding="0dp"
+        android:elevation="12dp" />
+
+    <!-- Правая ось: Кнопка Справки 💡 и Кнопка Закрытия ✕ -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_toEndOf="@id/captureSquare"
+        android:layout_centerVertical="true"
+        android:layout_marginStart="8dp"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/btnHelpCapture"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:src="@drawable/ic_help"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_secondary"
+            android:padding="8dp"
+            android:layout_marginEnd="6dp"
+            android:elevation="12dp"
+            android:contentDescription="Help" />
+
+        <ImageButton
+            android:id="@+id/btnCancelCapture"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:src="@drawable/ic_close"
+            android:scaleType="centerInside"
+            android:background="@drawable/btn_premium_record"
+            android:padding="8dp"
+            android:elevation="12dp"
+            android:contentDescription="Cancel" />
+    </LinearLayout>
+
+    <!-- 4 Угловых Манипулятора Масштаба ⤢ -->
+    <TextView
+        android:id="@+id/handleTopLeft"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_alignTop="@id/captureSquare"
+        android:layout_alignStart="@id/captureSquare"
+        android:translationX="-14dp"
+        android:translationY="-14dp"
+        android:gravity="center"
+        android:text="⤢"
+        android:textColor="#00F5D4"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:background="@drawable/handle_manipulator_bg"
+        android:elevation="14dp"/>
+
+    <TextView
+        android:id="@+id/handleTopRight"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_alignTop="@id/captureSquare"
+        android:layout_alignEnd="@id/captureSquare"
+        android:translationX="14dp"
+        android:translationY="-14dp"
+        android:gravity="center"
+        android:text="⤢"
+        android:textColor="#00F5D4"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:background="@drawable/handle_manipulator_bg"
+        android:elevation="14dp"/>
+
+    <TextView
+        android:id="@+id/handleBottomLeft"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_alignBottom="@id/captureSquare"
+        android:layout_alignStart="@id/captureSquare"
+        android:translationX="-14dp"
+        android:translationY="14dp"
+        android:gravity="center"
+        android:text="⤢"
+        android:textColor="#00F5D4"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:background="@drawable/handle_manipulator_bg"
+        android:elevation="14dp"/>
+
+    <TextView
+        android:id="@+id/handleResize"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_alignBottom="@id/captureSquare"
+        android:layout_alignEnd="@id/captureSquare"
+        android:translationX="14dp"
+        android:translationY="14dp"
+        android:gravity="center"
+        android:text="⤢"
+        android:textColor="#00F5D4"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:background="@drawable/handle_manipulator_bg"
+        android:elevation="14dp"/>
+</RelativeLayout>
+
+--- END OF FILE: app/src/main/res/layout/floating_capture_frame.xml ---
+
+--- START OF FILE: app/src/main/res/layout/floating_edit_dialog.xml ---
+
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/panel_blue"
+    android:padding="12dp"
+    android:elevation="16dp">
+
+    <!-- Заголовок со стрелками быстрой навигации по шагам -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <Button
+            android:id="@+id/btnPrevStep"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:padding="0dp"
+            android:text="◄"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="4dp"/>
+
+        <TextView
+            android:id="@+id/tvDialogTitle"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Действие #1"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"/>
+
+        <Button
+            android:id="@+id/btnStepTutorial"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:padding="0dp"
+            android:text="❓"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#1C2541"
+            android:textSize="12sp"
+            android:layout_marginEnd="4dp"/>
+
+        <Button
+            android:id="@+id/btnNextStep"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:padding="0dp"
+            android:text="►"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="12sp"
+            android:textStyle="bold"/>
+    </LinearLayout>
+
+    <!-- Переключатель режима (Быстрый / Расширенный) -->
+    <Button
+        android:id="@+id/btnToggleFastMode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="36dp"
+        android:minWidth="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:insetLeft="0dp"
+        android:insetRight="0dp"
+        android:text="⚡ Режим: Быстрый (Рекомендуется) [ВКЛ]"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="@color/accent_blue"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="vertical"
+        android:fillViewport="true"
+        android:layout_marginBottom="6dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Выбор типа действия -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Тип действия:"
+                android:textColor="@color/text_gray"
+                android:textSize="10sp"
+                android:layout_marginBottom="2dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="6dp">
+
+                <Button
+                    android:id="@+id/btnTypeClick"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="34dp"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:padding="0dp"
+                    android:text="Клик"
+                    android:textSize="10sp"
+                    android:backgroundTint="@color/accent_blue"/>
+
+                <Button
+                    android:id="@+id/btnTypeHold"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="34dp"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:padding="0dp"
+                    android:text="Зажатие"
+                    android:textSize="10sp"
+                    android:backgroundTint="@color/bg_dark_blue"
+                    android:layout_marginStart="2dp"/>
+
+                <Button
+                    android:id="@+id/btnTypeSwipe"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="34dp"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:padding="0dp"
+                    android:text="Свайп"
+                    android:textSize="10sp"
+                    android:backgroundTint="@color/bg_dark_blue"
+                    android:layout_marginStart="2dp"/>
+
+                <Button
+                    android:id="@+id/btnTypeTrigger"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="34dp"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:padding="0dp"
+                    android:text="ИИ"
+                    android:textSize="10sp"
+                    android:backgroundTint="@color/bg_dark_blue"
+                    android:layout_marginStart="2dp"/>
+            </LinearLayout>
+
+            <!-- Порядок и Задержка -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="6dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginEnd="4dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Порядок №:"
+                        android:textColor="@color/text_gray"
+                        android:textSize="10sp"/>
+                    <EditText
+                        android:id="@+id/etStepOrder"
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp"
+                        android:background="@color/bg_dark_blue"
+                        android:textColor="#FFFFFF"
+                        android:inputType="number"
+                        android:padding="4dp"
+                        android:text="1"
+                        android:textSize="12sp"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1.4"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Задержка перед шагом:"
+                        android:textColor="@color/text_gray"
+                        android:textSize="10sp"/>
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        <EditText
+                            android:id="@+id/etDelay"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="match_parent"
+                            android:background="@color/bg_dark_blue"
+                            android:textColor="#FFFFFF"
+                            android:inputType="numberDecimal"
+                            android:padding="4dp"
+                            android:text="1"
+                            android:textSize="12sp"/>
+                        <Button
+                            android:id="@+id/btnDelayUnit"
+                            android:layout_width="44dp"
+                            android:layout_height="match_parent"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:insetLeft="0dp"
+                            android:insetRight="0dp"
+                            android:padding="0dp"
+                            android:text="сек"
+                            android:textColor="#FFFFFF"
+                            android:backgroundTint="@color/accent_blue"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:layout_marginStart="2dp"/>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Длительность зажатия -->
+            <TextView
+                android:id="@+id/tvHoldTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Длительность зажатия (мс):"
+                android:textColor="@color/text_gray"
+                android:textSize="10sp"
+                android:visibility="gone"/>
+            <EditText
+                android:id="@+id/etHoldDuration"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:background="@color/bg_dark_blue"
+                android:textColor="#FFFFFF"
+                android:inputType="number"
+                android:padding="4dp"
+                android:text="1000"
+                android:textSize="12sp"
+                android:visibility="gone"
+                android:layout_marginBottom="6dp"/>
+
+            <!-- БЛОК ИИ-НАСТРОЕК (Показывается при ActionType.TRIGGER) -->
+            <LinearLayout
+                android:id="@+id/layoutAiParametersBlock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <Button
+                    android:id="@+id/btnCalibrateMatchesOnScreen"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="36dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="🔍 Калибровка совпадений на экране"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="@color/accent_blue"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="4dp"/>
+
+                <Button
+                    android:id="@+id/btnToggleSearchArea"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="34dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="Зона поиска: Весь экран 🌐"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="@color/bg_dark_blue"
+                    android:textSize="10sp"
+                    android:layout_marginBottom="6dp"/>
+
+                <!-- Выбор и Управление Маской -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/drag_handle_bg"
+                    android:padding="6dp"
+                    android:layout_marginBottom="6dp">
+
+                    <TextView
+                        android:id="@+id/tvSelectTemplateTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Выбор и управление маской:"
+                        android:textColor="#58A6FF"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="4dp"/>
+
+                    <LinearLayout
+                        android:id="@+id/layoutTemplateSelector"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="6dp">
+
+                        <Button
+                            android:id="@+id/btnPrevTemplate"
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:insetLeft="0dp"
+                            android:insetRight="0dp"
+                            android:padding="0dp"
+                            android:text="◄"
+                            android:textColor="#FFFFFF"
+                            android:textSize="12sp"
+                            android:backgroundTint="@color/accent_blue"/>
+
+                        <ImageView
+                            android:id="@+id/ivSelectedTemplateImagePreview"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:scaleType="fitCenter"
+                            android:background="#0A1128"
+                            android:padding="2dp"
+                            android:layout_marginStart="4dp"
+                            android:layout_marginEnd="4dp"/>
+
+                        <TextView
+                            android:id="@+id/tvTemplateIndex"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:gravity="center"
+                            android:text="Шаблон: Нет"
+                            android:textColor="#FFFFFF"
+                            android:textSize="11sp"
+                            android:textStyle="bold"/>
+
+                        <Button
+                            android:id="@+id/btnNextTemplate"
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:insetLeft="0dp"
+                            android:insetRight="0dp"
+                            android:padding="0dp"
+                            android:text="►"
+                            android:textColor="#FFFFFF"
+                            android:textSize="12sp"
+                            android:backgroundTint="@color/accent_blue"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnEditTemplateInStep"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="34dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:insetLeft="0dp"
+                            android:insetRight="0dp"
+                            android:padding="0dp"
+                            android:text="✏️ Редактировать"
+                            android:textColor="#FFFFFF"
+                            android:backgroundTint="@color/accent_blue"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:layout_marginEnd="4dp"/>
+
+                        <Button
+                            android:id="@+id/btnDeleteTemplate"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="34dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:insetLeft="0dp"
+                            android:insetRight="0dp"
+                            android:padding="0dp"
+                            android:text="🗑 В корзину"
+                            android:textColor="#FFFFFF"
+                            android:backgroundTint="@color/red_close"
+                            android:textSize="10sp"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Имя шаблона и Схожесть % -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="6dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1.5"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginEnd="4dp">
+                        <TextView
+                            android:id="@+id/tvTemplateNameTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Имя шаблона:"
+                            android:textColor="@color/text_gray"
+                            android:textSize="10sp"/>
+                        <EditText
+                            android:id="@+id/etTemplateName"
+                            android:layout_width="match_parent"
+                            android:layout_height="36dp"
+                            android:background="@color/bg_dark_blue"
+                            android:textColor="#FFFFFF"
+                            android:padding="4dp"
+                            android:textSize="11sp"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                        <TextView
+                            android:id="@+id/tvSimilarityTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Схожесть %:"
+                            android:textColor="@color/text_gray"
+                            android:textSize="10sp"/>
+                        <EditText
+                            android:id="@+id/etSimilarity"
+                            android:layout_width="match_parent"
+                            android:layout_height="36dp"
+                            android:background="@color/bg_dark_blue"
+                            android:textColor="#FFFFFF"
+                            android:inputType="number"
+                            android:padding="4dp"
+                            android:text="80"
+                            android:textSize="11sp"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Частота и Таймаут -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="6dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginEnd="4dp">
+                        <TextView
+                            android:id="@+id/tvFreqTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Частота (мс):"
+                            android:textColor="@color/text_gray"
+                            android:textSize="10sp"/>
+                        <EditText
+                            android:id="@+id/etFrequency"
+                            android:layout_width="match_parent"
+                            android:layout_height="36dp"
+                            android:background="@color/bg_dark_blue"
+                            android:textColor="#FFFFFF"
+                            android:inputType="number"
+                            android:padding="4dp"
+                            android:text="500"
+                            android:textSize="11sp"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                        <TextView
+                            android:id="@+id/tvAiTimeoutTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Таймаут (сек):"
+                            android:textColor="@color/text_gray"
+                            android:textSize="10sp"/>
+                        <EditText
+                            android:id="@+id/etAiTimeout"
+                            android:layout_width="match_parent"
+                            android:layout_height="36dp"
+                            android:background="@color/bg_dark_blue"
+                            android:textColor="#FFFFFF"
+                            android:inputType="number"
+                            android:padding="4dp"
+                            android:text="2"
+                            android:textSize="11sp"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnMultiSelectTemplates"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="34dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="Мульти-поиск ИИ: Выключен (1 шаблон)"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="@color/bg_dark_blue"
+                    android:textSize="10sp"
+                    android:layout_marginBottom="6dp"/>
+
+                <Button
+                    android:id="@+id/btnSelectTargetScriptToLoad"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="34dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="Запустить сценарий: [ Выбрать из списка 📁 ]"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="@color/bg_dark_blue"
+                    android:textSize="10sp"
+                    android:layout_marginBottom="6dp"/>
+
+                <!-- Переход к шагу № и Клик по ИИ -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="6dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginEnd="4dp">
+                        <TextView
+                            android:id="@+id/tvNextStepTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Перейти к шагу №:"
+                            android:textColor="@color/text_gray"
+                            android:textSize="10sp"/>
+                        <EditText
+                            android:id="@+id/etNextStep"
+                            android:layout_width="match_parent"
+                            android:layout_height="36dp"
+                            android:background="@color/bg_dark_blue"
+                            android:textColor="#FFFFFF"
+                            android:inputType="number"
+                            android:padding="4dp"
+                            android:hint="След. шаг"
+                            android:textColorHint="@color/text_gray"
+                            android:textSize="11sp"/>
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnToggleClickAi"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="36dp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:insetLeft="0dp"
+                        android:insetRight="0dp"
+                        android:padding="0dp"
+                        android:layout_gravity="bottom"
+                        android:text="Клик по ИИ: ДА"
+                        android:textColor="#FFFFFF"
+                        android:backgroundTint="@color/bg_dark_blue"
+                        android:textSize="10sp"/>
+                </LinearLayout>
+
+                <!-- Флажки настроек ИИ -->
+                <CheckBox
+                    android:id="@+id/cbSoundAlertOnMatch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="32dp"
+                    android:text="🔔 Звуковой сигнал при нахождении ИИ"
+                    android:textColor="#00F5D4"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="2dp"/>
+
+                <CheckBox
+                    android:id="@+id/cbSemiTransparentMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="32dp"
+                    android:text="☑ Полупрозрачная маска (Динамический фон)"
+                    android:textColor="#00F5D4"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="2dp"/>
+
+                <CheckBox
+                    android:id="@+id/cbBestMatchAuto"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="32dp"
+                    android:text="☑ Искать самый схожий вариант (Авто)"
+                    android:textColor="#00F5D4"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:checked="true"
+                    android:layout_marginBottom="2dp"/>
+
+                <CheckBox
+                    android:id="@+id/cbExactMatchOnly"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="32dp"
+                    android:text="☑ Строгое совпадение (без понижения %)"
+                    android:textColor="#00F5D4"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp"/>
+
+                <!-- Кроппер -->
+                <LinearLayout
+                    android:id="@+id/layoutInteractiveCropper"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@color/bg_dark_blue"
+                    android:padding="6dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="👉 Перерезка маски со скриншота:"
+                        android:textColor="#00B4D8"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="4dp"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="140dp"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:id="@+id/ivFullScreenshotPreview"
+                            android:layout_width="0dp"
+                            android:layout_weight="2"
+                            android:layout_height="match_parent"
+                            android:scaleType="fitCenter"
+                            android:background="#000000"
+                            android:layout_marginEnd="4dp"/>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="match_parent"
+                            android:orientation="vertical"
+                            android:gravity="center">
+
+                            <ImageView
+                                android:id="@+id/ivMaskPreview"
+                                android:layout_width="44dp"
+                                android:layout_height="44dp"
+                                android:scaleType="fitCenter"
+                                android:background="#1C2541"
+                                android:padding="2dp"/>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- БЛОК РАСШИРЕННЫХ НАСТРОЕК (Показывается при выключенном Быстром режиме) -->
+            <LinearLayout
+                android:id="@+id/layoutAdvancedParameters"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/drag_handle_bg"
+                android:padding="6dp"
+                android:layout_marginBottom="6dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="⚙️ Расширенные настройки шага:"
+                    android:textColor="#FFB703"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="4dp"/>
+
+                <!-- Повторы и Разброс -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="4dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginEnd="4dp">
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Повторов (раз):"
+                            android:textColor="@color/text_gray"
+                            android:textSize="10sp"/>
+                        <EditText
+                            android:id="@+id/etRepeatCount"
+                            android:layout_width="match_parent"
+                            android:layout_height="36dp"
+                            android:background="@color/bg_dark_blue"
+                            android:textColor="#FFFFFF"
+                            android:inputType="number"
+                            android:padding="4dp"
+                            android:text="1"
+                            android:textSize="12sp"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Разброс (±px):"
+                            android:textColor="@color/text_gray"
+                            android:textSize="10sp"/>
+                        <EditText
+                            android:id="@+id/etRandomRadius"
+                            android:layout_width="match_parent"
+                            android:layout_height="36dp"
+                            android:background="@color/bg_dark_blue"
+                            android:textColor="#FFFFFF"
+                            android:inputType="number"
+                            android:padding="4dp"
+                            android:text="0"
+                            android:textSize="12sp"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnToggleInfiniteRepeat"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="34dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="Бесконечный повтор (До остановки): НЕТ"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="@color/bg_dark_blue"
+                    android:textSize="10sp"
+                    android:layout_marginBottom="6dp"/>
+
+                <!-- Размер мишени (пкс) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <TextView
+                        android:id="@+id/tvSizeTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Размер значка мишени (пкс):"
+                        android:textColor="@color/text_gray"
+                        android:textSize="10sp"/>
+                    <EditText
+                        android:id="@+id/etCaptureSize"
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp"
+                        android:background="@color/bg_dark_blue"
+                        android:textColor="#FFFFFF"
+                        android:inputType="number"
+                        android:padding="4dp"
+                        android:text="100"
+                        android:textSize="11sp"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnCloneAction"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:minWidth="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:text="📋 КЛОНИРОВАТЬ ЭТОТ ШАГ"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="@color/accent_blue"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp"/>
+
+            <Button
+                android:id="@+id/btnDeleteAction"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:minWidth="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:text="УДАЛИТЬ ЭТОТ ШАГ"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="@color/red_close"
+                android:textStyle="bold"
+                android:textSize="10sp"
+                android:layout_marginBottom="4dp"/>
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Нижняя панель СОХРАНИТЬ / ОТМЕНА -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="40dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:text="Сохранить"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/accent_blue"
+            android:textSize="11sp"
+            android:textStyle="bold"/>
+        <View
+            android:layout_width="6dp"
+            android:layout_height="match_parent"/>
+        <Button
+            android:id="@+id/btnCancel"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="40dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:text="Отмена"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="@color/red_close"
+            android:textSize="11sp"/>
+    </LinearLayout>
+</LinearLayout>
+
+--- END OF FILE: app/src/main/res/layout/floating_edit_dialog.xml ---
+
+--- START OF FILE: app/src/main/res/layout/item_template.xml ---
+
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="6dp">
+
+    <ImageView
+        android:id="@+id/ivTemplatePreview"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:scaleType="fitCenter"
+        android:adjustViewBounds="true"
+        android:background="#1C2541"
+        android:padding="2dp"
+        android:layout_marginEnd="8dp"/>
+
+    <TextView
+        android:id="@+id/tvTemplateName"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"/>
+
+    <Button
+        android:id="@+id/btnEditTemplateMask"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:insetLeft="0dp"
+        android:insetRight="0dp"
+        android:padding="0dp"
+        android:text="✏️"
+        android:textSize="10sp"
+        android:backgroundTint="@color/accent_blue"
+        android:layout_marginEnd="4dp"/>
+
+    <Button
+        android:id="@+id/btnDeleteTemplateFile"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:insetLeft="0dp"
+        android:insetRight="0dp"
+        android:padding="0dp"
+        android:text="🗑"
+        android:textSize="10sp"
+        android:backgroundTint="@color/red_close"/>
+</LinearLayout>
+
+--- END OF FILE: app/src/main/res/layout/item_template.xml ---
+
+--- START OF FILE: app/src/main/res/layout/item_script.xml ---
+
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="6dp">
+    <TextView
+        android:id="@+id/tvScriptName"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:textStyle="bold"/>
+    <Button
+        android:id="@+id/btnExportScriptFile"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:insetLeft="0dp"
+        android:insetRight="0dp"
+        android:padding="0dp"
+        android:text="📤"
+        android:textSize="10sp"
+        android:backgroundTint="@color/accent_blue"
+        android:layout_marginEnd="4dp"/>
+    <Button
+        android:id="@+id/btnCopyScriptFile"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:insetLeft="0dp"
+        android:insetRight="0dp"
+        android:padding="0dp"
+        android:text="📋"
+        android:textSize="10sp"
+        android:backgroundTint="#1C2541"
+        android:layout_marginEnd="4dp"/>
+    <Button
+        android:id="@+id/btnDeleteScriptFile"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:insetLeft="0dp"
+        android:insetRight="0dp"
+        android:padding="0dp"
+        android:text="🗑"
+        android:textSize="10sp"
+        android:backgroundTint="@color/red_close"/>
+</LinearLayout>
+
+--- END OF FILE: app/src/main/res/layout/item_script.xml ---
+
+--- START OF FILE: app/src/main/java/com/example/autotap/MyAutoClickService.kt
+---
+
+package com.example.autotap
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.content.Context
+import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Path
+import android.graphics.PixelFormat
+import android.graphics.Paint
+import android.graphics.Point
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.StrictMode
+import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.ContextThemeWrapper
+import android.view.Display
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.animation.OvershootInterpolator
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import androidx.core.content.edit
+import androidx.core.graphics.createBitmap
+import java.io.File
+import java.io.FileOutputStream
+import java.io.PrintWriter
+import java.lang.ref.WeakReference
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.HashSet
+import java.util.Locale
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.min
+import kotlin.random.Random
+
+enum class ActionType { CLICK, LONG_PRESS, SWIPE, TRIGGER }
+
+data class MatchCandidate(
+    val point: Point,
+    val ratio: Float,
+    val rect: Rect
+)
+
+class ActionConfig(
+    var id: Int,
+    var startView: View,
+    var type: ActionType = ActionType.CLICK,
+    var delay: Long = 1000,
+    var checkInterval: Long = 500,
+    var endView: View? = null,
+    var selectedTemplateIndex: Int = -1,
+    var clickAiTarget: Boolean = true,
+    var jumpToStepOnMatch: Int = -1,
+    var captureSize: Int = 100,
+    var repeatCount: Int = 1,
+    var holdDuration: Long = 1000,
+    var randomRadius: Int = 0,
+    var fullScreenshotPath: String = "",
+    var maskX: Int = 0,
+    var maskY: Int = 0,
+    var maskW: Int = 100,
+    var maskH: Int = 100,
+    var similarityPercent: Int = 80,
+    var targetScriptToLoad: String = "",
+    var aiTimeoutSeconds: Int = 2,
+    var multiTemplateIndices: ArrayList<Int> = arrayListOf(),
+    var searchInCapturedArea: Boolean = false,
+    var playAudioOnMatch: Boolean = false,
+    var isFastMode: Boolean = true,
+    var bestMatchAuto: Boolean = true,
+    var exactMatchOnly: Boolean = false,
+    var semiTransparentMode: Boolean = false
+)
+
+@Suppress("SpellCheckingInspection", "AccessibilityPolicy", "DEPRECATION", "ClickableViewAccessibility")
+@SuppressLint("InflateParams", "SetTextI18n")
+class MyAutoClickService : AccessibilityService() {
+
+    companion object {
+        private var serviceRef: WeakReference<MyAutoClickService>? = null
+
+        var instance: MyAutoClickService?
+            get() = serviceRef?.get()
+            set(value) {
+                serviceRef = if (value != null) WeakReference(value) else null
+            }
+
+        fun logError(context: Context, e: Throwable) {
+            try {
+                val logFile = File(context.filesDir, "error_log.txt")
+                FileOutputStream(logFile, true).use { out ->
+                    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                    val timestamp = sdf.format(Date())
+                    val writer = PrintWriter(out)
+                    writer.println("=== $timestamp ===")
+                    e.printStackTrace(writer)
+                    writer.println()
+                    writer.flush()
+                }
+            } catch (_: Exception) {}
+        }
+
+        fun logAppEvent(context: Context, tag: String, message: String) {
+            try {
+                val logFile = File(context.filesDir, "error_log.txt")
+                FileOutputStream(logFile, true).use { out ->
+                    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+                    val writer = PrintWriter(out)
+                    writer.println("[${sdf.format(Date())}][$tag] $message")
+                    writer.flush()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private lateinit var windowManager: WindowManager
+    private var controlPanelView: View? = null
+    private var captureFrameView: View? = null
+    private var highlightOverlayView: View? = null
+    private var tutorialOverlayView: View? = null
+    private var recordOverlayView: View? = null
+    private var recordBarView: View? = null
+
+    private val calibrationViewsList = ArrayList<View>()
+    private val actionsList = ArrayList<ActionConfig>()
+
+    private var isPlaying = false
+    private val loopHandler = Handler(Looper.getMainLooper())
+    private val screenshotHandler = Handler(Looper.getMainLooper())
+    private val highlightHandler = Handler(Looper.getMainLooper())
+
+    private var currentActionIndex = 0
+    private var stepRepeatCounter = 0
+    private var aiStepStartTimeMs: Long = 0L
+
+    val globalTemplates = ArrayList<Bitmap>()
+    val globalTemplatesNames = ArrayList<String>()
+
+    private var isRecording = false
+    private var isInjectingGesture = false
+    private var lastRecordedTime = 0L
+
+    private var currentCaptureSize = 40
+    private var isSquareCaptureMode = false
+    private var isNumbersHidden = false
+
+    private var globalClickDurationMs: Long = 120L
+    private var globalSwipeDurationMs: Long = 300L
+    private var globalPreScreenshotDelayMs: Long = 250L
+    private var nextScriptOnFinish: String = ""
+
+    private val uiExecutor = Executor { command ->
+        Handler(Looper.getMainLooper()).post(command)
+    }
+
+    private val bgScannerExecutor = Executors.newSingleThreadExecutor()
+
+    private val hideHighlightRunnable = Runnable { removeHighlightOverlay() }
+
+    private fun updateKeepScreenOn(keepOn: Boolean) {
+        controlPanelView?.let { panel ->
+            val lp = panel.layoutParams as? WindowManager.LayoutParams ?: return@let
+            if (keepOn) {
+                lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            } else {
+                lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
+            }
+            safeUpdateViewLayout(panel, lp)
+        }
+    }
+
+    private fun spawnClickRippleAnimation(posX: Float, posY: Float) {
+        try {
+            val rippleView = View(this).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(dpToPx(4), Color.parseColor("#00F5D4"))
+                    setColor(Color.parseColor("#5000F5D4"))
+                }
+            }
+            val sizePx = dpToPx(56)
+            val params = WindowManager.LayoutParams(
+                sizePx, sizePx, getOverlayType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                x = (posX - sizePx / 2f).toInt()
+                y = (posY - sizePx / 2f).toInt()
+            }
+
+            safeAddView(rippleView, params)
+
+            rippleView.scaleX = 0.3f
+            rippleView.scaleY = 0.3f
+            rippleView.alpha = 1.0f
+
+            rippleView.animate()
+                .scaleX(1.8f)
+                .scaleY(1.8f)
+                .alpha(0f)
+                .setDuration(380)
+                .withEndAction { safeRemoveView(rippleView) }
+                .start()
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    private fun playMatchSound() {
+        try {
+            val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 85)
+            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
+            Handler(Looper.getMainLooper()).postDelayed({
+                try { toneGen.release() } catch (_: Exception) {}
+            }, 300L)
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    private fun getTemplateMetadataFile(maskPath: String): File {
+        val maskFile = File(maskPath)
+        val parent = maskFile.parentFile ?: filesDir
+        val name = maskFile.nameWithoutExtension
+        return File(parent, "${name}.json")
+    }
+
+    fun saveTemplateMetadata(maskPath: String, similarityPct: Int, isPinned: Boolean = true, localArea: Boolean = false) {
+        try {
+            if (maskPath.isEmpty()) return
+            val metaFile = getTemplateMetadataFile(maskPath)
+            val json = JSONObject().apply {
+                put("similarityPercent", similarityPct)
+                put("isPinned", isPinned)
+                put("searchInCapturedArea", localArea)
+            }
+            FileOutputStream(metaFile).use { out ->
+                out.write(json.toString().toByteArray())
+            }
+            logAppEvent(this, "META_SAVE", "Метаданные шаблона '${File(maskPath).nameWithoutExtension}' сохранены: $similarityPct%")
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    fun loadTemplateMetadata(maskPath: String): JSONObject? {
+        try {
+            if (maskPath.isEmpty()) return null
+            val metaFile = getTemplateMetadataFile(maskPath)
+            if (metaFile.exists()) {
+                return JSONObject(metaFile.readText())
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
+    private fun purgeOldTrashTemplates() {
+        try {
+            val trashDir = File(filesDir, "trash_templates")
+            if (trashDir.exists()) {
+                val now = System.currentTimeMillis()
+                val sevenDaysMs = 7L * 24 * 60 * 60 * 1000L
+                trashDir.walkTopDown().forEach { file ->
+                    if (file.isFile && (now - file.lastModified() > sevenDaysMs)) {
+                        file.delete()
+                    }
+                }
+                trashDir.listFiles()?.forEach { dir ->
+                    if (dir.isDirectory && dir.listFiles()?.isEmpty() == true) {
+                        dir.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    fun moveTemplateToTrash(index: Int) {
+        if (index !in globalTemplatesNames.indices) return
+        try {
+            val maskPath = globalTemplatesNames[index]
+            val maskFile = File(maskPath)
+            if (maskFile.exists()) {
+                val dateFolder = maskFile.parentFile?.name ?: "default"
+                val timestamp = maskFile.name.removePrefix("mask_").removeSuffix(".png")
+                val fullFile = File(maskFile.parentFile, "full_${timestamp}.png")
+
+                val targetTrashDir = File(File(filesDir, "trash_templates"), dateFolder).apply { mkdirs() }
+
+                val trashMask = File(targetTrashDir, maskFile.name)
+                maskFile.renameTo(trashMask)
+                trashMask.setLastModified(System.currentTimeMillis())
+
+                if (fullFile.exists()) {
+                    val trashFull = File(targetTrashDir, fullFile.name)
+                    fullFile.renameTo(trashFull)
+                    trashFull.setLastModified(System.currentTimeMillis())
+                }
+            }
+
+            globalTemplates.removeAt(index)
+            globalTemplatesNames.removeAt(index)
+
+            for (act in actionsList) {
+                act.multiTemplateIndices.remove(index)
+                for (k in act.multiTemplateIndices.indices) {
+                    if (act.multiTemplateIndices[k] > index) {
+                        act.multiTemplateIndices[k] = act.multiTemplateIndices[k] - 1
+                    }
+                }
+                if (act.selectedTemplateIndex == index) {
+                    act.selectedTemplateIndex = if (globalTemplates.isNotEmpty()) 0 else -1
+                } else if (act.selectedTemplateIndex > index) {
+                    act.selectedTemplateIndex = act.selectedTemplateIndex - 1
+                }
+            }
+
+            Toast.makeText(this, "🗑 Шаблон перемещен в корзину", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    private fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams) {
+        if (view == null || view.parent == null) return
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    private fun safeRemoveView(view: View?) {
+        if (view == null || view.parent == null) return
+        try {
+            windowManager.removeView(view)
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    private fun safeAddView(view: View?, params: WindowManager.LayoutParams) {
+        if (view == null) return
+        try {
+            windowManager.addView(view, params)
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    private fun setTargetsTouchable(touchable: Boolean) {
+        for (action in actionsList) {
+            val params = action.startView.layoutParams as? WindowManager.LayoutParams ?: continue
+            if (touchable) {
+                params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            } else {
+                params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            }
+            safeUpdateViewLayout(action.startView, params)
+
+            action.endView?.let { endView ->
+                val endParams = endView.layoutParams as? WindowManager.LayoutParams ?: return@let
+                if (touchable) {
+                    endParams.flags = endParams.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                } else {
+                    endParams.flags = endParams.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                }
+                safeUpdateViewLayout(endView, endParams)
+            }
+        }
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun dpToPx(dp: Float): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun convertToSoftwareBitmap(hardwareBitmap: Bitmap): Bitmap {
+        return try {
+            hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false) ?: run {
+                val softwareBitmap = createBitmap(hardwareBitmap.width, hardwareBitmap.height)
+                val canvas = Canvas(softwareBitmap)
+                canvas.drawBitmap(hardwareBitmap, 0f, 0f, null)
+                softwareBitmap
+            }
+        } catch (_: Exception) {
+            val softwareBitmap = createBitmap(hardwareBitmap.width, hardwareBitmap.height)
+            val canvas = Canvas(softwareBitmap)
+            canvas.drawBitmap(hardwareBitmap, 0f, 0f, null)
+            softwareBitmap
+        }
+    }
+
+    private fun getOverlayType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    }
+
+    private val automationRunnable: Runnable = object : Runnable {
+        override fun run() {
+            if (!isPlaying || actionsList.isEmpty()) return
+
+            if (currentActionIndex >= actionsList.size) {
+                currentActionIndex = 0
+                stepRepeatCounter = 0
+            }
+
+            highlightActiveStep(currentActionIndex)
+            val config = actionsList[currentActionIndex]
+
+            if (config.type == ActionType.TRIGGER && config.selectedTemplateIndex != -1 && config.selectedTemplateIndex < globalTemplates.size) {
+                checkTriggerAndProceed(config) {
+                    stepRepeatCounter++
+                    if (config.repeatCount == -1 || stepRepeatCounter < config.repeatCount) {
+                        loopHandler.postDelayed(automationRunnable, config.delay)
+                    } else {
+                        proceedToNextAction(config)
+                    }
+                }
+            } else {
+                stepRepeatCounter++
+                executeAction(config)
+                if (config.repeatCount == -1 || stepRepeatCounter < config.repeatCount) {
+                    loopHandler.postDelayed(automationRunnable, config.delay)
+                } else {
+                    proceedToNextAction(config)
+                }
+            }
+        }
+    }
+
+    private fun proceedToNextAction(config: ActionConfig) {
+        stepRepeatCounter = 0
+        aiStepStartTimeMs = 0L
+        val nextIdx = currentActionIndex + 1
+
+        loopHandler.removeCallbacks(automationRunnable)
+
+        if (nextIdx >= actionsList.size && nextScriptOnFinish.isNotEmpty()) {
+            logAppEvent(this, "SCRIPT_CHAIN", "🔗 Сценарий завершен. Авто-эстафета к сценарию '$nextScriptOnFinish'")
+            val scriptToRun = nextScriptOnFinish
+            loadScriptByName(scriptToRun)
+            if (actionsList.isNotEmpty() && isPlaying) {
+                currentActionIndex = 0
+                loopHandler.postDelayed(automationRunnable, config.delay)
+                return
+            }
+        }
+
+        if (actionsList.isEmpty()) return
+        currentActionIndex = nextIdx % actionsList.size
+        loopHandler.postDelayed(automationRunnable, config.delay)
+    }
+
+    private fun executeAction(config: ActionConfig) {
+        val startLoc = IntArray(2)
+        config.startView.getLocationOnScreen(startLoc)
+
+        val offsetX = if (config.randomRadius > 0) Random.nextInt(-config.randomRadius, config.randomRadius + 1) else 0
+        val offsetY = if (config.randomRadius > 0) Random.nextInt(-config.randomRadius, config.randomRadius + 1) else 0
+
+        val startX = startLoc[0].toFloat() + config.startView.width / 2f + offsetX
+        val startY = startLoc[1].toFloat() + config.startView.height / 2f + offsetY
+
+        when (config.type) {
+            ActionType.SWIPE -> {
+                if (config.endView != null) {
+                    val endLoc = IntArray(2)
+                    config.endView!!.getLocationOnScreen(endLoc)
+                    val endX = endLoc[0].toFloat() + config.endView!!.width / 2f
+                    val endY = endLoc[1].toFloat() + config.endView!!.height / 2f
+                    performSwipe(startX, startY, endX, endY)
+                }
+            }
+            ActionType.LONG_PRESS -> {
+                performClick(startX, startY, duration = config.holdDuration)
+            }
+            else -> {
+                performClick(startX, startY, duration = globalClickDurationMs)
+            }
+        }
+    }
+
+    private fun checkTriggerAndProceed(config: ActionConfig, onMatched: () -> Unit) {
+        if (aiStepStartTimeMs == 0L) {
+            aiStepStartTimeMs = System.currentTimeMillis()
+        }
+
+        if (config.aiTimeoutSeconds > 0) {
+            val elapsedSec = (System.currentTimeMillis() - aiStepStartTimeMs) / 1000L
+            if (elapsedSec >= config.aiTimeoutSeconds) {
+                logAppEvent(this, "AI_TIMEOUT", "⌛ Таймаут ИИ (${config.aiTimeoutSeconds} сек) истек для шага #${config.id}! Переход к следующему шагу.")
+                Toast.makeText(this, "⌛ Таймаут шага #${config.id} (${config.aiTimeoutSeconds}с) -> След. шаг", Toast.LENGTH_SHORT).show()
+                aiStepStartTimeMs = 0L
+                proceedToNextAction(config)
+                return
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val targetDisplayId = try {
+                this.display?.displayId ?: Display.DEFAULT_DISPLAY
+            } catch (_: Exception) {
+                Display.DEFAULT_DISPLAY
+            }
+
+            takeScreenshot(targetDisplayId, uiExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(screenshot: ScreenshotResult) {
+                    if (!isPlaying) {
+                        try { screenshot.hardwareBuffer.close() } catch(_: Exception){}
+                        return
+                    }
+
+                    val ignoredRects = ArrayList<Rect>()
+                    controlPanelView?.let { panel ->
+                        val loc = IntArray(2)
+                        panel.getLocationOnScreen(loc)
+                        if (panel.width > 0 && panel.height > 0) {
+                            ignoredRects.add(Rect(loc[0], loc[1], loc[0] + panel.width, loc[1] + panel.height))
+                        }
+                    }
+                    for (act in actionsList) {
+                        act.startView.let { v ->
+                            val loc = IntArray(2)
+                            v.getLocationOnScreen(loc)
+                            if (v.width > 0 && v.height > 0) {
+                                ignoredRects.add(Rect(loc[0], loc[1], loc[0] + v.width, loc[1] + v.height))
+                            }
+                        }
+                        act.endView?.let { v ->
+                            val loc = IntArray(2)
+                            v.getLocationOnScreen(loc)
+                            if (v.width > 0 && v.height > 0) {
+                                ignoredRects.add(Rect(loc[0], loc[1], loc[0] + v.width, loc[1] + v.height))
+                            }
+                        }
+                    }
+
+                    bgScannerExecutor.execute {
+                        try {
+                            val hwBuffer = screenshot.hardwareBuffer
+                            val colorSpace = screenshot.colorSpace
+                            val fullBitmap = Bitmap.wrapHardwareBuffer(hwBuffer, colorSpace)
+                            try {
+                                hwBuffer.close()
+                            } catch (_: Exception) {}
+
+                            if (fullBitmap != null) {
+                                val softwareBitmap = convertToSoftwareBitmap(fullBitmap)
+
+                                val templatesToScan = ArrayList<Int>()
+                                if (config.multiTemplateIndices.isNotEmpty()) {
+                                    templatesToScan.addAll(config.multiTemplateIndices)
+                                } else if (config.selectedTemplateIndex != -1 && config.selectedTemplateIndex in globalTemplates.indices) {
+                                    templatesToScan.add(config.selectedTemplateIndex)
+                                } else if (globalTemplates.isNotEmpty()) {
+                                    templatesToScan.add(globalTemplates.size - 1)
+                                }
+
+                                var matchedPoint: Point? = null
+                                var matchedTemplateIdx = -1
+
+                                val searchRect = if (config.searchInCapturedArea && config.maskW > 0 && config.maskH > 0) {
+                                    val margin = 140
+                                    Rect(
+                                        (config.maskX - margin).coerceAtLeast(0),
+                                        (config.maskY - margin).coerceAtLeast(0),
+                                        (config.maskX + config.maskW + margin).coerceAtMost(softwareBitmap.width),
+                                        (config.maskY + config.maskH + margin).coerceAtMost(softwareBitmap.height)
+                                    )
+                                } else null
+
+                                try {
+                                    var highestScore = 0f
+                                    for (tIdx in templatesToScan) {
+                                        if (tIdx in globalTemplates.indices) {
+                                            val tBmp = globalTemplates[tIdx]
+                                            val maskPath = if (tIdx in globalTemplatesNames.indices) globalTemplatesNames[tIdx] else ""
+                                            val meta = loadTemplateMetadata(maskPath)
+                                            val tThreshold = (meta?.optInt("similarityPercent", config.similarityPercent) ?: config.similarityPercent) / 100f
+                                            val candidate = findTemplateMatchCandidate(softwareBitmap, tBmp, tThreshold, ignoredRects, searchRect, config.semiTransparentMode)
+                                            if (candidate != null) {
+                                                if (config.bestMatchAuto) {
+                                                    if (candidate.ratio > highestScore) {
+                                                        highestScore = candidate.ratio
+                                                        matchedPoint = candidate.point
+                                                        matchedTemplateIdx = tIdx
+                                                    }
+                                                } else {
+                                                    matchedPoint = candidate.point
+                                                    matchedTemplateIdx = tIdx
+                                                    break
+                                                }
+                                            }
+                                        }
+                                    }
+                                } finally {
+                                    softwareBitmap.recycle()
+                                }
+
+                                val matchPoint = matchedPoint
+                                Handler(Looper.getMainLooper()).post {
+                                    if (matchPoint != null) {
+                                        val realX = matchPoint.x.toFloat()
+                                        val realY = matchPoint.y.toFloat()
+                                        val templateName = if (matchedTemplateIdx in globalTemplatesNames.indices) File(globalTemplatesNames[matchedTemplateIdx]).nameWithoutExtension else "#$matchedTemplateIdx"
+
+                                        val screenH = fullBitmap.height
+                                        val zoneText = when {
+                                            realY < screenH * 0.35f -> "Верхняя область (Шапка)"
+                                            realY < screenH * 0.70f -> "Средняя область (Контент/Баннер)"
+                                            else -> "Нижняя область (Подвал/Баннер)"
+                                        }
+
+                                        if (config.playAudioOnMatch) playMatchSound()
+                                        logAppEvent(this@MyAutoClickService, "AI_MATCH", "🎯 Совпадение! Найден '$templateName' на ($realX, $realY) [$zoneText]")
+                                        if (config.targetScriptToLoad.isNotEmpty()) {
+                                            logAppEvent(this@MyAutoClickService, "SCRIPT_CHAIN", "🎯 ИИ-триггер сработал! Загрузка связанного сценария '${config.targetScriptToLoad}'")
+                                            val nextScript = config.targetScriptToLoad
+                                            loadScriptByName(nextScript)
+                                            if (actionsList.isNotEmpty() && isPlaying) {
+                                                currentActionIndex = 0
+                                                stepRepeatCounter = 0
+                                                aiStepStartTimeMs = 0L
+                                                loopHandler.removeCallbacks(automationRunnable)
+                                                loopHandler.postDelayed(automationRunnable, config.delay)
+                                                return@post
+                                            }
+                                        }
+
+                                        if (config.clickAiTarget) {
+                                            logAppEvent(this@MyAutoClickService, "AI_CLICK_EXEC", "👉 ИИ Клик отправлен в точку ($realX, $realY)")
+                                            performClick(realX, realY)
+                                        } else {
+                                            logAppEvent(this@MyAutoClickService, "AI_CLICK_EXEC", "👉 ИИ Триггер сработал: клик в ручную мишень")
+                                            executeAction(config)
+                                        }
+
+                                        if (config.jumpToStepOnMatch != -1) {
+                                            stepRepeatCounter = 0
+                                            aiStepStartTimeMs = 0L
+                                            currentActionIndex = (config.jumpToStepOnMatch - 1).coerceIn(0, actionsList.size - 1)
+                                            loopHandler.removeCallbacks(automationRunnable)
+                                            loopHandler.postDelayed(automationRunnable, config.delay)
+                                            return@post
+                                        }
+
+                                        aiStepStartTimeMs = 0L
+                                        onMatched()
+                                    } else {
+                                        if (isPlaying) {
+                                            loopHandler.postDelayed({ checkTriggerAndProceed(config, onMatched) }, config.checkInterval)
+                                        }
+                                    }
+                                }
+                                return@execute
+                            }
+                        } catch (e: Exception) {
+                            logError(this@MyAutoClickService, e)
+                        }
+
+                        Handler(Looper.getMainLooper()).post {
+                            if (isPlaying) {
+                                loopHandler.postDelayed({ checkTriggerAndProceed(config, onMatched) }, config.checkInterval)
+                            }
+                        }
+                    }
+                }
+
+                override fun onFailure(errorCode: Int) {
+                    if (isPlaying) {
+                        loopHandler.postDelayed({ checkTriggerAndProceed(config, onMatched) }, config.checkInterval)
+                    }
+                }
+            })
+        } else {
+            aiStepStartTimeMs = 0L
+            onMatched()
+        }
+    }
+
+    private fun findTemplateMatchCandidate(
+        screen: Bitmap,
+        template: Bitmap,
+        thresholdRatio: Float = 0.80f,
+        ignoredRects: List<Rect> = emptyList(),
+        cropSearchRect: Rect? = null,
+        isSemiTransparent: Boolean = false
+    ): MatchCandidate? {
+        val sW = screen.width
+        val sH = screen.height
+        val tW = template.width
+        val tH = template.height
+        if (tW > sW || tH > sH) return null
+
+        val screenPixels = IntArray(sW * sH)
+        val templatePixels = IntArray(tW * tH)
+
+        screen.getPixels(screenPixels, 0, sW, 0, 0, sW, sH)
+        template.getPixels(templatePixels, 0, tW, 0, 0, tW, tH)
+
+        val isSmallIcon = tW < 45 || tH < 45
+        val isLargeIcon = tW > 120 || tH > 120
+
+        val denseStep = when {
+            isSmallIcon -> 1
+            isLargeIcon -> 4
+            else -> 2
+        }
+
+        val maxColorDiff = when {
+            thresholdRatio >= 0.92f -> 8
+            thresholdRatio >= 0.85f -> 12
+            thresholdRatio >= 0.78f -> 16
+            thresholdRatio >= 0.70f -> 20
+            else -> 26
+        }
+
+        var validTemplatePixels = 0
+        val featureIndices = IntArray(tW * tH)
+        var featureCount = 0
+
+        for (ty in 0 until tH step denseStep) {
+            val tRow = ty * tW
+            for (tx in 0 until tW step denseStep) {
+                val tCol = templatePixels[tRow + tx]
+                if ((tCol ushr 24) >= 50) {
+                    validTemplatePixels++
+                    if (tx % (denseStep * 2) == 0 && ty % (denseStep * 2) == 0) {
+                        featureIndices[featureCount++] = tRow + tx
+                    }
+                }
+            }
+        }
+        if (validTemplatePixels == 0) return null
+
+        val requiredMatches = (validTemplatePixels * thresholdRatio).toInt()
+
+        val startX = cropSearchRect?.left?.coerceIn(0, (sW - tW).coerceAtLeast(0)) ?: 0
+        val endX = cropSearchRect?.right?.coerceIn(startX, (sW - tW).coerceAtLeast(0)) ?: (sW - tW)
+        val defaultStartY = if (sH > 600) 40 else 0
+        val startY = cropSearchRect?.top?.coerceIn(0, (sH - tH).coerceAtLeast(0)) ?: defaultStartY
+        val endY = cropSearchRect?.bottom?.coerceIn(startY, (sH - tH).coerceAtLeast(0)) ?: (sH - tH)
+
+        var bestCandidate: MatchCandidate? = null
+        var maxRatio = 0f
+
+        val isLargeSearchArea = (endX - startX) * (endY - startY) > 200000
+        val coarseStep = if (isLargeSearchArea && !isSmallIcon) 4 else denseStep
+
+        for (y in startY..endY step coarseStep) {
+            for (x in startX..endX step coarseStep) {
+                val centerX = x + tW / 2
+                val centerY = y + tH / 2
+
+                var inIgnored = false
+                for (r in ignoredRects) {
+                    if (r.contains(centerX, centerY)) {
+                        inIgnored = true
+                        break
+                    }
+                }
+                if (inIgnored) continue
+
+                if (!isSemiTransparent && featureCount > 4) {
+                    var anchorFailures = 0
+                    val maxAnchorFailures = (featureCount * (1.0f - thresholdRatio)).toInt()
+                    for (i in 0 until featureCount) {
+                        val fIdx = featureIndices[i]
+                        val fx = fIdx % tW
+                        val fy = fIdx / tW
+                        val tCol = templatePixels[fIdx]
+                        val sCol = screenPixels[(y + fy) * sW + x + fx]
+
+                        val sr = (sCol shr 16) and 0xff
+                        val sg = (sCol shr 8) and 0xff
+                        val sb = sCol and 0xff
+                        val tr = (tCol shr 16) and 0xff
+                        val tg = (tCol shr 8) and 0xff
+                        val tb = tCol and 0xff
+
+                        val wDiff = (abs(sr - tr) * 0.30f + abs(sg - tg) * 0.59f + abs(sb - tb) * 0.11f)
+                        if (wDiff > maxColorDiff) {
+                            anchorFailures++
+                            if (anchorFailures > maxAnchorFailures) break
+                        }
+                    }
+                    if (anchorFailures > maxAnchorFailures) continue
+                }
+
+                var matches = 0
+                var failures = 0
+                val maxFailures = validTemplatePixels - requiredMatches
+
+                for (ty in 0 until tH - 1 step denseStep) {
+                    val sRow = (y + ty) * sW + x
+                    val tRow = ty * tW
+                    for (tx in 0 until tW - 1 step denseStep) {
+                        val tCol = templatePixels[tRow + tx]
+                        if ((tCol ushr 24) < 50) continue
+
+                        val sCol = screenPixels[sRow + tx]
+                        val sr = (sCol shr 16) and 0xff
+                        val sg = (sCol shr 8) and 0xff
+                        val sb = sCol and 0xff
+
+                        val tr = (tCol shr 16) and 0xff
+                        val tg = (tCol shr 8) and 0xff
+                        val tb = tCol and 0xff
+
+                        if (isSemiTransparent) {
+                            val tColRight = templatePixels[tRow + tx + 1]
+                            val sColRight = screenPixels[sRow + tx + 1]
+
+                            val tLuma = (tr * 30 + tg * 59 + tb * 11) / 100
+                            val tLumaR = (((tColRight shr 16) and 0xff) * 30 + ((tColRight shr 8) and 0xff) * 59 + (tColRight and 0xff) * 11) / 100
+                            val tGrad = abs(tLuma - tLumaR)
+
+                            val sLuma = (sr * 30 + sg * 59 + sb * 11) / 100
+                            val sLumaR = (((sColRight shr 16) and 0xff) * 30 + ((sColRight shr 8) and 0xff) * 59 + (sColRight and 0xff) * 11) / 100
+                            val sGrad = abs(sLuma - sLumaR)
+
+                            if (tGrad > 15) {
+                                if (sGrad >= (tGrad * 0.45f)) matches++ else failures++
+                            } else {
+                                matches++
+                            }
+                        } else {
+                            val weightedDiff = (abs(sr - tr) * 0.30f + abs(sg - tg) * 0.59f + abs(sb - tb) * 0.11f)
+                            if (weightedDiff <= maxColorDiff) {
+                                matches++
+                            } else {
+                                failures++
+                            }
+                        }
+
+                        if (failures > maxFailures) break
+                    }
+                    if (failures > maxFailures) break
+                }
+
+                if (matches >= requiredMatches) {
+                    val ratio = matches.toFloat() / validTemplatePixels
+                    if (ratio > maxRatio) {
+                        maxRatio = ratio
+                        bestCandidate = MatchCandidate(Point(centerX, centerY), ratio, Rect(x, y, x + tW, y + tH))
+                    }
+                }
+            }
+        }
+        return bestCandidate
+    }
+
+    private fun findAllTemplateMatches(
+        screen: Bitmap,
+        template: Bitmap,
+        minRatio: Float = 0.50f,
+        ignoredRects: List<Rect> = emptyList(),
+        cropSearchRect: Rect? = null
+    ): List<MatchCandidate> {
+        val sW = screen.width
+        val sH = screen.height
+        val tW = template.width
+        val tH = template.height
+        if (tW > sW || tH > sH) return emptyList()
+
+        val screenPixels = IntArray(sW * sH)
+        val templatePixels = IntArray(tW * tH)
+
+        screen.getPixels(screenPixels, 0, sW, 0, 0, sW, sH)
+        template.getPixels(templatePixels, 0, tW, 0, 0, tW, tH)
+
+        val isSmallIcon = tW < 45 || tH < 45
+        val isLargeIcon = tW > 120 || tH > 120
+        val scanStep = when {
+            isSmallIcon -> 1
+            isLargeIcon -> 4
+            else -> 2
+        }
+
+        val maxColorDiff = when {
+            minRatio >= 0.92f -> 8
+            minRatio >= 0.85f -> 12
+            minRatio >= 0.78f -> 16
+            else -> 22
+        }
+
+        var validTemplatePixels = 0
+        for (ty in 0 until tH step scanStep) {
+            val tRow = ty * tW
+            for (tx in 0 until tW step scanStep) {
+                val tCol = templatePixels[tRow + tx]
+                if ((tCol ushr 24) >= 50) validTemplatePixels++
+            }
+        }
+        if (validTemplatePixels == 0) return emptyList()
+
+        val startX = cropSearchRect?.left?.coerceIn(0, (sW - tW).coerceAtLeast(0)) ?: 0
+        val endX = cropSearchRect?.right?.coerceIn(startX, (sW - tW).coerceAtLeast(0)) ?: (sW - tW)
+        val defaultStartY = if (sH > 600) 40 else 0
+        val startY = cropSearchRect?.top?.coerceIn(0, (sH - tH).coerceAtLeast(0)) ?: defaultStartY
+        val endY = cropSearchRect?.bottom?.coerceIn(startY, (sH - tH).coerceAtLeast(0)) ?: (sH - tH)
+
+        val rawCandidates = ArrayList<MatchCandidate>()
+
+        for (y in startY..endY step scanStep) {
+            for (x in startX..endX step scanStep) {
+                val centerX = x + tW / 2
+                val centerY = y + tH / 2
+
+                var inIgnored = false
+                for (r in ignoredRects) {
+                    if (r.contains(centerX, centerY)) {
+                        inIgnored = true
+                        break
+                    }
+                }
+                if (inIgnored) continue
+
+                var matches = 0
+                var failures = 0
+                val maxFailures = (validTemplatePixels * (1.0f - minRatio)).toInt()
+
+                for (ty in 0 until tH step scanStep) {
+                    val sRow = (y + ty) * sW + x
+                    val tRow = ty * tW
+                    for (tx in 0 until tW step scanStep) {
+                        val tCol = templatePixels[tRow + tx]
+                        if ((tCol ushr 24) < 50) continue
+
+                        val sCol = screenPixels[sRow + tx]
+                        val sr = (sCol shr 16) and 0xff
+                        val sg = (sCol shr 8) and 0xff
+                        val sb = sCol and 0xff
+
+                        val tr = (tCol shr 16) and 0xff
+                        val tg = (tCol shr 8) and 0xff
+                        val tb = tCol and 0xff
+
+                        if (abs(sr - tr) <= maxColorDiff && abs(sg - tg) <= maxColorDiff && abs(sb - tb) <= maxColorDiff) {
+                            matches++
+                        } else {
+                            failures++
+                            if (failures > maxFailures) break
+                        }
+                    }
+                    if (failures > maxFailures) break
+                }
+
+                val ratio = matches.toFloat() / validTemplatePixels
+                if (ratio >= minRatio) {
+                    rawCandidates.add(MatchCandidate(Point(centerX, centerY), ratio, Rect(x, y, x + tW, y + tH)))
+                }
+            }
+        }
+
+        rawCandidates.sortByDescending { it.ratio }
+        val result = ArrayList<MatchCandidate>()
+        val minDist = (maxOf(tW, tH) * 0.7f).coerceAtLeast(30f)
+
+        for (cand in rawCandidates) {
+            var tooClose = false
+            for (existing in result) {
+                val dist = hypot((cand.point.x - existing.point.x).toDouble(), (cand.point.y - existing.point.y).toDouble())
+                if (dist < minDist) {
+                    tooClose = true
+                    break
+                }
+            }
+            if (!tooClose) {
+                result.add(cand)
+                if (result.size >= 8) break
+            }
+        }
+
+        return result
+    }
+
+    private fun startTemplateCalibration(config: ActionConfig, onFinished: () -> Unit) {
+        if (config.selectedTemplateIndex !in globalTemplates.indices) {
+            Toast.makeText(this, "Сначала выберите шаблон ИИ!", Toast.LENGTH_SHORT).show()
+            onFinished()
+            return
+        }
+
+        val templateBmp = globalTemplates[config.selectedTemplateIndex]
+        val templateName = if (config.selectedTemplateIndex in globalTemplatesNames.indices) File(globalTemplatesNames[config.selectedTemplateIndex]).nameWithoutExtension else "#${config.selectedTemplateIndex}"
+        logAppEvent(this, "AI_CALIBRATE_START", "🔍 Запуск калибровки для '$templateName' (${templateBmp.width}x${templateBmp.height}px)")
+
+        val ignoredRects = ArrayList<Rect>()
+        controlPanelView?.let { panel ->
+            val loc = IntArray(2)
+            panel.getLocationOnScreen(loc)
+            if (panel.width > 0 && panel.height > 0) {
+                ignoredRects.add(Rect(loc[0], loc[1], loc[0] + panel.width, loc[1] + panel.height))
+            }
+        }
+        controlPanelView?.visibility = View.GONE
+        for (act in actionsList) {
+            act.startView.visibility = View.GONE
+            act.endView?.visibility = View.GONE
+        }
+
+        var isCalibHandled = false
+        val calibTimeoutRunnable = Runnable {
+            if (!isCalibHandled) {
+                isCalibHandled = true
+                logAppEvent(this@MyAutoClickService, "AI_CALIBRATE_TIMEOUT", "⚠️ Таймаут калибровки (7 сек). Восстановление видов.")
+                Toast.makeText(this@MyAutoClickService, "⌛ Таймаут калибровки (панель восстановлена)", Toast.LENGTH_SHORT).show()
+                showAllViews()
+                onFinished()
+            }
+        }
+        screenshotHandler.postDelayed(calibTimeoutRunnable, globalPreScreenshotDelayMs + 7000L)
+
+        screenshotHandler.postDelayed({
+            if (isCalibHandled) return@postDelayed
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val targetDisplayId = try {
+                    this.display?.displayId ?: Display.DEFAULT_DISPLAY
+                } catch (_: Exception) {
+                    Display.DEFAULT_DISPLAY
+                }
+
+                takeScreenshot(targetDisplayId, uiExecutor, object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        val hwBuffer = screenshot.hardwareBuffer
+                        val colorSpace = screenshot.colorSpace
+                        val fullBitmap = Bitmap.wrapHardwareBuffer(hwBuffer, colorSpace)
+                        try { hwBuffer.close() } catch (_: Exception) {}
+
+                        if (fullBitmap == null) {
+                            showAllViews()
+                            Toast.makeText(this@MyAutoClickService, "Ошибка захвата экрана", Toast.LENGTH_SHORT).show()
+                            onFinished()
+                            return
+                        }
+
+                        val softwareBitmap = convertToSoftwareBitmap(fullBitmap)
+                        logAppEvent(this@MyAutoClickService, "AI_CALIBRATE_SHOT", "📷 Чистый снимок экрана получен (${softwareBitmap.width}x${softwareBitmap.height}px)")
+
+                        bgScannerExecutor.execute {
+                            try {
+                                val candidates = findAllTemplateMatches(softwareBitmap, templateBmp, minRatio = 0.50f, ignoredRects = ignoredRects)
+                                softwareBitmap.recycle()
+
+                                Handler(Looper.getMainLooper()).post {
+                                    showAllViews()
+                                    if (candidates.isEmpty()) {
+                                        logAppEvent(this@MyAutoClickService, "AI_CALIBRATE_EMPTY", "⚠️ Совпадений от 50% не найдено.")
+                                        Toast.makeText(this@MyAutoClickService, "❌ Совпадений от 50% не найдено!", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        logAppEvent(this@MyAutoClickService, "AI_CALIBRATE_RESULT", "🎯 УСПЕХ: Найдено вариантов совпадений: ${candidates.size}")
+                                        displayCalibrationCandidatesOverlay(config, candidates, onFinished)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                logError(this@MyAutoClickService, e)
+                                logAppEvent(this@MyAutoClickService, "AI_CALIBRATE_ERROR", "❌ Ошибка калибровки: ${e.message}")
+                                Handler(Looper.getMainLooper()).post {
+                                    showAllViews()
+                                    onFinished()
+                                    Toast.makeText(this@MyAutoClickService, "Ошибка калибровки!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        showAllViews()
+                        Toast.makeText(this@MyAutoClickService, "Ошибка скриншота ОС ($errorCode)", Toast.LENGTH_SHORT).show()
+                        onFinished()
+                    }
+                })
+            } else {
+                showAllViews()
+                Toast.makeText(this, "Калибровка доступна на Android 11+", Toast.LENGTH_SHORT).show()
+                onFinished()
+            }
+        }, globalPreScreenshotDelayMs)
+    }
+
+    private fun displayCalibrationCandidatesOverlay(
+        config: ActionConfig,
+        candidates: List<MatchCandidate>,
+        onFinished: () -> Unit
+    ) {
+        clearCalibrationOverlay()
+
+        val topBarView = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#E60D1117"))
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+        }
+
+        val tvInfo = TextView(this).apply {
+            text = "🎯 Найдено совпадений: ${candidates.size}. Кликните на рамку для выбора %:"
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val btnCancel = Button(this).apply {
+            text = "✕ Закрыть"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            backgroundTintList = ColorStateList.valueOf(getColor(R.color.red_close))
+            setOnClickListener {
+                clearCalibrationOverlay()
+                onFinished()
+            }
+        }
+
+        topBarView.addView(tvInfo)
+        topBarView.addView(btnCancel)
+
+        val topBarParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP
+            y = dpToPx(30)
+        }
+
+        safeAddView(topBarView, topBarParams)
+        calibrationViewsList.add(topBarView)
+
+        for (cand in candidates) {
+            val pct = (cand.ratio * 100).toInt()
+
+            val strokeColor = when {
+                pct >= 80 -> Color.parseColor("#00F5D4")
+                pct >= 65 -> Color.parseColor("#FFB703")
+                else -> Color.parseColor("#F04438")
+            }
+
+            val boxView = LayoutInflater.from(this).inflate(R.layout.floating_calibration_box, null)
+            val tvPct = boxView.findViewById<TextView>(R.id.tvCandidatePercent)
+            val frameBox = boxView.findViewById<View>(R.id.viewCandidateBorder)
+
+            tvPct.text = "🎯 $pct%"
+            tvPct.setTextColor(strokeColor)
+
+            val borderDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.parseColor("#20000000"))
+                setStroke(dpToPx(3), strokeColor)
+                cornerRadius = dpToPx(8).toFloat()
+            }
+            frameBox.background = borderDrawable
+
+            val boxW = maxOf(cand.rect.width(), dpToPx(44))
+            val boxH = maxOf(cand.rect.height(), dpToPx(44))
+
+            val boxParams = WindowManager.LayoutParams(
+                boxW,
+                boxH,
+                getOverlayType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                x = cand.rect.left
+                y = cand.rect.top
+            }
+
+            boxView.setOnClickListener {
+                config.similarityPercent = pct
+                config.bestMatchAuto = false
+                config.maskX = cand.rect.left
+                config.maskY = cand.rect.top
+                config.maskW = cand.rect.width()
+                config.maskH = cand.rect.height()
+
+                if (config.selectedTemplateIndex in globalTemplatesNames.indices) {
+                    val maskPath = globalTemplatesNames[config.selectedTemplateIndex]
+                    saveTemplateMetadata(maskPath, pct, isPinned = true, localArea = config.searchInCapturedArea)
+                }
+
+                logAppEvent(this, "AI_CALIBRATE_PIN", "Закреплено совпадение $pct% в точке (${cand.point.x}, ${cand.point.y})")
+                Toast.makeText(this, "🎯 Совпадение $pct% закреплено!", Toast.LENGTH_SHORT).show()
+
+                spawnClickRippleAnimation(cand.point.x.toFloat(), cand.point.y.toFloat())
+
+                clearCalibrationOverlay()
+                onFinished()
+            }
+
+            safeAddView(boxView, boxParams)
+            calibrationViewsList.add(boxView)
+        }
+    }
+
+    private fun clearCalibrationOverlay() {
+        for (v in calibrationViewsList) {
+            safeRemoveView(v)
+        }
+        calibrationViewsList.clear()
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            logError(applicationContext, throwable)
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        loadGlobalSettings()
+        loadAllTemplatesFromDisk()
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        hideControlPanel(openMainApp = false)
+        instance = null
+        return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        hideControlPanel(openMainApp = false)
+        instance = null
+        bgScannerExecutor.shutdown()
+        super.onDestroy()
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val pkg = event?.packageName?.toString() ?: ""
+        if (pkg.contains("settings") || pkg.contains("securitycenter")) {
+            val prefs = getSharedPreferences("autotap_settings", Context.MODE_PRIVATE)
+            val isFirstSettingsHighlight = prefs.getBoolean("first_settings_highlight", true)
+            val delayMs = if (isFirstSettingsHighlight) 3000L else 350L
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                scanAndHighlightSettingsNode(rootInActiveWindow)
+                if (isFirstSettingsHighlight) {
+                    prefs.edit { putBoolean("first_settings_highlight", false) }
+                }
+            }, delayMs)
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                scanAndHighlightSettingsNode(rootInActiveWindow)
+            }, delayMs + 500L)
+        }
+    }
+
+    private fun scanAndHighlightSettingsNode(node: AccessibilityNodeInfo?) {
+        if (node == null) return
+        val rawText = (node.text?.toString() ?: "") + " " + (node.contentDescription?.toString() ?: "")
+        val lowerText = rawText.lowercase(Locale.getDefault())
+
+        if (lowerText.contains("запрещ") ||
+            lowerText.contains("restricted") ||
+            lowerText.contains("autotap") ||
+            lowerText.contains("поверх") ||
+            lowerText.contains("скачанные") ||
+            lowerText.contains("установленные") ||
+            lowerText.contains("огранич") ||
+            lowerText.contains("draw over") ||
+            lowerText.contains("display over")) {
+
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            if (!rect.isEmpty && rect.width() > 0 && rect.height() > 0) {
+                showRedHighlightOverlay(rect.left, rect.top, rect.width(), rect.height())
+                return
+            }
+        }
+        for (i in 0 until node.childCount) {
+            scanAndHighlightSettingsNode(node.getChild(i))
+        }
+    }
+
+    fun showRedHighlightOverlay(x: Int, y: Int, width: Int, height: Int) {
+        removeHighlightOverlay()
+        try {
+            highlightOverlayView = LayoutInflater.from(this).inflate(R.layout.floating_red_highlight, null)
+            val params = WindowManager.LayoutParams(
+                width.coerceAtLeast(dpToPx(40)),
+                height.coerceAtLeast(dpToPx(40)),
+                getOverlayType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                this.x = x
+                this.y = y
+            }
+            safeAddView(highlightOverlayView, params)
+            highlightHandler.postDelayed(hideHighlightRunnable, 6000L)
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    fun removeHighlightOverlay() {
+        highlightHandler.removeCallbacks(hideHighlightRunnable)
+        if (highlightOverlayView != null) {
+            safeRemoveView(highlightOverlayView)
+            highlightOverlayView = null
+        }
+    }
+
+    override fun onInterrupt() {}
+
+    private fun addNewActionAtPosition(posX: Float, posY: Float, recordedDelay: Long, actionType: ActionType, templateIndex: Int) {
+        val actionId = actionsList.size + 1
+        val startView = LayoutInflater.from(this).inflate(R.layout.floating_target, null)
+        val tvNum = startView.findViewById<TextView>(R.id.tvTargetNumber)
+        tvNum.text = actionId.toString()
+        tvNum.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+
+        val initialSizeDp = if (actionType == ActionType.TRIGGER) 50 else 36
+        val sizePx = dpToPx(initialSizeDp)
+
+        val touchFlags = if (isRecording || isPlaying) {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        } else {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        }
+
+        val params = WindowManager.LayoutParams(
+            sizePx,
+            sizePx,
+            getOverlayType(),
+            touchFlags,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (posX - sizePx / 2f).toInt()
+            y = (posY - sizePx / 2f).toInt()
+        }
+
+        val defaultTemplateIdx = if (templateIndex != -1) templateIndex else (if (globalTemplates.isNotEmpty()) globalTemplates.size - 1 else -1)
+
+        val config = ActionConfig(
+            id = actionId,
+            startView = startView,
+            type = actionType,
+            delay = recordedDelay,
+            selectedTemplateIndex = defaultTemplateIdx,
+            captureSize = initialSizeDp,
+            aiTimeoutSeconds = 2
+        )
+
+        startView.setOnTouchListener(object : View.OnTouchListener {
+            private var initialX = 0
+            private var initialY = 0
+            private var initialTouchX = 0f
+            private var initialTouchY = 0f
+            private var isMoving = false
+
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                if (isPlaying) return false
+
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialX = params.x
+                        initialY = params.y
+                        initialTouchX = event.rawX
+                        initialTouchY = event.rawY
+                        isMoving = false
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = abs(event.rawX - initialTouchX)
+                        val dy = abs(event.rawY - initialTouchY)
+                        if (dx > 10 || dy > 10) {
+                            isMoving = true
+                            params.x = initialX + (event.rawX - initialTouchX).toInt()
+                            params.y = initialY + (event.rawY - initialTouchY).toInt()
+                            safeUpdateViewLayout(startView, params)
+                        }
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        v.performClick()
+                        if (!isMoving && !isPlaying) {
+                            showEditDialog(config)
+                        }
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        if (actionsList.isEmpty()) {
+            Toast.makeText(this, "💡 Нажмите на кружок мишени для настройки шага", Toast.LENGTH_LONG).show()
+        }
+
+        startView.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+        startView.scaleX = 0f
+        startView.scaleY = 0f
+        startView.alpha = 0f
+
+        actionsList.add(config)
+        safeAddView(startView, params)
+        spawnAttentionBeacon(posX, posY)
+
+        startView.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .setDuration(280)
+            .setInterpolator(OvershootInterpolator(1.4f))
+            .start()
+    }
+
+    private fun showRecordBar() {
+        if (recordBarView != null) return
+
+        val btnStop = Button(this).apply {
+            text = "⏹ СТОП ЗАПИСИ"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            backgroundTintList = ColorStateList.valueOf(getColor(R.color.red_close))
+            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8))
+        }
+
+        val barParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = dpToPx(40)
+        }
+
+        btnStop.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                stopOverlayRecording()
+                if (actionsList.isNotEmpty()) {
+                    showSaveRecordedScriptDialog()
+                } else {
+                    Toast.makeText(this, "Запись остановлена", Toast.LENGTH_SHORT).show()
+                }
+                return@setOnTouchListener true
+            }
+            false
+        }
+
+        recordBarView = btnStop
+        safeAddView(recordBarView, barParams)
+    }
+
+    private fun startOverlayRecording() {
+        isRecording = true
+        isInjectingGesture = false
+        logAppEvent(this, "RECORD_START", "Запуск сенсорной записи со сквозной прозрачностью")
+
+        if (recordOverlayView == null) {
+            recordOverlayView = View(this).apply {
+                setBackgroundColor(0x01000000)
+            }
+        }
+
+        val overlayParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+
+        var downX = 0f
+        var downY = 0f
+        var downTime = 0L
+
+        recordOverlayView?.setOnTouchListener { v, event ->
+            if (!isRecording || isInjectingGesture) return@setOnTouchListener false
+
+            val x = event.rawX
+            val y = event.rawY
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = x
+                    downY = y
+                    downTime = System.currentTimeMillis()
+                    logAppEvent(this, "RECORD_TOUCH_DOWN", "Палец коснулся экрана на ($downX, $downY)")
+                    return@setOnTouchListener true
+                }
+                MotionEvent.ACTION_UP -> {
+                    v.performClick()
+                    val dist = hypot((x - downX).toDouble(), (y - downY).toDouble())
+                    val delay = if (actionsList.isEmpty()) 1000L else (downTime - lastRecordedTime).coerceAtLeast(100L)
+                    lastRecordedTime = downTime
+
+                    isInjectingGesture = true
+
+                    fun setOverlayTouchable(touchable: Boolean) {
+                        recordOverlayView?.let { rView ->
+                            (rView.layoutParams as? WindowManager.LayoutParams)?.let { lp ->
+                                if (touchable) {
+                                    lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                                } else {
+                                    lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                                }
+                                safeUpdateViewLayout(rView, lp)
+                            }
+                        }
+                    }
+
+                    if (dist > 60) {
+                        logAppEvent(this, "RECORD_SWIPE", "Записан свайп от ($downX, $downY) к ($x, $y)")
+                        addNewActionAtPosition(downX, downY, delay, ActionType.SWIPE, -1)
+                        val currentConfig = actionsList.last()
+                        spawnEndTargetAtPosition(currentConfig, x, y)
+
+                        setOverlayTouchable(false)
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            performSwipeWithCallback(downX, downY, x, y) {
+                                setOverlayTouchable(true)
+                                isInjectingGesture = false
+                            }
+                        }, 80L)
+                    } else {
+                        logAppEvent(this, "RECORD_CLICK", "Записан клик в точку ($downX, $downY)")
+                        addNewActionAtPosition(downX, downY, delay, ActionType.CLICK, -1)
+
+                        setOverlayTouchable(false)
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            performClickWithCallback(downX, downY) {
+                                setOverlayTouchable(true)
+                                isInjectingGesture = false
+                            }
+                        }, 80L)
+                    }
+                    return@setOnTouchListener true
+                }
+            }
+            false
+        }
+
+        safeAddView(recordOverlayView, overlayParams)
+        showRecordBar()
+    }
+
+    private fun stopOverlayRecording() {
+        isRecording = false
+        isInjectingGesture = false
+
+        if (recordOverlayView != null) {
+            safeRemoveView(recordOverlayView)
+            recordOverlayView = null
+        }
+
+        if (recordBarView != null) {
+            safeRemoveView(recordBarView)
+            recordBarView = null
+        }
+
+        val btnRecord = controlPanelView?.findViewById<ImageButton>(R.id.btnRecord)
+        btnRecord?.setImageResource(R.drawable.ic_record)
+        btnRecord?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.bg_dark_blue))
+        setTargetsTouchable(true)
+
+        logAppEvent(this, "RECORD_STOP", "Запись остановлена. Записано шагов: ${actionsList.size}")
+    }
+
+    private fun showSaveRecordedScriptDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_save_recording, null)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+            dimAmount = 0.5f
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        }
+
+        val etName = dialogView.findViewById<EditText>(R.id.etRecordScriptName)
+        val btnSave = dialogView.findViewById<Button>(R.id.btnSaveRecordScript)
+        val btnSkip = dialogView.findViewById<Button>(R.id.btnSkipRecordScript)
+
+        val defaultName = "Запись_${SimpleDateFormat("HH-mm", Locale.getDefault()).format(Date())}"
+        etName?.setText(defaultName)
+
+        btnSave?.setOnClickListener {
+            val name = etName?.text?.toString()?.trim() ?: defaultName
+            val finalName = name.ifEmpty { defaultName }
+            saveScriptByName(finalName)
+            safeRemoveView(dialogView)
+            logAppEvent(this, "RECORD_SAVE", "Записанный сценарий сохранен под именем '$finalName'")
+            Toast.makeText(this, "🎉 Сценарий '$finalName' с ${actionsList.size} шагами сохранен!", Toast.LENGTH_SHORT).show()
+        }
+
+        btnSkip?.setOnClickListener {
+            safeRemoveView(dialogView)
+        }
+
+        safeAddView(dialogView, params)
+    }
+
+    private fun spawnAttentionBeacon(posX: Float, posY: Float) {
+        try {
+            val beaconView = LayoutInflater.from(this).inflate(R.layout.floating_beacon_ring, null)
+            val sizePx = dpToPx(120)
+            val params = WindowManager.LayoutParams(
+                sizePx,
+                sizePx,
+                getOverlayType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                x = (posX - sizePx / 2f).toInt()
+                y = (posY - sizePx / 2f).toInt()
+            }
+
+            safeAddView(beaconView, params)
+
+            beaconView.scaleX = 0.2f
+            beaconView.scaleY = 0.2f
+            beaconView.alpha = 1.0f
+
+            beaconView.animate()
+                .scaleX(1.6f)
+                .scaleY(1.6f)
+                .alpha(0f)
+                .setDuration(900)
+                .withEndAction {
+                    safeRemoveView(beaconView)
+                }
+                .start()
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    private fun renameTemplateFile(index: Int, newNameWithoutExt: String) {
+        try {
+            if (index < 0 || index >= globalTemplatesNames.size) return
+            val oldPath = globalTemplatesNames[index]
+            val oldFile = File(oldPath)
+            if (!oldFile.exists()) return
+
+            if (oldFile.nameWithoutExtension == newNameWithoutExt) {
+                return
+            }
+
+            val parentDir = oldFile.parentFile ?: return
+            val newFile = File(parentDir, "$newNameWithoutExt.png")
+
+            if (oldFile.renameTo(newFile)) {
+                globalTemplatesNames[index] = newFile.absolutePath
+                logAppEvent(this, "TEMPLATE_RENAME", "Шаблон переименован в ${newFile.name}")
+            }
+        } catch (e: Exception) {
+            logError(this, e)
+        }
+    }
+
+    fun showMaskEditorDialog(maskFile: File, onDone: () -> Unit) {
+        val dateFolder = maskFile.parentFile ?: return
+        val maskName = maskFile.name
+        val timestamp = maskName.removePrefix("mask_").removeSuffix(".png")
+        val fullScreenshotFile = File(dateFolder, "full_${timestamp}.png")
+
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_mask_editor, null)
+        val ivFull = dialogView.findViewById<ImageView>(R.id.ivEditorFullScreenshot)
+        val ivMask = dialogView.findViewById<ImageView>(R.id.ivEditorMaskPreview)
+        val btnSave = dialogView.findViewById<Button>(R.id.btnSaveMaskEdits)
+        val btnCopy = dialogView.findViewById<Button>(R.id.btnCopyMaskEdits)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelMaskEdits)
+        val btnClose = dialogView.findViewById<ImageButton>(R.id.btnCloseMaskEditor)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        val maskBitmap = BitmapFactory.decodeFile(maskFile.absolutePath)
+        ivMask.setImageBitmap(maskBitmap)
+
+        btnClose?.setOnClickListener { safeRemoveView(dialogView); onDone() }
+
+        if (fullScreenshotFile.exists()) {
+            val fullBitmap = BitmapFactory.decodeFile(fullScreenshotFile.absolutePath)
+            ivFull.setImageBitmap(fullBitmap)
+
+            var currentCropped: Bitmap? = null
+
+            ivFull.setOnTouchListener { v, event ->
+                if (event.action == MotionEvent.ACTION_UP && fullBitmap != null) {
+                    val vW = v.width
+                    val vH = v.height
+                    if (vW > 0 && vH > 0) {
+                        val bmpW = fullBitmap.width
+                        val bmpH = fullBitmap.height
+
+                        val scale = min(vW.toFloat() / bmpW, vH.toFloat() / bmpH)
+                        val actualW = bmpW * scale
+                        val actualH = bmpH * scale
+
+                        val leftOffset = (vW - actualW) / 2f
+                        val topOffset = (vH - actualH) / 2f
+
+                        val touchX = event.x - leftOffset
+                        val touchY = event.y - topOffset
+
+                        if (touchX in 0f..actualW && touchY in 0f..actualH) {
+                            val realX = (touchX / scale).toInt()
+                            val realY = (touchY / scale).toInt()
+
+                            val cropW = maskBitmap?.width ?: 100
+                            val cropH = maskBitmap?.height ?: 100
+
+                            val cropX = (realX - cropW / 2).coerceIn(0, (bmpW - cropW).coerceAtLeast(0))
+                            val cropY = (realY - cropH / 2).coerceIn(0, (bmpH - cropH).coerceAtLeast(0))
+
+                            currentCropped = Bitmap.createBitmap(fullBitmap, cropX, cropY, cropW, cropH)
+                            ivMask.setImageBitmap(currentCropped)
+                        }
+                    }
+                }
+                true
+            }
+
+            btnSave.setOnClickListener {
+                val croppedToSave = currentCropped ?: maskBitmap
+                croppedToSave?.let { bmp ->
+                    try {
+                        FileOutputStream(maskFile).use { out ->
+                            bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        }
+                        loadAllTemplatesFromDisk()
+                        Toast.makeText(this, "Маска успешно обновлена!", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        logError(this, e)
+                    }
+                }
+                safeRemoveView(dialogView)
+                onDone()
+            }
+
+            btnCopy.setOnClickListener {
+                (currentCropped ?: maskBitmap)?.let { croppedToSave ->
+                    try {
+                        val ts = System.currentTimeMillis()
+                        val copyMask = File(dateFolder, "mask_${ts}.png")
+                        FileOutputStream(copyMask).use { out ->
+                            croppedToSave.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        }
+                        if (fullScreenshotFile.exists()) {
+                            val copyFull = File(dateFolder, "full_${ts}.png")
+                            fullScreenshotFile.copyTo(copyFull, overwrite = true)
+                        }
+                        loadAllTemplatesFromDisk()
+                        Toast.makeText(this, "📋 Создана копия шаблона!", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        logError(this, e)
+                    }
+                }
+                safeRemoveView(dialogView)
+                onDone()
+            }
+        } else {
+            btnSave.setOnClickListener { safeRemoveView(dialogView); onDone() }
+            btnCopy.setOnClickListener { safeRemoveView(dialogView); onDone() }
+            Toast.makeText(this, "Фоновый скриншот отсутствует. Отображена исходная маска.", Toast.LENGTH_SHORT).show()
+        }
+
+        btnCancel.setOnClickListener { safeRemoveView(dialogView); onDone() }
+        safeAddView(dialogView, params)
+    }
+
+    private fun showStepDialogTutorial() {
+        val dialogViewTut = LayoutInflater.from(this).inflate(R.layout.floating_tutorial_card, null)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        val tvTitle = dialogViewTut.findViewById<TextView>(R.id.tvTutTitle)
+        val tvDesc = dialogViewTut.findViewById<TextView>(R.id.tvTutDesc)
+        val btnPrev = dialogViewTut.findViewById<Button>(R.id.btnTutPrev)
+        val btnNext = dialogViewTut.findViewById<Button>(R.id.btnTutNext)
+        val btnSkip = dialogViewTut.findViewById<Button>(R.id.btnTutSkip)
+
+        var tourStep = 0
+        val totalSteps = 5
+
+        fun updateTourStep() {
+            tvTitle?.text = "Тур по настройкам (${tourStep + 1}/$totalSteps)"
+            tvDesc?.text = when (tourStep) {
+                0 -> "1. ⚡ Быстрый режим:\nВключён по умолчанию. Кликер сам выставляет лучшие параметры, чтобы вы не тратили время на лишние поля."
+                1 -> "2. Тип действия:\nВыбирайте: Клик, Зажатие, Свайп или Поиск ИИ-картинки."
+                2 -> "3. Порядок и Задержка:\nЗадавайте порядок выполнения шага и паузу перед тапом в секундах."
+                3 -> "4. ИИ-поиск и Маски:\nДля типа ИИ выбирайте картинку кнопками ◄ ► или запустите '🔍 Калибровку на экране'."
+                else -> "5. Расширенный режим:\nОтключите тумблер Быстрого режима, если хотите настроить задержки в миллисекундах или подгрузку сценариев."
+            }
+            btnPrev?.visibility = if (tourStep > 0) View.VISIBLE else View.INVISIBLE
+            btnNext?.text = if (tourStep < totalSteps - 1) "Далее ►" else "Понятно!"
+        }
+
+        updateTourStep()
+
+        btnPrev?.setOnClickListener { if (tourStep > 0) { tourStep--; updateTourStep() } }
+        btnNext?.setOnClickListener {
+            if (tourStep < totalSteps - 1) {
+                tourStep++
+                updateTourStep()
+            } else {
+                safeRemoveView(dialogViewTut)
+            }
+        }
+        btnSkip?.setOnClickListener { safeRemoveView(dialogViewTut) }
+
+        safeAddView(dialogViewTut, params)
+    }
+
+    private fun showEditDialog(config: ActionConfig) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.floating_edit_dialog, null)
+        val currentStepIdx = actionsList.indexOf(config)
+
+        val params = WindowManager.LayoutParams(
+            dpToPx(320),
+            dpToPx(460),
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvDialogTitle)
+        val btnPrevStep = dialogView.findViewById<Button>(R.id.btnPrevStep)
+        val btnNextStep = dialogView.findViewById<Button>(R.id.btnNextStep)
+
+        val btnTypeClick = dialogView.findViewById<Button>(R.id.btnTypeClick)
+        val btnTypeHold = dialogView.findViewById<Button>(R.id.btnTypeHold)
+        val btnTypeSwipe = dialogView.findViewById<Button>(R.id.btnTypeSwipe)
+        val btnTypeTrigger = dialogView.findViewById<Button>(R.id.btnTypeTrigger)
+
+        val etStepOrder = dialogView.findViewById<EditText>(R.id.etStepOrder)
+        val etDelay = dialogView.findViewById<EditText>(R.id.etDelay)
+        val tvHoldTitle = dialogView.findViewById<TextView>(R.id.tvHoldTitle)
+        val etHoldDuration = dialogView.findViewById<EditText>(R.id.etHoldDuration)
+        val etRepeatCount = dialogView.findViewById<EditText>(R.id.etRepeatCount)
+        val btnToggleInfiniteRepeat = dialogView.findViewById<Button>(R.id.btnToggleInfiniteRepeat)
+        val etRandomRadius = dialogView.findViewById<EditText>(R.id.etRandomRadius)
+
+        val cbSemiTransparentMode = dialogView.findViewById<CheckBox>(R.id.cbSemiTransparentMode)
+        val cbExactMatchOnly = dialogView.findViewById<CheckBox>(R.id.cbExactMatchOnly)
+        val cbBestMatchAuto = dialogView.findViewById<CheckBox>(R.id.cbBestMatchAuto)
+        val cbSoundAlertOnMatch = dialogView.findViewById<CheckBox>(R.id.cbSoundAlertOnMatch)
+
+        val etAiTimeout = dialogView.findViewById<EditText>(R.id.etAiTimeout)
+        val etSimilarity = dialogView.findViewById<EditText>(R.id.etSimilarity)
+        val etTemplateName = dialogView.findViewById<EditText>(R.id.etTemplateName)
+        val etFrequency = dialogView.findViewById<EditText>(R.id.etFrequency)
+        val etCaptureSize = dialogView.findViewById<EditText>(R.id.etCaptureSize)
+
+        val btnPrevTemplate = dialogView.findViewById<Button>(R.id.btnPrevTemplate)
+        val tvTemplateIndex = dialogView.findViewById<TextView>(R.id.tvTemplateIndex)
+        val btnNextTemplate = dialogView.findViewById<Button>(R.id.btnNextTemplate)
+
+        val btnCalibrateMatchesOnScreen = dialogView.findViewById<Button>(R.id.btnCalibrateMatchesOnScreen)
+        val btnToggleSearchArea = dialogView.findViewById<Button>(R.id.btnToggleSearchArea)
+        val btnEditTemplateInStep = dialogView.findViewById<Button>(R.id.btnEditTemplateInStep)
+
+        val layoutCropper = dialogView.findViewById<View>(R.id.layoutInteractiveCropper)
+        val ivFullPreview = dialogView.findViewById<ImageView>(R.id.ivFullScreenshotPreview)
+        val ivMaskPreview = dialogView.findViewById<ImageView>(R.id.ivMaskPreview)
+
+        val btnSelectTargetScriptToLoad = dialogView.findViewById<Button>(R.id.btnSelectTargetScriptToLoad)
+        val btnMultiSelectTemplates = dialogView.findViewById<Button>(R.id.btnMultiSelectTemplates)
+        val tempMultiIndices = ArrayList(config.multiTemplateIndices)
+
+        val btnCloneAction = dialogView.findViewById<Button>(R.id.btnCloneAction)
+        val btnDeleteTemplate = dialogView.findViewById<Button>(R.id.btnDeleteTemplate)
+        val btnDeleteAction = dialogView.findViewById<Button>(R.id.btnDeleteAction)
+
+        val btnSave = dialogView.findViewById<Button>(R.id.btnSave)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancel)
+
+        tvTitle.text = "Действие #" + config.id
+
+        var isFastMode = config.isFastMode
+        val btnToggleFastMode = dialogView.findViewById<Button>(R.id.btnToggleFastMode)
+        val btnStepTutorial = dialogView.findViewById<Button>(R.id.btnStepTutorial)
+        val layoutAdvancedParameters = dialogView.findViewById<View>(R.id.layoutAdvancedParameters)
+
+        fun updateFastModeUI() {
+            if (isFastMode) {
+                btnToggleFastMode?.text = "⚡ Режим: Быстрый (Рекомендуется) [ВКЛ]"
+                btnToggleFastMode?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.accent_blue))
+                layoutAdvancedParameters?.visibility = View.GONE
+            } else {
+                btnToggleFastMode?.text = "⚙️ Режим: Расширенный (Все настройки) [ВКЛ]"
+                btnToggleFastMode?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.bg_dark_blue))
+                layoutAdvancedParameters?.visibility = View.VISIBLE
+            }
+        }
+
+        btnToggleFastMode?.setOnClickListener {
+            isFastMode = !isFastMode
+            updateFastModeUI()
+        }
+        updateFastModeUI()
+
+        btnStepTutorial?.setOnClickListener {
+            showStepDialogTutorial()
+        }
+
+        val btnDelayUnit = dialogView.findViewById<Button>(R.id.btnDelayUnit)
+        var isDelayInSec = config.delay >= 1000L && config.delay % 100L == 0L
+
+        fun updateDelayInputText() {
+            if (isDelayInSec) {
+                btnDelayUnit.text = "сек"
+                val secVal = config.delay / 1000.0
+                etDelay.setText(if (secVal % 1.0 == 0.0) secVal.toLong().toString() else secVal.toString())
+            } else {
+                btnDelayUnit.text = "мс"
+                etDelay.setText(config.delay.toString())
+            }
+        }
+
+        btnDelayUnit.setOnClickListener {
+            val currentVal = etDelay.text.toString().toDoubleOrNull() ?: 1.0
+            isDelayInSec = !isDelayInSec
+            config.delay = if (isDelayInSec) (currentVal * 1000.0).toLong() else currentVal.toLong()
+            updateDelayInputText()
+        }
+        updateDelayInputText()
+
+        etHoldDuration?.setText(config.holdDuration.toString())
+        etRepeatCount.setText(if (config.repeatCount == -1) "∞" else config.repeatCount.toString())
+        etRandomRadius?.setText(config.randomRadius.toString())
+        etSimilarity?.setText(config.similarityPercent.toString())
+        etStepOrder.setText(config.id.toString())
+        etFrequency.setText(config.checkInterval.toString())
+        etCaptureSize.setText(config.captureSize.toString())
+
+        var selectedType = config.type
+        var tempTemplateIndex = config.selectedTemplateIndex
+        var isInfiniteRepeat = (config.repeatCount == -1)
+        var searchInCapturedArea = config.searchInCapturedArea
+        var selectedTargetScript = config.targetScriptToLoad
+
+        val etNextStep = dialogView.findViewById<EditText>(R.id.etNextStep)
+        val btnToggleClickAi = dialogView.findViewById<Button>(R.id.btnToggleClickAi)
+
+        var clickAiTarget = config.clickAiTarget
+
+        cbSoundAlertOnMatch?.isChecked = config.playAudioOnMatch
+        cbBestMatchAuto?.isChecked = config.bestMatchAuto
+        cbExactMatchOnly?.isChecked = config.exactMatchOnly
+        cbSemiTransparentMode?.isChecked = config.semiTransparentMode
+        etNextStep?.setText(if (config.jumpToStepOnMatch == -1) "" else config.jumpToStepOnMatch.toString())
+
+        fun updateTargetScriptButtonText() {
+            if (selectedTargetScript.isNotEmpty()) {
+                btnSelectTargetScriptToLoad?.text = "Запустить при ИИ: 🔗 $selectedTargetScript"
+                btnSelectTargetScriptToLoad?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.accent_blue))
+            } else {
+                btnSelectTargetScriptToLoad?.text = "Запустить при ИИ: [ Выбрать из списка 📁 ]"
+                btnSelectTargetScriptToLoad?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.bg_dark_blue))
+            }
+        }
+        updateTargetScriptButtonText()
+
+        btnSelectTargetScriptToLoad?.setOnClickListener {
+            val dir = File(filesDir, "scripts")
+            val scriptFiles = if (dir.exists()) {
+                dir.listFiles()?.filter { it.name.endsWith(".json") } ?: emptyList()
+            } else emptyList()
+
+            val scriptNames = ArrayList<String>()
+            scriptNames.add("❌ Без эстафеты (Очистить)")
+            scriptFiles.forEach { scriptNames.add(it.nameWithoutExtension) }
+
+            val builder = AlertDialog.Builder(this)
+            builder.setTitle("Выберите сценарий для ИИ-эстафеты:")
+            builder.setItems(scriptNames.toTypedArray()) { dialog, which ->
+                if (which == 0) {
+                    selectedTargetScript = ""
+                } else {
+                    selectedTargetScript = scriptNames[which]
+                }
+                updateTargetScriptButtonText()
+                dialog.dismiss()
+            }
+            builder.setNegativeButton("Отмена") { dialog, _ -> dialog.dismiss() }
+
+            val dialog = builder.create()
+            dialog.window?.setType(getOverlayType())
+            dialog.show()
+        }
+
+        fun updateInfiniteRepeatUI() {
+            if (isInfiniteRepeat) {
+                btnToggleInfiniteRepeat?.text = "Бесконечный повтор (До остановки): ДА (∞)"
+                btnToggleInfiniteRepeat?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.accent_blue))
+                etRepeatCount.isEnabled = false
+                etRepeatCount.setText("∞")
+            } else {
+                btnToggleInfiniteRepeat?.text = "Бесконечный повтор (До остановки): НЕТ"
+                btnToggleInfiniteRepeat?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.bg_dark_blue))
+                etRepeatCount.isEnabled = true
+                if (etRepeatCount.text.toString() == "∞") {
+                    etRepeatCount.setText("1")
+                }
+            }
+        }
+        updateInfiniteRepeatUI()
+
+        btnToggleInfiniteRepeat?.setOnClickListener {
+            isInfiniteRepeat = !isInfiniteRepeat
+            updateInfiniteRepeatUI()
+        }
+
+        fun updateSearchAreaButtonText() {
+            if (searchInCapturedArea) {
+                btnToggleSearchArea?.text = "Зона поиска: Локально 🎯 (Зона маски)"
+                btnToggleSearchArea?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.accent_blue))
+            } else {
+                btnToggleSearchArea?.text = "Зона поиска: Весь экран 🌐"
+                btnToggleSearchArea?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.bg_dark_blue))
+            }
+        }
+        updateSearchAreaButtonText()
+
+        btnToggleSearchArea?.setOnClickListener {
+            searchInCapturedArea = !searchInCapturedArea
+            updateSearchAreaButtonText()
+        }
+
+        fun saveCurrentStepData() {
+            config.type = selectedType
+            config.isFastMode = isFastMode
+
+            val rawDelayInput = etDelay.text.toString().toDoubleOrNull() ?: 1.0
+            config.delay = if (isDelayInSec) (rawDelayInput * 1000.0).toLong().coerceAtLeast(1L) else rawDelayInput.toLong().coerceAtLeast(1L)
+            config.holdDuration = etHoldDuration?.text?.toString()?.toLongOrNull() ?: 1000
+
+            if (isInfiniteRepeat) {
+                config.repeatCount = -1
+            } else {
+                config.repeatCount = etRepeatCount.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 1
+            }
+
+            config.randomRadius = etRandomRadius.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: 0
+            config.aiTimeoutSeconds = etAiTimeout?.text?.toString()?.toIntOrNull()?.coerceAtLeast(0) ?: 2
+            config.similarityPercent = etSimilarity?.text?.toString()?.toIntOrNull()?.coerceIn(50, 99) ?: 80
+            config.targetScriptToLoad = selectedTargetScript
+            config.checkInterval = etFrequency.text.toString().toLongOrNull() ?: 500
+            config.selectedTemplateIndex = tempTemplateIndex
+            config.captureSize = etCaptureSize.text.toString().toIntOrNull() ?: 100
+            config.clickAiTarget = clickAiTarget
+            config.jumpToStepOnMatch = if (etNextStep?.text?.toString()?.trim()?.isEmpty() == true) -1 else (etNextStep?.text?.toString()?.toIntOrNull() ?: -1)
+            config.searchInCapturedArea = searchInCapturedArea
+            config.playAudioOnMatch = cbSoundAlertOnMatch?.isChecked == true
+            config.bestMatchAuto = cbBestMatchAuto?.isChecked == true
+            config.exactMatchOnly = cbExactMatchOnly?.isChecked == true
+            config.semiTransparentMode = cbSemiTransparentMode?.isChecked == true
+
+            config.multiTemplateIndices = tempMultiIndices
+
+            val newName = etTemplateName?.text?.toString()?.trim() ?: ""
+            if (newName.isNotEmpty() && tempTemplateIndex in globalTemplatesNames.indices) {
+                renameTemplateFile(tempTemplateIndex, newName)
+            }
+
+            if (selectedType == ActionType.SWIPE && config.endView == null) {
+                val loc = IntArray(2)
+                config.startView.getLocationOnScreen(loc)
+                spawnEndTargetAtPosition(config, loc[0].toFloat() + dpToPx(80), loc[1].toFloat() + dpToPx(80))
+            } else if (selectedType != ActionType.SWIPE && config.endView != null) {
+                safeRemoveView(config.endView)
+                config.endView = null
+            }
+
+            val targetSizeDp = if (selectedType == ActionType.TRIGGER) config.captureSize else 36
+            val sizePx = dpToPx(targetSizeDp)
+            val layoutParams = config.startView.layoutParams as WindowManager.LayoutParams
+            layoutParams.width = sizePx
+            layoutParams.height = sizePx
+            safeUpdateViewLayout(config.startView, layoutParams)
+
+            val requestedOrder = etStepOrder.text.toString().toIntOrNull() ?: config.id
+            val targetIndex = (requestedOrder - 1).coerceIn(0, actionsList.size - 1)
+            val cIdx = actionsList.indexOf(config)
+
+            if (cIdx != -1 && targetIndex != cIdx) {
+                actionsList.removeAt(cIdx)
+                actionsList.add(targetIndex, config)
+                for (i in actionsList.indices) {
+                    val act = actionsList[i]
+                    act.id = i + 1
+                    act.startView.findViewById<TextView>(R.id.tvTargetNumber).text = act.id.toString()
+                    act.endView?.findViewById<TextView>(R.id.tvTargetNumberEnd)?.text = act.id.toString() + "E"
+                }
+            }
+        }
+
+        btnCalibrateMatchesOnScreen?.setOnClickListener {
+            if (tempTemplateIndex !in globalTemplates.indices) {
+                Toast.makeText(this, "Сначала выберите шаблон ИИ!", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            saveCurrentStepData()
+            safeRemoveView(dialogView)
+            startTemplateCalibration(config) {
+                showEditDialog(config)
+            }
+        }
+
+        btnEditTemplateInStep?.setOnClickListener {
+            if (tempTemplateIndex in globalTemplatesNames.indices) {
+                val maskPath = globalTemplatesNames[tempTemplateIndex]
+                val maskFile = File(maskPath)
+                if (maskFile.exists()) {
+                    dialogView.visibility = View.GONE
+                    showMaskEditorDialog(maskFile) {
+                        dialogView.visibility = View.VISIBLE
+                        val ivPreview = dialogView.findViewById<ImageView>(R.id.ivSelectedTemplateImagePreview)
+                        if (tempTemplateIndex in globalTemplates.indices) {
+                            ivPreview?.setImageBitmap(globalTemplates[tempTemplateIndex])
+                        }
+                    }
+                } else {
+                    Toast.makeText(this, "Файл маски не найден!", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "Сначала выберите ИИ-шаблон из пула!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnPrevTemplate?.setOnClickListener {
+            if (globalTemplates.isNotEmpty()) {
+                tempTemplateIndex = (tempTemplateIndex - 1 + globalTemplates.size) % globalTemplates.size
+                val ivPreview = dialogView.findViewById<ImageView>(R.id.ivSelectedTemplateImagePreview)
+                if (tempTemplateIndex in globalTemplates.indices) {
+                    ivPreview?.setImageBitmap(globalTemplates[tempTemplateIndex])
+                    val fullPath = globalTemplatesNames[tempTemplateIndex]
+                    val shortName = File(fullPath).nameWithoutExtension
+                    val meta = loadTemplateMetadata(fullPath)
+                    val pinnedPct = meta?.optInt("similarityPercent", config.similarityPercent) ?: config.similarityPercent
+                    tvTemplateIndex.text = "$shortName (🎯 $pinnedPct%)"
+                    etTemplateName.setText(shortName)
+                }
+            }
+        }
+
+        btnNextTemplate?.setOnClickListener {
+            if (globalTemplates.isNotEmpty()) {
+                tempTemplateIndex = (tempTemplateIndex + 1) % globalTemplates.size
+                val ivPreview = dialogView.findViewById<ImageView>(R.id.ivSelectedTemplateImagePreview)
+                if (tempTemplateIndex in globalTemplates.indices) {
+                    ivPreview?.setImageBitmap(globalTemplates[tempTemplateIndex])
+                    val fullPath = globalTemplatesNames[tempTemplateIndex]
+                    val shortName = File(fullPath).nameWithoutExtension
+                    val meta = loadTemplateMetadata(fullPath)
+                    val pinnedPct = meta?.optInt("similarityPercent", config.similarityPercent) ?: config.similarityPercent
+                    tvTemplateIndex.text = "$shortName (🎯 $pinnedPct%)"
+                    etTemplateName.setText(shortName)
+                }
+            }
+        }
+
+        fun updateMultiSelectButtonText() {
+            if (tempMultiIndices.isEmpty()) {
+                btnMultiSelectTemplates?.text = "Мульти-поиск ИИ: Выключен (1 шаблон)"
+                btnMultiSelectTemplates?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.bg_dark_blue))
+            } else {
+                btnMultiSelectTemplates?.text = "Мульти-поиск ИИ: Включен (${tempMultiIndices.size} шт)"
+                btnMultiSelectTemplates?.backgroundTintList = ColorStateList.valueOf(getColor(R.color.accent_blue))
+            }
+        }
+        updateMultiSelectButtonText()
+
+        btnMultiSelectTemplates?.setOnClickListener {
+            if (globalTemplatesNames.isEmpty()) {
+                Toast.makeText(this, "Пул ИИ-шаблонов пуст!", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val scrollView = ScrollView(this)
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dpToPx(14), dpToPx(14), dpToPx(14), dpToPx(14))
+                setBackgroundColor(getColor(R.color.panel_blue))
+            }
+            scrollView.addView(container)
+
+            val checkedSet = HashSet<Int>(tempMultiIndices)
+
+            for (i in globalTemplatesNames.indices) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dpToPx(6), 0, dpToPx(6))
+                }
+
+                val cb = CheckBox(this).apply {
+                    isChecked = checkedSet.contains(i)
+                    setOnCheckedChangeListener { _, isChecked ->
+                        if (isChecked) checkedSet.add(i) else checkedSet.remove(i)
+                    }
+                }
+
+                val pad = dpToPx(2)
+                val iv = ImageView(this).apply {
+                    val lp = LinearLayout.LayoutParams(dpToPx(42), dpToPx(42))
+                    lp.setMargins(dpToPx(8), 0, dpToPx(8), 0)
+                    layoutParams = lp
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    setBackgroundColor(Color.parseColor("#0A1128"))
+                    setPadding(pad, pad, pad, pad)
+                    if (i in globalTemplates.indices) {
+                        setImageBitmap(globalTemplates[i])
+                    }
+                }
+
+                val tv = TextView(this).apply {
+                    val f = File(globalTemplatesNames[i])
+                    val meta = loadTemplateMetadata(f.absolutePath)
+                    val pctStr = if (meta != null && meta.has("similarityPercent")) " (🎯 ${meta.getInt("similarityPercent")}%)" else ""
+                    text = "#${i + 1}: ${f.nameWithoutExtension}$pctStr"
+                    setTextColor(Color.WHITE)
+                    textSize = 12f
+                    setTypeface(null, Typeface.BOLD)
+                }
+
+                row.addView(cb)
+                row.addView(iv)
+                row.addView(tv)
+
+                row.setOnClickListener { cb.isChecked = !cb.isChecked }
+                container.addView(row)
+            }
+
+            val builder = AlertDialog.Builder(this)
+                .setTitle("Выберите маски для мульти-поиска:")
+                .setView(scrollView)
+                .setPositiveButton("Готово") { dialog, _ ->
+                    tempMultiIndices.clear()
+                    tempMultiIndices.addAll(checkedSet)
+                    updateMultiSelectButtonText()
+                    dialog.dismiss()
+                }
+                .setNegativeButton("Отмена") { dialog, _ -> dialog.dismiss() }
+
+            val dialog = builder.create()
+            dialog.window?.setType(getOverlayType())
+            dialog.show()
+        }
+
+        fun updateDialogAiUI() {
+            btnToggleClickAi?.text = if (clickAiTarget) "Клик по ИИ: ДА" else "Клик по ИИ: НЕТ"
+            btnToggleClickAi?.backgroundTintList = ColorStateList.valueOf(getColor(if (clickAiTarget) R.color.accent_blue else R.color.bg_dark_blue))
+        }
+
+        btnToggleClickAi?.setOnClickListener {
+            clickAiTarget = !clickAiTarget
+            updateDialogAiUI()
+        }
+
+        fun updateUI() {
+            btnTypeClick.setTextColor(Color.WHITE)
+            btnTypeHold?.setTextColor(Color.WHITE)
+            btnTypeSwipe.setTextColor(Color.WHITE)
+            btnTypeTrigger.setTextColor(Color.WHITE)
+
+            btnTypeClick.backgroundTintList = ColorStateList.valueOf(getColor(if (selectedType == ActionType.CLICK) R.color.accent_blue else R.color.bg_dark_blue))
+            btnTypeHold?.backgroundTintList = ColorStateList.valueOf(getColor(if (selectedType == ActionType.LONG_PRESS) R.color.accent_blue else R.color.bg_dark_blue))
+            btnTypeSwipe.backgroundTintList = ColorStateList.valueOf(getColor(if (selectedType == ActionType.SWIPE) R.color.accent_blue else R.color.bg_dark_blue))
+            btnTypeTrigger.backgroundTintList = ColorStateList.valueOf(getColor(if (selectedType == ActionType.TRIGGER) R.color.accent_blue else R.color.bg_dark_blue))
+
+            val isHold = selectedType == ActionType.LONG_PRESS
+            tvHoldTitle?.visibility = if (isHold) View.VISIBLE else View.GONE
+            etHoldDuration?.visibility = if (isHold) View.VISIBLE else View.GONE
+
+            val isTrigger = selectedType == ActionType.TRIGGER
+            val layoutAiBlock = dialogView.findViewById<View>(R.id.layoutAiParametersBlock)
+            layoutAiBlock?.visibility = if (isTrigger) View.VISIBLE else View.GONE
+
+            if (isTrigger) {
+                updateDialogAiUI()
+                if (globalTemplates.isEmpty()) {
+                    tvTemplateIndex?.text = "Пул ИИ пуст!"
+                } else {
+                    tempTemplateIndex = tempTemplateIndex.coerceIn(0, globalTemplates.size - 1)
+
+                    val fullPath = globalTemplatesNames[tempTemplateIndex]
+                    val shortName = File(fullPath).nameWithoutExtension
+                    val meta = loadTemplateMetadata(fullPath)
+                    val pinnedPct = meta?.optInt("similarityPercent", config.similarityPercent) ?: config.similarityPercent
+                    val isPinned = meta?.optBoolean("isPinned", true) ?: true
+
+                    if (isPinned) {
+                        config.similarityPercent = pinnedPct
+                        etSimilarity?.setText(pinnedPct.toString())
+                    }
+
+                    tvTemplateIndex?.text = "$shortName (🎯 $pinnedPct%)"
+                    etTemplateName?.setText(shortName)
+
+                    val ivPreview = dialogView.findViewById<ImageView>(R.id.ivSelectedTemplateImagePreview)
+                    if (tempTemplateIndex in globalTemplates.indices) {
+                        ivPreview?.setImageBitmap(globalTemplates[tempTemplateIndex])
+                    }
+                }
+
+                if (config.fullScreenshotPath.isNotEmpty() && File(config.fullScreenshotPath).exists()) {
+                    layoutCropper?.visibility = View.VISIBLE
+                    val fullBmp = BitmapFactory.decodeFile(config.fullScreenshotPath)
+                    if (fullBmp != null) {
+                        ivFullPreview?.setImageBitmap(fullBmp)
+                        if (tempTemplateIndex in globalTemplates.indices) {
+                            ivMaskPreview?.setImageBitmap(globalTemplates[tempTemplateIndex])
+                        }
+
+                        ivFullPreview?.setOnTouchListener { v, event ->
+                            if (event.action == MotionEvent.ACTION_UP) {
+                                v.performClick()
+                                val viewW = v.width
+                                val viewH = v.height
+                                if (viewW > 0 && viewH > 0) {
+                                    val bmpW = fullBmp.width
+                                    val bmpH = fullBmp.height
+
+                                    val scale = min(viewW.toFloat() / bmpW, viewH.toFloat() / bmpH)
+                                    val actualW = bmpW * scale
+                                    val actualH = bmpH * scale
+
+                                    val leftOffset = (viewW - actualW) / 2f
+                                    val topOffset = (viewH - actualH) / 2f
+
+                                    val touchX = event.x - leftOffset
+                                    val touchY = event.y - topOffset
+
+                                    if (touchX in 0f..actualW && touchY in 0f..actualH) {
+                                        val realX = (touchX / scale).toInt()
+                                        val realY = (touchY / scale).toInt()
+
+                                        val cropW = config.maskW.coerceIn(10, bmpW)
+                                        val cropH = config.maskH.coerceIn(10, bmpH)
+                                        val cropX = (realX - cropW / 2).coerceIn(0, (bmpW - cropW).coerceAtLeast(0))
+                                        val cropY = (realY - cropH / 2).coerceIn(0, (bmpH - cropH).coerceAtLeast(0))
+
+                                        val newIdx = saveFullAndCroppedTemplate(fullBmp, cropX, cropY, cropW, cropH, config)
+                                        if (newIdx != -1) {
+                                            tempTemplateIndex = newIdx
+                                            ivMaskPreview?.setImageBitmap(globalTemplates[newIdx])
+                                            updateUI()
+                                            Toast.makeText(this@MyAutoClickService, "✂️ Маска перезахвачена!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }
+                            true
+                        }
+                    } else {
+                        layoutCropper?.visibility = View.GONE
+                    }
+                } else {
+                    layoutCropper?.visibility = View.GONE
+                }
+            }
+        }
+
+        btnTypeClick.setOnClickListener { selectedType = ActionType.CLICK; updateUI() }
+        btnTypeHold?.setOnClickListener { selectedType = ActionType.LONG_PRESS; updateUI() }
+        btnTypeSwipe.setOnClickListener { selectedType = ActionType.SWIPE; updateUI() }
+        btnTypeTrigger.setOnClickListener { selectedType = ActionType.TRIGGER; updateUI() }
+
+        btnDeleteTemplate?.setOnClickListener {
+            if (tempTemplateIndex in globalTemplates.indices) {
+                moveTemplateToTrash(tempTemplateIndex)
+                if (globalTemplates.isNotEmpty()) {
+                    tempTemplateIndex = tempTemplateIndex.coerceIn(0, globalTemplates.size - 1)
+                } else {
+                    tempTemplateIndex = -1
+                }
+                updateUI()
+            }
+        }
+
+        btnCloneAction?.setOnClickListener {
+            saveCurrentStepData()
+            safeRemoveView(dialogView)
+            val loc = IntArray(2)
+            config.startView.getLocationOnScreen(loc)
+            addNewActionAtPosition(loc[0].toFloat() + dpToPx(20), loc[1].toFloat() + dpToPx(20), config.delay, config.type, config.selectedTemplateIndex)
+            val clonedConfig = actionsList.last()
+            clonedConfig.repeatCount = config.repeatCount
+            clonedConfig.holdDuration = config.holdDuration
+            clonedConfig.randomRadius = config.randomRadius
+            clonedConfig.similarityPercent = config.similarityPercent
+            clonedConfig.targetScriptToLoad = config.targetScriptToLoad
+            clonedConfig.searchInCapturedArea = config.searchInCapturedArea
+            clonedConfig.playAudioOnMatch = config.playAudioOnMatch
+            clonedConfig.isFastMode = config.isFastMode
+            clonedConfig.bestMatchAuto = config.bestMatchAuto
+            clonedConfig.exactMatchOnly = config.exactMatchOnly
+            clonedConfig.semiTransparentMode = config.semiTransparentMode
+            clonedConfig.multiTemplateIndices = ArrayList(config.multiTemplateIndices)
+            clonedConfig.checkInterval = config.checkInterval
+            clonedConfig.captureSize = config.captureSize
+            clonedConfig.clickAiTarget = config.clickAiTarget
+            clonedConfig.jumpToStepOnMatch = config.jumpToStepOnMatch
+            if (config.type == ActionType.SWIPE && config.endView != null) {
+                val endLoc = IntArray(2)
+                config.endView!!.getLocationOnScreen(endLoc)
+                spawnEndTargetAtPosition(clonedConfig, endLoc[0].toFloat() + dpToPx(20), endLoc[1].toFloat() + dpToPx(20))
+            }
+            Toast.makeText(this, "📋 Шаг #${config.id} успешно клонирован (Создан #${clonedConfig.id})!", Toast.LENGTH_SHORT).show()
+        }
+
+        btnDeleteAction?.setOnClickListener {
+            safeRemoveView(dialogView)
+            safeRemoveView(config.startView)
+            config.endView?.let { safeRemoveView(it) }
+            actionsList.remove(config)
+            for (i in actionsList.indices) {
+                val act = actionsList[i]
+                act.id = i + 1
+                act.startView.findViewById<TextView>(R.id.tvTargetNumber).text = act.id.toString()
+                act.endView?.findViewById<TextView>(R.id.tvTargetNumberEnd)?.text = act.id.toString() + "E"
+            }
+            Toast.makeText(this, "🗑 Шаг удален", Toast.LENGTH_SHORT).show()
+        }
+
+        btnPrevStep?.setOnClickListener {
+            saveCurrentStepData()
+            safeRemoveView(dialogView)
+            if (currentStepIdx > 0) showEditDialog(actionsList[currentStepIdx - 1])
+        }
+
+        btnNextStep?.setOnClickListener {
+            saveCurrentStepData()
+            safeRemoveView(dialogView)
+            if (currentStepIdx < actionsList.size - 1) showEditDialog(actionsList[currentStepIdx + 1])
+        }
+
+        btnSave?.setOnClickListener {
+            saveCurrentStepData()
+            safeRemoveView(dialogView)
+            Toast.makeText(this, "Параметры сохранены!", Toast.LENGTH_SHORT).show()
+
+            val loc = IntArray(2)
+            config.startView.getLocationOnScreen(loc)
+            spawnAttentionBeacon(loc[0].toFloat() + dpToPx(18), loc[1].toFloat() + dpToPx(18))
+        }
+
+        btnCancel?.setOnClickListener { safeRemoveView(dialogView) }
+
+        updateUI()
+        safeAddView(dialogView, params)
+    }
+
+    private fun spawnEndTargetAtPosition(config: ActionConfig, posX: Float, posY: Float) {
+        val endView = LayoutInflater.from(this).inflate(R.layout.floating_target_end, null)
+        val tvNumEnd = endView.findViewById<TextView>(R.id.tvTargetNumberEnd)
+        tvNumEnd.text = "${config.id}E"
+        tvNumEnd.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+
+        val sizePx = dpToPx(36)
+        val params = WindowManager.LayoutParams(
+            sizePx,
+            sizePx,
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (posX - sizePx / 2f).toInt()
+            y = (posY - sizePx / 2f).toInt()
+        }
+
+        endView.setOnTouchListener(object : View.OnTouchListener {
+            private var initialX = 0
+            private var initialY = 0
+            private var initialTouchX = 0f
+            private var initialTouchY = 0f
+
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                if (isPlaying) return false
+
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialX = params.x
+                        initialY = params.y
+                        initialTouchX = event.rawX
+                        initialTouchY = event.rawY
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        params.x = initialX + (event.rawX - initialTouchX).toInt()
+                        params.y = initialY + (event.rawY - initialTouchY).toInt()
+                        safeUpdateViewLayout(endView, params)
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        v.performClick()
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        endView.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+        endView.scaleX = 0f
+        endView.scaleY = 0f
+        endView.alpha = 0f
+
+        config.endView = endView
+        safeAddView(endView, params)
+
+        endView.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .setDuration(280)
+            .setInterpolator(OvershootInterpolator(1.4f))
+            .start()
+    }
+
+    private fun loadGlobalSettings() {
+        val prefs = getSharedPreferences("autotap_settings", Context.MODE_PRIVATE)
+        globalClickDurationMs = prefs.getLong("click_duration", 120L)
+        globalSwipeDurationMs = prefs.getLong("swipe_duration", 300L)
+        globalPreScreenshotDelayMs = prefs.getLong("pre_screenshot_delay", 250L)
+    }
+
+    private fun saveGlobalSettings(clickMs: Long, swipeMs: Long, preScreenshotMs: Long) {
+        globalClickDurationMs = clickMs.coerceIn(50L, 2000L)
+        globalSwipeDurationMs = swipeMs.coerceIn(100L, 3000L)
+        globalPreScreenshotDelayMs = preScreenshotMs.coerceIn(100L, 1000L)
+
+        val prefs = getSharedPreferences("autotap_settings", Context.MODE_PRIVATE)
+        prefs.edit {
+            putLong("click_duration", globalClickDurationMs)
+            putLong("swipe_duration", globalSwipeDurationMs)
+            putLong("pre_screenshot_delay", globalPreScreenshotDelayMs)
+        }
+
+        Toast.makeText(this, "Глобальные настройки сохранены!", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun bindSecMsWatcher(etMs: EditText, tvSecHelper: TextView) {
+        etMs.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val ms = s?.toString()?.toLongOrNull() ?: 0L
+                val sec = ms / 1000f
+                tvSecHelper.text = String.format(Locale.US, "= %.2f сек", sec)
+            }
+        })
+    }
+
+    private fun showGlobalSettingsDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_global_settings, null)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            getOverlayType(),
+            WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+            dimAmount = 0.5f
+        }
+
+        val etClick = dialogView.findViewById<EditText>(R.id.etGlobalClickDuration)
+        val tvSecClick = dialogView.findViewById<TextView>(R.id.tvSecClickDuration)
+
+        val etSwipe = dialogView.findViewById<EditText>(R.id.etGlobalSwipeDuration)
+        val tvSecSwipe = dialogView.findViewById<TextView>(R.id.tvSecSwipeDuration)
+
+        val etPreScreen = dialogView.findViewById<EditText>(R.id.etGlobalPreScreenshot)
+        val tvSecPreScreen = dialogView.findViewById<TextView>(R.id.tvSecPreScreenshot)
+
+        val btnSave = dialogView.findViewById<Button>(R.id.btnSaveGlobalSettings)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelGlobalSettings)
+
+        etClick.setText(globalClickDurationMs.toString())
+        etSwipe.setText(globalSwipeDurationMs.toString())
+        etPreScreen.setText(globalPreScreenshotDelayMs.toString())
+
+        bindSecMsWatcher(etClick, tvSecClick)
+        bindSecMsWatcher(etSwipe, tvSecSwipe)
+        bindSecMsWatcher(etPreScreen, tvSecPreScreen)
+
+        btnSave.setOnClickListener {
+            val cMs = etClick.text.toString().toLongOrNull() ?: 120L
+            val sMs = etSwipe.text.toString().toLongOrNull() ?: 300L
+            val pMs = etPreScreen.text.toString().toLongOrNull() ?: 250L
+            saveGlobalSettings(cMs, sMs, pMs)
+            safeRemoveView(dialogView)
+        }
+
+        btnCancel.setOnClickListener { safeRemoveView(dialogView) }
+        safeAddView(dialogView, params)
+    }
+
+    fun performClick(x: Float, y: Float, duration: Long = globalClickDurationMs) {
+        performClickWithCallback(x, y, duration)
+    }
+
+    fun performClickWithCallback(x: Float, y: Float, duration: Long = globalClickDurationMs, onComplete: (() -> Unit)? = null) {
+        spawnClickRippleAnimation(x, y)
+        val path = Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(path, 0, duration)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                logAppEvent(this@MyAutoClickService, "GESTURE_SUCCESS", "✅ Системный жест успешно выполнен на ($x, $y)")
+                onComplete?.invoke()
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                logAppEvent(this@MyAutoClickService, "GESTURE_CANCELLED", "⚠️ Системный жест отклонен ОС Android (помеха/экран заблокирован)")
+                onComplete?.invoke()
+            }
+        }, null)
+    }
+
+    fun performSwipe(startX: Float, startY: Float, endX: Float, endY: Float, duration: Long = globalSwipeDurationMs) {
+        performSwipeWithCallback(startX, startY, endX, endY, duration)
+    }
+
+    fun performSwipeWithCallback(startX: Float, startY: Float, endX: Float, endY: Float, duration: Long = globalSwipeDurationMs, onComplete: (() -> Unit)? = null) {
+        spawnClickRippleAnimation(startX, startY)
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, duration)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                logAppEvent(this@MyAutoClickService, "GESTURE_SUCCESS", "✅ Системный жест успешно выполнен")
+                onComplete?.invoke()
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                logAppEvent(this@MyAutoClickService, "GESTURE_CANCELLED", "⚠️ Системный жест отклонен ОС Android (помеха/экран заблокирован)")
+                onComplete?.invoke()
+            }
+        }, null)
+    }
+
+    fun exportScriptWithTemplates(context: Context, scriptName: String) {
+        try {
+            val scriptsDir = File(context.filesDir, "scripts")
+            val scriptFile = File(scriptsDir, "$scriptName.json")
+            if (!scriptFile.exists()) {
+                Toast.makeText(context, "Файл сценария не найден!", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val zipFile = File(context.externalCacheDir ?: context.cacheDir, "$scriptName.zip")
+            val zos = ZipOutputStream(FileOutputStream(zipFile))
+
+            val jsonBytes = scriptFile.readBytes()
+            val jsonEntry = ZipEntry("scripts/$scriptName.json")
+            zos.putNextEntry(jsonEntry)
+            zos.write(jsonBytes)
+            zos.closeEntry()
+
+            val jsonArray = JSONArray(String(jsonBytes))
+            val addedPaths = HashSet<String>()
+
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val tPath = if (obj.has("templatePath")) obj.getString("templatePath") else ""
+                val fPath = if (obj.has("fullScreenshotPath")) obj.getString("fullScreenshotPath") else ""
+
+                listOf(tPath, fPath).forEach { path ->
+                    if (path.isNotEmpty() && !addedPaths.contains(path)) {
+                        val imgFile = File(path)
+                        if (imgFile.exists()) {
+                            addedPaths.add(path)
+                            val entryName = "templates/${imgFile.parentFile?.name ?: "default"}/${imgFile.name}"
+                            val imgEntry = ZipEntry(entryName)
+                            zos.putNextEntry(imgEntry)
+                            zos.write(imgFile.readBytes())
+                            zos.closeEntry()
+
+                            val metaFile = getTemplateMetadataFile(path)
+                            if (metaFile.exists()) {
+                                val metaEntryName = "templates/${imgFile.parentFile?.name ?: "default"}/${metaFile.name}"
+                                val metaEntry = ZipEntry(metaEntryName)
+                                zos.putNextEntry(metaEntry)
+                                zos.write(metaFile.readBytes())
+                                zos.closeEntry()
+                            }
+                        }
+                    }
+                }
+            }
+            zos.close()
+
+            val builder = StrictMode.VmPolicy.Builder()
+            StrictMode.setVmPolicy(builder.build())
+
+            val uri = try {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", zipFile)
+            } catch (_: Exception) {
+                Uri.fromFile(zipFile)
+            }
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_SUBJECT, "Сценарий AutoTap: $scriptName")
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooserIntent = Intent.createChooser(shareIntent, "Экспортировать сценарий").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooserIntent)
+            logAppEvent(context, "SCRIPT_EXPORT", "Сценарий '$scriptName' успешно экспортирован в ZIP!")
+        } catch (e: Exception) {
+            logError(context, e)
+            Toast.makeText(context, "Ошибка экспорта сценария!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun saveScriptByName(name: String) {
+        try {
+            val jsonArray = JSONArray()
+            for (action in actionsList) {
+                val obj = JSONObject().apply {
+                    put("id", action.id)
+                    put("type", action.type.name)
+                    put("delay", action.delay)
+                    put("repeatCount", action.repeatCount)
+                    put("holdDuration", action.holdDuration)
+                    put("randomRadius", action.randomRadius)
+                    put("fullScreenshotPath", action.fullScreenshotPath)
+                    put("maskX", action.maskX)
+                    put("maskY", action.maskY)
+                    put("maskW", action.maskW)
+                    put("maskH", action.maskH)
+                    put("similarityPercent", action.similarityPercent)
+                    put("targetScriptToLoad", action.targetScriptToLoad)
+                    put("searchInCapturedArea", action.searchInCapturedArea)
+                    put("playAudioOnMatch", action.playAudioOnMatch)
+                    put("isFastMode", action.isFastMode)
+                    put("bestMatchAuto", action.bestMatchAuto)
+                    put("exactMatchOnly", action.exactMatchOnly)
+                    put("semiTransparentMode", action.semiTransparentMode)
+
+                    val arr = JSONArray()
+                    action.multiTemplateIndices.forEach { arr.put(it) }
+                    put("multiTemplateIndices", arr)
+                    put("checkInterval", action.checkInterval)
+                    put("captureSize", action.captureSize)
+                    put("clickAiTarget", action.clickAiTarget)
+                    put("jumpToStepOnMatch", action.jumpToStepOnMatch)
+                    put("selectedTemplateIndex", action.selectedTemplateIndex)
+
+                    val path = globalTemplatesNames.getOrNull(action.selectedTemplateIndex) ?: ""
+                    put("templatePath", path)
+
+                    val params = action.startView.layoutParams as WindowManager.LayoutParams
+                    val startSizePx = if (action.startView.width > 0) action.startView.width else dpToPx(if (action.type == ActionType.TRIGGER) action.captureSize else 36)
+                    put("startX", params.x + startSizePx / 2f)
+                    put("startY", params.y + startSizePx / 2f)
+
+                    action.endView?.let { endView ->
+                        val endParams = endView.layoutParams as WindowManager.LayoutParams
+                        val endSizePx = if (endView.width > 0) endView.width else dpToPx(36)
+                        put("endX", endParams.x + endSizePx / 2f)
+                        put("endY", endParams.y + endSizePx / 2f)
+                    }
+                }
+                jsonArray.put(obj)
+            }
+
+            val dir = File(filesDir, "scripts")
+            if (!dir.exists()) dir.mkdirs()
+            val scriptFile = File(dir, "${name}.json")
+            FileOutputStream(scriptFile).use { out ->
+                out.write(jsonArray.

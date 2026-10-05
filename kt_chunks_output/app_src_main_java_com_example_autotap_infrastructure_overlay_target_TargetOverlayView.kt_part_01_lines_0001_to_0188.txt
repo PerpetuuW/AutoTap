@@ -1,0 +1,198 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\target\TargetOverlayView.kt
+ PART: 1/1 | LINES: 1..188
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.target
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Bitmap
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.Outline
+   8 | [D:0] | import android.graphics.Typeface
+   9 | [D:0] | import android.graphics.drawable.GradientDrawable
+  10 | [D:0] | import android.view.Gravity
+  11 | [D:0] | import android.view.View
+  12 | [D:0] | import android.view.ViewOutlineProvider
+  13 | [D:0] | import android.widget.FrameLayout
+  14 | [D:0] | import android.widget.ImageView
+  15 | [D:0] | import android.widget.TextView
+  16 | [D:0] | import androidx.core.graphics.toColorInt
+  17 | [D:0] | import com.example.autotap.domain.model.ActionType
+  18 | [D:0] | import com.example.autotap.domain.model.MacroAction
+  19 | [D:0] | import com.example.autotap.infrastructure.storage.TemplateRepositoryImpl
+  20 | [D:0] | 
+  21 | [D:0] | @SuppressLint("SetTextI18n")
+  22 | [D:0] | class TargetOverlayView(
+  23 | [D:0] |     context: Context,
+  24 | [D:0] |     val isEndTarget: Boolean = false,
+  25 | [D:0] |     private val templateProvider: ((String) -> Bitmap?)? = null
+  26 | [D:0] | ) : FrameLayout(context) {
+  27 | [D:1] | 
+  28 | [D:1] |     val tvNumber: TextView
+  29 | [D:1] |     val ivTemplate: ImageView
+  30 | [D:1] |     val tvCornerBadge: TextView
+  31 | [D:1] | 
+  32 | [D:1] |     private val dm = context.resources.displayMetrics
+  33 | [D:1] |     private fun dp(value: Float): Int = (value * dm.density).toInt()
+  34 | [D:1] | 
+  35 | [D:1] |     init {
+  36 | [D:2] |         elevation = 0f
+  37 | [D:2] |         clipChildren = false
+  38 | [D:2] |         clipToPadding = false
+  39 | [D:2] | 
+  40 | [D:2] |         outlineProvider = object : ViewOutlineProvider() {
+  41 | [D:3] |             override fun getOutline(view: View, outline: Outline) {
+  42 | [D:4] |                 outline.setOval(0, 0, view.width, view.height)
+  43 | [D:3] |             }
+  44 | [D:2] |         }
+  45 | [D:2] |         clipToOutline = true
+  46 | [D:2] | 
+  47 | [D:2] |         ivTemplate = ImageView(context).apply {
+  48 | [D:3] |             scaleType = ImageView.ScaleType.FIT_CENTER
+  49 | [D:3] |             visibility = View.GONE
+  50 | [D:2] |         }
+  51 | [D:2] |         val padImg = dp(4f)
+  52 | [D:2] |         ivTemplate.setPadding(padImg, padImg, padImg, padImg)
+  53 | [D:2] |         addView(ivTemplate, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
+  54 | [D:2] | 
+  55 | [D:2] |         tvNumber = TextView(context).apply {
+  56 | [D:3] |             textSize = if (isEndTarget) 10f else 11.5f
+  57 | [D:3] |             typeface = Typeface.MONOSPACE
+  58 | [D:3] |             gravity = Gravity.CENTER
+  59 | [D:3] |             setTextColor(Color.WHITE)
+  60 | [D:3] |             includeFontPadding = false
+  61 | [D:2] |         }
+  62 | [D:2] |         val p = dp(2f)
+  63 | [D:2] |         tvNumber.setPadding(p, p, p, p)
+  64 | [D:2] |         addView(tvNumber, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
+  65 | [D:2] | 
+  66 | [D:2] |         tvCornerBadge = TextView(context).apply {
+  67 | [D:3] |             textSize = 7.5f
+  68 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+  69 | [D:3] |             gravity = Gravity.CENTER
+  70 | [D:3] |             setTextColor(Color.BLACK)
+  71 | [D:3] |             includeFontPadding = false
+  72 | [D:3] |             background = GradientDrawable().apply {
+  73 | [D:4] |                 shape = GradientDrawable.OVAL
+  74 | [D:4] |                 setColor("#00F5D4".toColorInt())
+  75 | [D:4] |                 setStroke(dp(1f), Color.WHITE)
+  76 | [D:3] |             }
+  77 | [D:3] |             visibility = View.GONE
+  78 | [D:2] |         }
+  79 | [D:2] |         val badgeSize = dp(16f)
+  80 | [D:2] |         val badgeLp = LayoutParams(badgeSize, badgeSize, Gravity.TOP or Gravity.END).apply {
+  81 | [D:3] |             topMargin = dp(2f)
+  82 | [D:3] |             rightMargin = dp(2f)
+  83 | [D:2] |         }
+  84 | [D:2] |         addView(tvCornerBadge, badgeLp)
+  85 | [D:1] |     }
+  86 | [D:1] | 
+  87 | [D:1] |     fun bindAction(action: MacroAction, isNumbersHidden: Boolean) {
+  88 | [D:2] |         val labelText = when {
+  89 | [D:3] |             isEndTarget -> "${action.id}E"
+  90 | [D:3] |             action.subroutineTag.isNotEmpty() && action.subroutineTag.matches(Regex("^[0-9]+(\\.[0-9]+)+$")) -> action.subroutineTag
+  91 | [D:3] |             else -> "${action.id}"
+  92 | [D:2] |         }
+  93 | [D:2] | 
+  94 | [D:2] |         if (isEndTarget) {
+  95 | [D:3] |             ivTemplate.visibility = View.GONE
+  96 | [D:3] |             tvCornerBadge.visibility = View.GONE
+  97 | [D:3] |             tvNumber.visibility = if (isNumbersHidden) INVISIBLE else VISIBLE
+  98 | [D:3] |             tvNumber.text = labelText
+  99 | [D:3] |             tvNumber.setTextColor("#58A6FF".toColorInt())
+ 100 | [D:3] |             background = GradientDrawable().apply {
+ 101 | [D:4] |                 shape = GradientDrawable.OVAL
+ 102 | [D:4] |                 setColor("#E6161B22".toColorInt())
+ 103 | [D:4] |                 setStroke(dp(2.5f), "#58A6FF".toColorInt())
+ 104 | [D:3] |             }
+ 105 | [D:3] |             return
+ 106 | [D:2] |         }
+ 107 | [D:2] | 
+ 108 | [D:2] |         when (action.type) {
+ 109 | [D:3] |             ActionType.TRIGGER -> {
+ 110 | [D:4] |                 val bmp = if (action.templatePath.isNotBlank()) {
+ 111 | [D:5] |                     templateProvider?.invoke(action.templatePath)
+ 112 | [D:5] |                         ?: TemplateRepositoryImpl(context).getTemplate(action.templatePath)
+ 113 | [D:4] |                 } else null
+ 114 | [D:4] | 
+ 115 | [D:4] |                 if (bmp != null && !bmp.isRecycled) {
+ 116 | [D:5] |                     ivTemplate.setImageBitmap(bmp)
+ 117 | [D:5] |                     ivTemplate.visibility = View.VISIBLE
+ 118 | [D:5] |                     tvNumber.visibility = View.GONE
+ 119 | [D:5] |                     tvCornerBadge.visibility = if (isNumbersHidden) View.GONE else View.VISIBLE
+ 120 | [D:5] |                     tvCornerBadge.text = "${action.id}"
+ 121 | [D:4] |                 } else {
+ 122 | [D:5] |                     ivTemplate.visibility = View.GONE
+ 123 | [D:5] |                     tvCornerBadge.visibility = View.GONE
+ 124 | [D:5] |                     tvNumber.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+ 125 | [D:5] |                     tvNumber.text = labelText
+ 126 | [D:5] |                     tvNumber.setTextColor("#FB923C".toColorInt())
+ 127 | [D:4] |                 }
+ 128 | [D:4] | 
+ 129 | [D:4] |                 background = GradientDrawable(
+ 130 | [D:4] |                     GradientDrawable.Orientation.TOP_BOTTOM,
+ 131 | [D:4] |                     intArrayOf("#E6161B22".toColorInt(), "#E60D1117".toColorInt())
+ 132 | [D:4] |                 ).apply {
+ 133 | [D:5] |                     shape = GradientDrawable.OVAL
+ 134 | [D:5] |                     setStroke(dp(2.5f), "#FB923C".toColorInt())
+ 135 | [D:4] |                 }
+ 136 | [D:3] |             }
+ 137 | [D:3] |             ActionType.COLOR_CHECK -> {
+ 138 | [D:4] |                 ivTemplate.visibility = View.GONE
+ 139 | [D:4] |                 tvCornerBadge.visibility = if (isNumbersHidden) View.GONE else View.VISIBLE
+ 140 | [D:4] |                 tvCornerBadge.text = "${action.id}"
+ 141 | [D:4] |                 tvCornerBadge.background = GradientDrawable().apply {
+ 142 | [D:5] |                     shape = GradientDrawable.OVAL
+ 143 | [D:5] |                     setColor(Color.WHITE)
+ 144 | [D:4] |                 }
+ 145 | [D:4] |                 tvCornerBadge.setTextColor(Color.BLACK)
+ 146 | [D:4] | 
+ 147 | [D:4] |                 val color = try { Color.parseColor(action.targetColorHex) } catch (_: Exception) { "#EC4899".toColorInt() }
+ 148 | [D:4] |                 tvNumber.visibility = View.GONE
+ 149 | [D:4] |                 background = GradientDrawable().apply {
+ 150 | [D:5] |                     shape = GradientDrawable.OVAL
+ 151 | [D:5] |                     setColor(color)
+ 152 | [D:5] |                     setStroke(dp(2.5f), Color.WHITE)
+ 153 | [D:4] |                 }
+ 154 | [D:3] |             }
+ 155 | [D:3] |             ActionType.CLICK, ActionType.LONG_PRESS, ActionType.SWIPE,
+ 156 | [D:3] |             ActionType.PATH, ActionType.PINCH, ActionType.OCR,
+ 157 | [D:3] |             ActionType.SUBROUTINE, ActionType.RETURN -> {
+ 158 | [D:4] |                 ivTemplate.visibility = View.GONE
+ 159 | [D:4] |                 tvCornerBadge.visibility = View.GONE
+ 160 | [D:4] |                 tvNumber.visibility = if (isNumbersHidden) View.INVISIBLE else View.VISIBLE
+ 161 | [D:4] |                 tvNumber.text = labelText
+ 162 | [D:4] | 
+ 163 | [D:4] |                 val colorHex = when (action.type) {
+ 164 | [D:5] |                     ActionType.CLICK -> "#00F5D4"
+ 165 | [D:5] |                     ActionType.LONG_PRESS -> "#FFB703"
+ 166 | [D:5] |                     ActionType.SWIPE -> "#58A6FF"
+ 167 | [D:5] |                     ActionType.PATH -> "#58A6FF"
+ 168 | [D:5] |                     ActionType.PINCH -> "#38BDF8"
+ 169 | [D:5] |                     ActionType.OCR -> "#38BDF8"
+ 170 | [D:5] |                     ActionType.SUBROUTINE -> "#A78BFA"
+ 171 | [D:5] |                     ActionType.RETURN -> "#64748B"
+ 172 | [D:5] |                     ActionType.TRIGGER -> "#FB923C"
+ 173 | [D:5] |                     ActionType.COLOR_CHECK -> "#EC4899"
+ 174 | [D:4] |                 }
+ 175 | [D:4] |                 val parsedColor = colorHex.toColorInt()
+ 176 | [D:4] |                 tvNumber.setTextColor(parsedColor)
+ 177 | [D:4] | 
+ 178 | [D:4] |                 background = GradientDrawable(
+ 179 | [D:4] |                     GradientDrawable.Orientation.TOP_BOTTOM,
+ 180 | [D:4] |                     intArrayOf("#E6161B22".toColorInt(), "#E60D1117".toColorInt())
+ 181 | [D:4] |                 ).apply {
+ 182 | [D:5] |                     shape = GradientDrawable.OVAL
+ 183 | [D:5] |                     setStroke(dp(2.5f), parsedColor)
+ 184 | [D:4] |                 }
+ 185 | [D:3] |             }
+ 186 | [D:2] |         }
+ 187 | [D:1] |     }
+ 188 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_target_TargetOverlayView.kt_part_01_lines_0001_to_0188.txt
+================================================================================

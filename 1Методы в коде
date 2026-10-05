@@ -1,0 +1,632 @@
+1. Окна и фокус ввода: OverlayWindowManager.kt
+
+Инвариант: Разделение окон на информационные (доступность) и модальные
+(приложение). Исключает краши из-за попытки сфокусировать
+TYPE_ACCESSIBILITY_OVERLAY.
+
+package com.example.autotap.infrastructure.overlay
+
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Build
+import android.view.Gravity
+import android.view.WindowManager
+
+object WindowParamsFactory {
+
+    /**
+     * Информационный оверлей (метки, прицелы, HUD, бейджи).
+     * Не требует Settings.canDrawOverlays при активной службе доступности.
+     * Категорически NOT_FOCUSABLE.
+     */
+    fun createInfoOverlayParams(
+        width: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+        height: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+        gravity: Int = Gravity.TOP or Gravity.START
+    ): WindowManager.LayoutParams {
+        val type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+
+        return WindowManager.LayoutParams(width, height, type, flags, PixelFormat.TRANSLUCENT).apply {
+            this.gravity = gravity
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
+
+    /**
+     * Модальный интерактивный оверлей (пульт, диалоги, редактирование шагов, клавиатура).
+     * Требует разрешения Settings.canDrawOverlays.
+     */
+    fun createModalOverlayParams(
+        width: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+        height: Int = WindowManager.LayoutParams.WRAP_CONTENT,
+        gravity: Int = Gravity.CENTER
+    ): WindowManager.LayoutParams {
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        val flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+
+        return WindowManager.LayoutParams(width, height, type, flags, PixelFormat.TRANSLUCENT).apply {
+            this.gravity = gravity
+            this.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
+}
+
+2. Компенсация вырезов экрана (Display Cutout & Status Bar Drift): CutoutCompat.kt
+
+Инвариант: Исключает сползание координат мишеней и пульта на прошивках с
+агрессивным смещением статус-бара (Samsung OneUI, Xiaomi HyperOS).
+
+package com.example.autotap.core.accessibility
+
+import android.os.Build
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowManager
+
+object CutoutCompat {
+
+    fun applyCutoutAndInsets(
+        rootView: View,
+        layoutParams: WindowManager.LayoutParams,
+        onParamsUpdated: (WindowManager.LayoutParams) -> Unit
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            layoutParams.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+
+        rootView.setOnApplyWindowInsetsListener { view, insets ->
+            val topInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                insets.getInsets(WindowInsets.Type.statusBars()).top
+            } else {
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetTop
+            }
+
+            // Компенсируем системный сдвиг, если координата Y окна искажена системным статус-баром
+            if (layoutParams.y < topInset && topInset > 0) {
+                layoutParams.y = 0
+                onParamsUpdated(layoutParams)
+            }
+            insets
+        }
+    }
+}
+
+3. Надежная кинематика джойстика на Android 14+: JoystickKinematicsEngine.kt
+
+Инвариант: Длительность штриха строго равна такту отправки
+(100\text{ мс} = 100\text{ мс}). Отправка следующего штриха выполняется внутри
+onCompleted. Автоматическая перепривязка (recycle) предотвращает исчерпание
+системного лимита MAX_STROKE_COUNT = 10.
+
+package com.example.autotap.infrastructure.gesture
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.os.Handler
+import android.os.Looper
+
+class JoystickKinematicsEngine(
+    private val serviceProvider: () -> AccessibilityService?
+) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var activeStroke: GestureDescription.StrokeDescription? = null
+    private var currentPath: Path? = null
+    private var strokeCounter = 0
+    @Volatile private var isTracking = false
+
+    private var lastX = 0f
+    private var lastY = 0f
+
+    fun startStream(startX: Float, startY: Float) {
+        val service = serviceProvider() ?: return
+        isTracking = true
+        lastX = startX
+        lastY = startY
+        strokeCounter = 1
+
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(startX, startY)
+        }
+        currentPath = path
+
+        val stroke = GestureDescription.StrokeDescription(path, 0L, 100L, true)
+        activeStroke = stroke
+
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                if (isTracking) dispatchNextSegment() else finishStream()
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                if (isTracking) recoverStream() else resetState()
+            }
+        }, mainHandler)
+    }
+
+    fun updateTarget(targetX: Float, targetY: Float) {
+        lastX = targetX
+        lastY = targetY
+    }
+
+    private fun dispatchNextSegment() {
+        val service = serviceProvider() ?: run { resetState(); return }
+        if (!isTracking) { finishStream(); return }
+
+        // Защита от лимита AOSP MAX_STROKE_COUNT: каждые 7 шагов пересоздаем цепь
+        if (strokeCounter >= 7) {
+            strokeCounter = 0
+            recoverStream()
+            return
+        }
+
+        val path = Path().apply {
+            moveTo(lastX, lastY)
+            // Микро-джиттер предотвращает засыпание тач-интерфейса в игровых движках
+            val j = if (strokeCounter % 2 == 0) 0.25f else -0.25f
+            lineTo(lastX + j, lastY + j)
+        }
+        currentPath = path
+
+        val nextStroke = try {
+            activeStroke?.continueStroke(path, 0L, 100L, true)
+        } catch (_: Throwable) { null }
+
+        if (nextStroke == null) {
+            recoverStream()
+            return
+        }
+
+        activeStroke = nextStroke
+        strokeCounter++
+
+        val gesture = GestureDescription.Builder().addStroke(nextStroke).build()
+        service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                if (isTracking) dispatchNextSegment() else finishStream()
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                if (isTracking) recoverStream() else resetState()
+            }
+        }, mainHandler)
+    }
+
+    fun stopStream() {
+        isTracking = false
+    }
+
+    private fun finishStream() {
+        val service = serviceProvider() ?: run { resetState(); return }
+        val stroke = activeStroke ?: run { resetState(); return }
+        val path = Path().apply {
+            moveTo(lastX, lastY)
+            lineTo(lastX, lastY)
+        }
+        try {
+            val finalStroke = stroke.continueStroke(path, 0L, 20L, false)
+            val gesture = GestureDescription.Builder().addStroke(finalStroke).build()
+            service.dispatchGesture(gesture, null, null)
+        } catch (_: Throwable) {
+            // Аварийный сброс если continueStroke отклонен
+            emergencyTouchRelease(service, lastX, lastY)
+        } finally {
+            resetState()
+        }
+    }
+
+    private fun recoverStream() {
+        val service = serviceProvider() ?: run { resetState(); return }
+        val path = Path().apply {
+            moveTo(lastX, lastY)
+            lineTo(lastX, lastY)
+        }
+        strokeCounter = 1
+        val stroke = GestureDescription.StrokeDescription(path, 0L, 100L, true)
+        activeStroke = stroke
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                if (isTracking) dispatchNextSegment() else finishStream()
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                resetState()
+            }
+        }, mainHandler)
+    }
+
+    private fun emergencyTouchRelease(service: AccessibilityService, x: Float, y: Float) {
+        try {
+            val path = Path().apply { moveTo(x, y); lineTo(x, y) }
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 10L, false)
+            service.dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        } catch (_: Throwable) {}
+    }
+
+    private fun resetState() {
+        isTracking = false
+        activeStroke = null
+        currentPath = null
+        strokeCounter = 0
+    }
+}
+
+4. Аппаратное освобождение дескрипторов: GraphicBufferReleaser.kt
+
+Инвариант: Гарантированное раздельное освобождение HardwareBuffer и Bitmap в
+finally-блоках.
+
+package com.example.autotap.infrastructure.projection
+
+import android.graphics.Bitmap
+import android.hardware.HardwareBuffer
+import android.os.Build
+
+object GraphicBufferReleaser {
+
+    fun release(hwBuffer: HardwareBuffer?, bitmap: Bitmap?) {
+        if (bitmap != null && !bitmap.isRecycled) {
+            try {
+                bitmap.recycle()
+            } catch (_: Throwable) {}
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && hwBuffer != null) {
+            try {
+                if (!hwBuffer.isClosed) {
+                    hwBuffer.close()
+                }
+            } catch (_: Throwable) {}
+        }
+    }
+}
+
+5. Побайтовая конвертация YCbCr_420_888 в ARGB без промежуточного Bitmap: YuvToRgbConverter.kt
+
+Инвариант: Прямой парсинг буферов плоскостей Image в предварительно выделенный
+IntArray из пула PixelBufferPool. Исключает создание временных объектов и
+задержки GC.
+
+package com.example.autotap.infrastructure.vision
+
+import android.media.Image
+import java.nio.ByteBuffer
+
+object YuvToRgbConverter {
+
+    /**
+     * Побайтовый конвертер BT.601 прямо в плоский массив ARGB.
+     * Поддерживает любые соотношения pixelStride и rowStride для форматов I420, NV12, NV21.
+     */
+    fun convertYuv420ToArgbIntArray(image: Image, outPixels: IntArray) {
+        val width = image.width
+        val height = image.height
+        val planes = image.planes
+
+        val yPlane = planes[0]
+        val uPlane = planes[1]
+        val vPlane = planes[2]
+
+        val yBuffer: ByteBuffer = yPlane.buffer
+        val uBuffer: ByteBuffer = uPlane.buffer
+        val vBuffer: ByteBuffer = vPlane.buffer
+
+        val yRowStride = yPlane.rowStride
+        val yPixelStride = yPlane.pixelStride
+
+        val uRowStride = uPlane.rowStride
+        val uPixelStride = uPlane.pixelStride
+
+        val vRowStride = vPlane.rowStride
+        val vPixelStride = vPlane.pixelStride
+
+        var outIndex = 0
+
+        for (y in 0 until height) {
+            val yRowStart = y * yRowStride
+            val uvRowStart = (y shr 1) * uRowStride
+
+            for (x in 0 until width) {
+                val yIndex = yRowStart + x * yPixelStride
+                val uvColOffset = (x shr 1)
+
+                val uIndex = uvRowStart + uvColOffset * uPixelStride
+                val vIndex = uvRowStart + uvColOffset * vPixelStride
+
+                val yVal = (yBuffer.get(yIndex).toInt() and 0xFF) - 16
+                val uVal = (uBuffer.get(uIndex).toInt() and 0xFF) - 128
+                val vVal = (vBuffer.get(vIndex).toInt() and 0xFF) - 128
+
+                val y1192 = 1192 * yVal.coerceAtLeast(0)
+                var r = (y1192 + 1634 * vVal) shr 10
+                var g = (y1192 - 833 * vVal - 400 * uVal) shr 10
+                var b = (y1192 + 2066 * uVal) shr 10
+
+                r = r.coerceIn(0, 255)
+                g = g.coerceIn(0, 255)
+                b = b.coerceIn(0, 255)
+
+                // Упаковка в ARGB_8888 формат
+                outPixels[outIndex++] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+            }
+        }
+    }
+}
+
+6. Колориметрия: HDR Fallback и точный CIE76/Delta-E: ColorPerceptionEngine.kt
+
+Инвариант: Автоматическое определение активности расширенного динамического
+диапазона (HDR). Если экран в HDR — переход на быстрый взвешенный RGB/Luma
+порог; если в SDR — расчет евклидова расстояния в пространстве CIELAB.
+
+package com.example.autotap.infrastructure.vision
+
+import android.content.Context
+import android.graphics.Color
+import android.os.Build
+import android.view.Display
+import android.view.WindowManager
+import kotlin.math.pow
+import kotlin.math.sqrt
+
+object ColorPerceptionEngine {
+
+    fun isHdrActive(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val wm = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
+        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display ?: wm.defaultDisplay
+        } else {
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay
+        }
+        val mode = display?.mode ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            display.isHdr
+        } else {
+            mode.supportedHdrTypes.isNotEmpty()
+        }
+    }
+
+    /**
+     * Сравнение цветов с защитой от искажений нелинейной гаммы HDR
+     */
+    fun areColorsMatching(c1: Int, c2: Int, context: Context, tolerance: Double = 4.5): Boolean {
+        if (isHdrActive(context)) {
+            // HDR Fallback: Взвешенное Манхэттенское расстояние по RGB каналам
+            val r1 = (c1 ushr 16) and 0xFF; val g1 = (c1 ushr 8) and 0xFF; val b1 = c1 and 0xFF
+            val r2 = (c2 ushr 16) and 0xFF; val g2 = (c2 ushr 8) and 0xFF; val b2 = c2 and 0xFF
+            val diff = (kotlin.math.abs(r1 - r2) * 30 + kotlin.math.abs(g1 - g2) * 59 + kotlin.math.abs(b1 - b2) * 11) / 100
+            return diff <= (tolerance * 5).toInt()
+        }
+
+        // Точный расчет CIELAB Delta-E (CIE76)
+        val lab1 = rgbToLab(c1)
+        val lab2 = rgbToLab(c2)
+        val deltaE = sqrt(
+            (lab1[0] - lab2[0]).pow(2) +
+            (lab1[1] - lab2[1]).pow(2) +
+            (lab1[2] - lab2[2]).pow(2)
+        )
+        return deltaE <= tolerance
+    }
+
+    private fun rgbToLab(argb: Int): DoubleArray {
+        var r = ((argb ushr 16) and 0xFF) / 255.0
+        var g = ((argb ushr 8) and 0xFF) / 255.0
+        var b = (argb and 0xFF) / 255.0
+
+        r = if (r > 0.04045) ((r + 0.055) / 1.055).pow(2.4) else r / 12.92
+        g = if (g > 0.04045) ((g + 0.055) / 1.055).pow(2.4) else g / 12.92
+        b = if (b > 0.04045) ((b + 0.055) / 1.055).pow(2.4) else b / 12.92
+
+        // D65 Daylight Illuminant
+        var x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047
+        var y = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 1.00000
+        var z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883
+
+        x = if (x > 0.008856) x.pow(1.0 / 3.0) else (7.787 * x) + (16.0 / 116.0)
+        y = if (y > 0.008856) y.pow(1.0 / 3.0) else (7.787 * y) + (16.0 / 116.0)
+        z = if (z > 0.008856) z.pow(1.0 / 3.0) else (7.787 * z) + (16.0 / 116.0)
+
+        val lVal = (116.0 * y) - 16.0
+        val aVal = 500.0 * (x - y)
+        val bVal = 200.0 * (y - z)
+
+        return doubleArrayOf(lVal, aVal, bVal)
+    }
+}
+
+7. Защита конвейера OCR от FLAG_SECURE и пустых буферов: OcrPreflightGuard.kt
+
+Инвариант: Быстрый отсев черных кадров до вызова ML Kit. Защищает от фатальных
+сбоев и утечек при работе с защищенными окнами.
+
+package com.example.autotap.infrastructure.ocr
+
+import android.graphics.Bitmap
+
+object OcrPreflightGuard {
+
+    fun isValidForOcr(bitmap: Bitmap?): Boolean {
+        if (bitmap == null || bitmap.isRecycled) return false
+        if (bitmap.width <= 4 || bitmap.height <= 4) return false
+
+        // Проверка на черный кадр композитора SurfaceFlinger (FLAG_SECURE защита)
+        val w = bitmap.width
+        val h = bitmap.height
+        val samplePoints = intArrayOf(
+            bitmap.getPixel(w / 4, h / 4),
+            bitmap.getPixel(w / 2, h / 2),
+            bitmap.getPixel(3 * w / 4, 3 * h / 4),
+            bitmap.getPixel(w / 2, h / 4),
+            bitmap.getPixel(w / 4, h / 2)
+        )
+
+        val isAllCompletelyBlack = samplePoints.all { (it and 0x00FFFFFF) == 0 }
+        return !isAllCompletelyBlack
+    }
+}
+
+8. Биометрическая кинематика: Гауссовский джиттер и временной шум: HumanKinematicsEngine.kt
+
+Инвариант: Метод Бокса-Мюллера для пространственного рассеивания и случайный
+временной шум исключают периодичность жестов в системах Anti-Cheat.
+
+package com.example.autotap.infrastructure.gesture
+
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.sin
+import kotlin.math.sqrt
+
+object HumanKinematicsEngine {
+
+    /**
+     * Преобразование Бокса-Мюллера для координат (радиус r с нормальным распределением 99.7%)
+     */
+    fun computeGaussianOffset(radiusPx: Int): Pair<Float, Float> {
+        if (radiusPx <= 0) return Pair(0f, 0f)
+        val u1 = Math.random().coerceAtLeast(1e-6)
+        val u2 = Math.random().coerceAtLeast(1e-6)
+
+        // Преобразование по правилу трех сигм (r / 2.6)
+        val magnitude = sqrt(-2.0 * ln(u1)) * (radiusPx / 2.6)
+        val angle = 2.0 * PI * u2
+
+        val dx = (magnitude * cos(angle)).toFloat()
+        val dy = (magnitude * sin(angle)).toFloat()
+        return Pair(dx, dy)
+    }
+
+    /**
+     * Временной шум (Jitter) для задержек между микро-действиями
+     */
+    fun computeTemporalJitter(baseDelayMs: Long): Long {
+        val noiseMs = (Math.random() * 28.0).toLong() - 14L
+        return (baseDelayMs + noiseMs).coerceAtLeast(10L)
+    }
+}
+
+9. Пул пиксельных буферов без аллокаций в горячем цикле: PixelBufferPool.kt
+
+Инвариант: Пул фиксированной емкости (8 буферов) без аллокаций памяти при
+частоте 60 FPS.
+
+package com.example.autotap.infrastructure.vision
+
+import java.util.concurrent.ConcurrentLinkedQueue
+
+object PixelBufferPool {
+    private const val MAX_POOL_CAPACITY = 8
+    private val pool = ConcurrentLinkedQueue<IntArray>()
+
+    fun obtain(requiredCapacity: Int): IntArray {
+        var buffer = pool.poll()
+        while (buffer != null && buffer.size < requiredCapacity) {
+            // Отбрасываем буферы недостаточного размера
+            buffer = pool.poll()
+        }
+        return buffer ?: IntArray(requiredCapacity)
+    }
+
+    fun release(buffer: IntArray?) {
+        if (buffer == null) return
+        if (pool.size < MAX_POOL_CAPACITY) {
+            pool.offer(buffer)
+        }
+    }
+
+    fun clear() {
+        pool.clear()
+    }
+}
+
+10. Быстрый целочисленный Собель и косинусная нормализация: FastSobelOperator.kt
+
+Инвариант: Расчет яркости (Luma) строго в Int (ushr 8), расчет градиентов и их
+косинусного сходства (dot product) строго во Float/Double.
+
+package com.example.autotap.infrastructure.vision
+
+import kotlin.math.abs
+import kotlin.math.sqrt
+
+object FastSobelOperator {
+
+    /**
+     * Вычисление Luma-яркости в целых числах (ushr 8) [G-11.2]
+     */
+    fun rgbToLumaIntArray(pixels: IntArray, width: Int, height: Int, outLuma: IntArray) {
+        val total = width * height
+        for (i in 0 until total) {
+            val c = pixels[i]
+            val r = (c ushr 16) and 0xFF
+            val g = (c ushr 8) and 0xFF
+            val b = c and 0xFF
+            outLuma[i] = (r * 77 + g * 150 + b * 29) ushr 8
+        }
+    }
+
+    /**
+     * Свертка матрицы Собеля 3x3 по плоскому целочисленному Luma-массиву
+     */
+    fun computeGradients(
+        luma: IntArray,
+        w: Int,
+        h: Int,
+        outGx: FloatArray,
+        outGy: FloatArray
+    ) {
+        for (y in 1 until h - 1) {
+            val rowOffset = y * w
+            val rowAbove = (y - 1) * w
+            val rowBelow = (y + 1) * w
+
+            for (x in 1 until w - 1) {
+                val idx = rowOffset + x
+
+                // Ядро Собеля по оси X
+                val gx = (luma[rowAbove + x + 1] + 2 * luma[rowOffset + x + 1] + luma[rowBelow + x + 1]) -
+                         (luma[rowAbove + x - 1] + 2 * luma[rowOffset + x - 1] + luma[rowBelow + x - 1])
+
+                // Ядро Собеля по оси Y
+                val gy = (luma[rowBelow + x - 1] + 2 * luma[rowBelow + x] + luma[rowBelow + x + 1]) -
+                         (luma[rowAbove + x - 1] + 2 * luma[rowAbove + x] + luma[rowAbove + x + 1])
+
+                outGx[idx] = gx.toFloat()
+                outGy[idx] = gy.toFloat()
+            }
+        }
+    }
+
+    /**
+     * Нормализованное косинусное сходство векторов (Dot Product) во Float/Double
+     */
+    fun evaluateCosineSimilarity(gx1: Float, gy1: Float, gx2: Float, gy2: Float): Float {
+        val dot = gx1 * gx2 + gy1 * gy2
+        val mag1 = sqrt(gx1 * gx1 + gy1 * gy1)
+        val mag2 = sqrt(gx2 * gx2 + gy2 * gy2)
+
+        if (mag1 < 4f || mag2 < 4f) return 0f
+        return (abs(dot) / (mag1 * mag2)).coerceIn(0f, 1f)
+    }
+}

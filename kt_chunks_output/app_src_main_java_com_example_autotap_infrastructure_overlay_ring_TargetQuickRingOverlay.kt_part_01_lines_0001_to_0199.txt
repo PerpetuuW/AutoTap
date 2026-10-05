@@ -1,0 +1,209 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\ring\TargetQuickRingOverlay.kt
+ PART: 1/1 | LINES: 1..199
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.ring
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Canvas
+   6 | [D:0] | import android.graphics.RectF
+   7 | [D:0] | import android.graphics.drawable.GradientDrawable
+   8 | [D:0] | import android.os.Handler
+   9 | [D:0] | import android.os.Looper
+  10 | [D:0] | import android.view.Gravity
+  11 | [D:0] | import android.view.MotionEvent
+  12 | [D:0] | import android.view.View
+  13 | [D:0] | import android.view.ViewOutlineProvider
+  14 | [D:0] | import android.view.WindowManager
+  15 | [D:0] | import android.widget.FrameLayout
+  16 | [D:0] | import androidx.core.graphics.toColorInt
+  17 | [D:0] | import com.example.autotap.domain.model.MacroAction
+  18 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  19 | [D:0] | import com.example.autotap.infrastructure.overlay.ui.VectorIconDrawer
+  20 | [D:0] | import kotlin.math.cos
+  21 | [D:0] | import kotlin.math.hypot
+  22 | [D:0] | import kotlin.math.sin
+  23 | [D:0] | 
+  24 | [D:0] | @SuppressLint("SetTextI18n", "ClickableViewAccessibility")
+  25 | [D:0] | class TargetQuickRingOverlay(
+  26 | [D:0] |     private val context: Context,
+  27 | [D:0] |     private val overlayWindowManager: OverlayWindowManager
+  28 | [D:0] | ) {
+  29 | [D:1] | 
+  30 | [D:1] |     private var activeContainerView: View? = null
+  31 | [D:1] |     var activeActionId: Int? = null
+  32 | [D:1] |         private set
+  33 | [D:1] | 
+  34 | [D:1] |     private val mainHandler = Handler(Looper.getMainLooper())
+  35 | [D:1] |     private var autoDismissRunnable: Runnable? = null
+  36 | [D:1] | 
+  37 | [D:1] |     private val dm = context.resources.displayMetrics
+  38 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  39 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  40 | [D:1] | 
+  41 | [D:1] |     fun isShowingFor(actionId: Int): Boolean {
+  42 | [D:2] |         return activeContainerView != null && activeActionId == actionId
+  43 | [D:1] |     }
+  44 | [D:1] | 
+  45 | [D:1] |     fun show(
+  46 | [D:1] |         action: MacroAction,
+  47 | [D:1] |         centerX: Float,
+  48 | [D:1] |         centerY: Float,
+  49 | [D:1] |         onEdit: (MacroAction) -> Unit,
+  50 | [D:1] |         onAddTemplate: (MacroAction) -> Unit,
+  51 | [D:1] |         onCalibrate: (MacroAction) -> Unit,
+  52 | [D:1] |         onClone: (MacroAction) -> Unit,
+  53 | [D:1] |         onDelete: (MacroAction) -> Unit
+  54 | [D:1] |     ) {
+  55 | [D:2] |         dismiss()
+  56 | [D:2] | 
+  57 | [D:2] |         activeActionId = action.id
+  58 | [D:2] |         val orbitRadius = dpF(64f)
+  59 | [D:2] |         val btnSize = dp(38)
+  60 | [D:2] |         val containerSize = ((orbitRadius + btnSize) * 2).toInt()
+  61 | [D:2] |         val screenW = dm.widthPixels.toFloat()
+  62 | [D:2] |         val screenH = dm.heightPixels.toFloat()
+  63 | [D:2] | 
+  64 | [D:2] |         val root = FrameLayout(context).apply {
+  65 | [D:3] |             clipChildren = false
+  66 | [D:3] |             clipToPadding = false
+  67 | [D:2] |         }
+  68 | [D:2] |         activeContainerView = root
+  69 | [D:2] | 
+  70 | [D:2] |         val buttonsConfig = listOf(
+  71 | [D:2] |             Triple(VectorIconDrawer.IconType.SETTINGS, Pair("#1F6FEB", "#00F5D4")) { dismiss(); onEdit(action) },
+  72 | [D:2] |             Triple(VectorIconDrawer.IconType.CAPTURE, Pair("#10B981", "#FFFFFF")) { dismiss(); onAddTemplate(action) },
+  73 | [D:2] |             Triple(VectorIconDrawer.IconType.CALIBRATE, Pair("#21262D", "#38BDF8")) { dismiss(); onCalibrate(action) },
+  74 | [D:2] |             Triple(VectorIconDrawer.IconType.PLUS, Pair("#21262D", "#58A6FF")) { dismiss(); onClone(action) },
+  75 | [D:2] |             Triple(VectorIconDrawer.IconType.DELETE, Pair("#2A0E0C", "#F04438")) { dismiss(); onDelete(action) }
+  76 | [D:2] |         )
+  77 | [D:2] | 
+  78 | [D:2] |         val isNearLeft = centerX < dpF(75f)
+  79 | [D:2] |         val isNearRight = centerX > screenW - dpF(75f)
+  80 | [D:2] |         val isNearTop = centerY < dpF(100f)
+  81 | [D:2] |         val isNearBottom = centerY > screenH - dpF(100f)
+  82 | [D:2] | 
+  83 | [D:2] |         val baseAnglesDeg = when {
+  84 | [D:3] |             isNearTop && isNearRight -> listOf(105.0, 140.0, 175.0, 210.0, 245.0)
+  85 | [D:3] |             isNearTop && isNearLeft -> listOf(15.0, 50.0, 85.0, 120.0, 155.0)
+  86 | [D:3] |             isNearBottom && isNearRight -> listOf(195.0, 230.0, 265.0, 300.0, 335.0)
+  87 | [D:3] |             isNearBottom && isNearLeft -> listOf(285.0, 320.0, 355.0, 30.0, 65.0)
+  88 | [D:3] |             isNearTop -> listOf(30.0, 65.0, 90.0, 115.0, 150.0)
+  89 | [D:3] |             isNearBottom -> listOf(210.0, 245.0, 270.0, 295.0, 330.0)
+  90 | [D:3] |             isNearRight -> listOf(120.0, 150.0, 180.0, 210.0, 240.0)
+  91 | [D:3] |             isNearLeft -> listOf(-60.0, -30.0, 0.0, 30.0, 60.0)
+  92 | [D:3] |             else -> listOf(-90.0, -18.0, 54.0, 126.0, 198.0)
+  93 | [D:2] |         }
+  94 | [D:2] | 
+  95 | [D:2] |         for (i in buttonsConfig.indices) {
+  96 | [D:3] |             val (iconType, colors, onClick) = buttonsConfig[i]
+  97 | [D:3] |             val angleRad = Math.toRadians(baseAnglesDeg[i])
+  98 | [D:3] | 
+  99 | [D:3] |             val finalOffsetX = orbitRadius * cos(angleRad).toFloat()
+ 100 | [D:3] |             val finalOffsetY = orbitRadius * sin(angleRad).toFloat()
+ 101 | [D:3] | 
+ 102 | [D:3] |             val btn = createRadialButton(iconType, colors.first, colors.second) {
+ 103 | [D:4] |                 onClick()
+ 104 | [D:3] |             }
+ 105 | [D:3] | 
+ 106 | [D:3] |             val lp = FrameLayout.LayoutParams(btnSize, btnSize).apply {
+ 107 | [D:4] |                 gravity = Gravity.CENTER
+ 108 | [D:3] |             }
+ 109 | [D:3] |             btn.translationX = 0f
+ 110 | [D:3] |             btn.translationY = 0f
+ 111 | [D:3] |             root.addView(btn, lp)
+ 112 | [D:3] | 
+ 113 | [D:3] |             btn.alpha = 0f
+ 114 | [D:3] |             btn.scaleX = 0.3f
+ 115 | [D:3] |             btn.scaleY = 0.3f
+ 116 | [D:3] |             btn.animate()
+ 117 | [D:3] |                 .translationX(finalOffsetX)
+ 118 | [D:3] |                 .translationY(finalOffsetY)
+ 119 | [D:3] |                 .alpha(1.0f)
+ 120 | [D:3] |                 .scaleX(1.0f)
+ 121 | [D:3] |                 .scaleY(1.0f)
+ 122 | [D:3] |                 .setDuration(220)
+ 123 | [D:3] |                 .setInterpolator(android.view.animation.OvershootInterpolator(1.3f))
+ 124 | [D:3] |                 .start()
+ 125 | [D:2] |         }
+ 126 | [D:2] | 
+ 127 | [D:2] |         root.setOnTouchListener { _, event ->
+ 128 | [D:3] |             if (event.action == MotionEvent.ACTION_DOWN) {
+ 129 | [D:4] |                 val centerOffset = containerSize / 2f
+ 130 | [D:4] |                 val distFromCenter = hypot((event.x - centerOffset).toDouble(), (event.y - centerOffset).toDouble()).toFloat()
+ 131 | [D:4] |                 // Расширенный допуск: закрытие происходит только при явном клике мимо всех кнопок
+ 132 | [D:4] |                 if (distFromCenter < dpF(16f) || distFromCenter > orbitRadius + dpF(38f)) {
+ 133 | [D:5] |                     dismiss()
+ 134 | [D:5] |                     return@setOnTouchListener true
+ 135 | [D:4] |                 }
+ 136 | [D:3] |             }
+ 137 | [D:3] |             false
+ 138 | [D:2] |         }
+ 139 | [D:2] | 
+ 140 | [D:2] |         val winX = (centerX - containerSize / 2f).coerceIn(dpF(4f), screenW - containerSize - dpF(4f)).toInt()
+ 141 | [D:2] |         val winY = (centerY - containerSize / 2f).coerceIn(dpF(25f), screenH - containerSize - dpF(25f)).toInt()
+ 142 | [D:2] | 
+ 143 | [D:2] |         val params = overlayWindowManager.createLayoutParams(
+ 144 | [D:2] |             width = containerSize,
+ 145 | [D:2] |             height = containerSize,
+ 146 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+ 147 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+ 148 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+ 149 | [D:2] |             gravity = Gravity.TOP or Gravity.START
+ 150 | [D:2] |         ).apply {
+ 151 | [D:3] |             x = winX
+ 152 | [D:3] |             y = winY
+ 153 | [D:2] |         }
+ 154 | [D:2] | 
+ 155 | [D:2] |         overlayWindowManager.addViewSafe(root, params)
+ 156 | [D:2] | 
+ 157 | [D:2] |         val dismissTask = Runnable {
+ 158 | [D:3] |             if (activeContainerView == root) {
+ 159 | [D:4] |                 dismiss()
+ 160 | [D:3] |             }
+ 161 | [D:2] |         }
+ 162 | [D:2] |         autoDismissRunnable = dismissTask
+ 163 | [D:2] |         mainHandler.postDelayed(dismissTask, 5000L)
+ 164 | [D:1] |     }
+ 165 | [D:1] | 
+ 166 | [D:1] |     fun dismiss() {
+ 167 | [D:2] |         autoDismissRunnable?.let {
+ 168 | [D:3] |             mainHandler.removeCallbacks(it)
+ 169 | [D:3] |             autoDismissRunnable = null
+ 170 | [D:2] |         }
+ 171 | [D:2] |         activeActionId = null
+ 172 | [D:2] |         activeContainerView?.let {
+ 173 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 174 | [D:3] |             activeContainerView = null
+ 175 | [D:2] |         }
+ 176 | [D:1] |     }
+ 177 | [D:1] | 
+ 178 | [D:1] |     private fun createRadialButton(type: VectorIconDrawer.IconType, bgHex: String, iconHex: String, onClick: () -> Unit): View {
+ 179 | [D:2] |         return object : View(context) {
+ 180 | [D:3] |             private val bounds = RectF()
+ 181 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 182 | [D:4] |                 super.onDraw(canvas)
+ 183 | [D:4] |                 bounds.set(dpF(8f), dpF(8f), width - dpF(8f), height - dpF(8f))
+ 184 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, type, bounds, iconHex.toColorInt(), dpF(2f))
+ 185 | [D:3] |             }
+ 186 | [D:2] |         }.apply {
+ 187 | [D:3] |             outlineProvider = ViewOutlineProvider.BACKGROUND
+ 188 | [D:3] |             background = GradientDrawable(
+ 189 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 190 | [D:3] |                 intArrayOf(bgHex.toColorInt(), "#161B22".toColorInt())
+ 191 | [D:3] |             ).apply {
+ 192 | [D:4] |                 shape = GradientDrawable.OVAL
+ 193 | [D:4] |                 setStroke(dp(1), iconHex.toColorInt())
+ 194 | [D:3] |             }
+ 195 | [D:3] |             elevation = dpF(8f)
+ 196 | [D:3] |             setOnClickListener { onClick() }
+ 197 | [D:2] |         }
+ 198 | [D:1] |     }
+ 199 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_ring_TargetQuickRingOverlay.kt_part_01_lines_0001_to_0199.txt
+================================================================================

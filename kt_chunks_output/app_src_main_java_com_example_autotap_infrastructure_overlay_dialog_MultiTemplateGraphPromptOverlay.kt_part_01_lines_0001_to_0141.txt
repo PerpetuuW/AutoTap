@@ -1,0 +1,151 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\dialog\MultiTemplateGraphPromptOverlay.kt
+ PART: 1/1 | LINES: 1..141
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.dialog
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Color
+   6 | [D:0] | import android.graphics.Typeface
+   7 | [D:0] | import android.graphics.drawable.GradientDrawable
+   8 | [D:0] | import android.view.Gravity
+   9 | [D:0] | import android.view.View
+  10 | [D:0] | import android.view.WindowManager
+  11 | [D:0] | import android.widget.Button
+  12 | [D:0] | import android.widget.LinearLayout
+  13 | [D:0] | import android.widget.TextView
+  14 | [D:0] | import androidx.core.graphics.toColorInt
+  15 | [D:0] | import com.example.autotap.domain.model.MacroAction
+  16 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  17 | [D:0] | import java.io.File
+  18 | [D:0] | 
+  19 | [D:0] | @SuppressLint("SetTextI18n")
+  20 | [D:0] | class MultiTemplateGraphPromptOverlay(
+  21 | [D:0] |     private val context: Context,
+  22 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  23 | [D:0] |     private val action: MacroAction,
+  24 | [D:0] |     private val templatePaths: List<String>,
+  25 | [D:0] |     private val onGenerateGraphConfirmed: (MacroAction, List<String>) -> Unit,
+  26 | [D:0] |     private val onKeepLinear: (MacroAction) -> Unit
+  27 | [D:0] | ) {
+  28 | [D:1] | 
+  29 | [D:1] |     private var dialogView: View? = null
+  30 | [D:1] |     private val dm = context.resources.displayMetrics
+  31 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  32 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  33 | [D:1] | 
+  34 | [D:1] |     fun show() {
+  35 | [D:2] |         if (dialogView != null) return
+  36 | [D:2] | 
+  37 | [D:2] |         val cardW = dp(320).coerceAtMost((dm.widthPixels * 0.94f).toInt())
+  38 | [D:2] |         val rootCard = LinearLayout(context).apply {
+  39 | [D:3] |             orientation = LinearLayout.VERTICAL
+  40 | [D:3] |             background = GradientDrawable(
+  41 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+  42 | [D:3] |                 intArrayOf("#F8161B22".toColorInt(), "#F80D1117".toColorInt())
+  43 | [D:3] |             ).apply {
+  44 | [D:4] |                 cornerRadius = dpF(16f)
+  45 | [D:4] |                 setStroke(dp(1), "#00F5D4".toColorInt())
+  46 | [D:3] |             }
+  47 | [D:3] |             val p = dp(14)
+  48 | [D:3] |             setPadding(p, p, p, p)
+  49 | [D:3] |             elevation = dpF(24f)
+  50 | [D:2] |         }
+  51 | [D:2] |         dialogView = rootCard
+  52 | [D:2] | 
+  53 | [D:2] |         val tvTitle = TextView(context).apply {
+  54 | [D:3] |             text = "СГЕНЕРИРОВАТЬ ГРАФ-СХЕМУ?"
+  55 | [D:3] |             textSize = 11f
+  56 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+  57 | [D:3] |             includeFontPadding = false
+  58 | [D:3] |             setTextColor("#00F5D4".toColorInt())
+  59 | [D:3] |             setPadding(0, 0, 0, dp(4))
+  60 | [D:2] |         }
+  61 | [D:2] |         rootCard.addView(tvTitle)
+  62 | [D:2] | 
+  63 | [D:2] |         val templateNames = templatePaths.map { File(it).nameWithoutExtension.removePrefix("mask_") }.take(4)
+  64 | [D:2] |         val namesSummary = templateNames.joinToString(", ") + if (templatePaths.size > 4) " (+${templatePaths.size - 4})" else ""
+  65 | [D:2] | 
+  66 | [D:2] |         val tvDesc = TextView(context).apply {
+  67 | [D:3] |             text = "Для шага #${action.id} привязано ${templatePaths.size} шаблона:\n[$namesSummary]\n\n" +
+  68 | [D:3] |                     "Автоматически создать граф с независимыми фазами и переходами для каждого шаблона с возможностью визуального редактирования связей?"
+  69 | [D:3] |             textSize = 9.5f
+  70 | [D:3] |             includeFontPadding = false
+  71 | [D:3] |             setTextColor(Color.WHITE)
+  72 | [D:3] |             setLineSpacing(dpF(2f), 1.1f)
+  73 | [D:3] |             setPadding(0, 0, 0, dp(12))
+  74 | [D:2] |         }
+  75 | [D:2] |         rootCard.addView(tvDesc)
+  76 | [D:2] | 
+  77 | [D:2] |         val buttonsRow = LinearLayout(context).apply {
+  78 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+  79 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+  80 | [D:2] |         }
+  81 | [D:2] | 
+  82 | [D:2] |         val btnGenerate = Button(context).apply {
+  83 | [D:3] |             text = "СОЗДАТЬ ГРАФ И РЕДАКТИРОВАТЬ"
+  84 | [D:3] |             textSize = 8.5f
+  85 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+  86 | [D:3] |             includeFontPadding = false
+  87 | [D:3] |             setTextColor(Color.WHITE)
+  88 | [D:3] |             background = GradientDrawable().apply {
+  89 | [D:4] |                 setColor("#10B981".toColorInt())
+  90 | [D:4] |                 cornerRadius = dpF(6f)
+  91 | [D:3] |             }
+  92 | [D:3] |             minHeight = 0
+  93 | [D:3] |             minimumHeight = 0
+  94 | [D:3] |             setPadding(dp(6), dp(8), dp(6), dp(8))
+  95 | [D:3] |             setOnClickListener {
+  96 | [D:4] |                 dismiss()
+  97 | [D:4] |                 onGenerateGraphConfirmed(action, templatePaths)
+  98 | [D:3] |             }
+  99 | [D:2] |         }
+ 100 | [D:2] |         buttonsRow.addView(btnGenerate, LinearLayout.LayoutParams(0, dp(38), 1.6f).apply { marginEnd = dp(4) })
+ 101 | [D:2] | 
+ 102 | [D:2] |         val btnKeep = Button(context).apply {
+ 103 | [D:3] |             text = "ОСТАВИТЬ ШАГОМ"
+ 104 | [D:3] |             textSize = 8f
+ 105 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 106 | [D:3] |             includeFontPadding = false
+ 107 | [D:3] |             setTextColor(Color.WHITE)
+ 108 | [D:3] |             background = GradientDrawable().apply {
+ 109 | [D:4] |                 setColor("#21262D".toColorInt())
+ 110 | [D:4] |                 cornerRadius = dpF(6f)
+ 111 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 112 | [D:3] |             }
+ 113 | [D:3] |             minHeight = 0
+ 114 | [D:3] |             minimumHeight = 0
+ 115 | [D:3] |             setPadding(dp(4), dp(8), dp(4), dp(8))
+ 116 | [D:3] |             setOnClickListener {
+ 117 | [D:4] |                 dismiss()
+ 118 | [D:4] |                 onKeepLinear(action)
+ 119 | [D:3] |             }
+ 120 | [D:2] |         }
+ 121 | [D:2] |         buttonsRow.addView(btnKeep, LinearLayout.LayoutParams(0, dp(38), 1f))
+ 122 | [D:2] |         rootCard.addView(buttonsRow)
+ 123 | [D:2] | 
+ 124 | [D:2] |         val params = overlayWindowManager.createLayoutParams(
+ 125 | [D:2] |             width = cardW,
+ 126 | [D:2] |             height = WindowManager.LayoutParams.WRAP_CONTENT,
+ 127 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+ 128 | [D:2] |             gravity = Gravity.CENTER
+ 129 | [D:2] |         ).apply {
+ 130 | [D:3] |             dimAmount = 0.55f
+ 131 | [D:2] |         }
+ 132 | [D:2] |         overlayWindowManager.addViewSafe(rootCard, params)
+ 133 | [D:1] |     }
+ 134 | [D:1] | 
+ 135 | [D:1] |     fun dismiss() {
+ 136 | [D:2] |         dialogView?.let {
+ 137 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 138 | [D:3] |             dialogView = null
+ 139 | [D:2] |         }
+ 140 | [D:1] |     }
+ 141 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_dialog_MultiTemplateGraphPromptOverlay.kt_part_01_lines_0001_to_0141.txt
+================================================================================

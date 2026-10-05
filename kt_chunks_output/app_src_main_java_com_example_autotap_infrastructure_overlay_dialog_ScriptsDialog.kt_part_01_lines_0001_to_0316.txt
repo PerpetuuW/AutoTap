@@ -1,0 +1,326 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\dialog\ScriptsDialog.kt
+ PART: 1/1 | LINES: 1..316
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.dialog
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Canvas
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.RectF
+   8 | [D:0] | import android.graphics.Typeface
+   9 | [D:0] | import android.graphics.drawable.GradientDrawable
+  10 | [D:0] | import android.view.Gravity
+  11 | [D:0] | import android.view.View
+  12 | [D:0] | import android.view.WindowManager
+  13 | [D:0] | import android.widget.Button
+  14 | [D:0] | import android.widget.EditText
+  15 | [D:0] | import android.widget.LinearLayout
+  16 | [D:0] | import android.widget.ScrollView
+  17 | [D:0] | import android.widget.TextView
+  18 | [D:0] | import android.widget.Toast
+  19 | [D:0] | import androidx.appcompat.app.AlertDialog
+  20 | [D:0] | import androidx.core.graphics.toColorInt
+  21 | [D:0] | import com.example.autotap.domain.repository.IScenarioRepository
+  22 | [D:0] | import com.example.autotap.infrastructure.accessibility.AutoTapAccessibilityService
+  23 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  24 | [D:0] | import com.example.autotap.infrastructure.overlay.tutorial.InteractiveTutorialOverlay
+  25 | [D:0] | import com.example.autotap.infrastructure.overlay.ui.VectorIconDrawer
+  26 | [D:0] | import com.example.autotap.infrastructure.storage.AppProfileDetector
+  27 | [D:0] | 
+  28 | [D:0] | @SuppressLint("SetTextI18n")
+  29 | [D:0] | class ScriptsDialog(
+  30 | [D:0] |     private val context: Context,
+  31 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  32 | [D:0] |     private val scenarioRepository: IScenarioRepository,
+  33 | [D:0] |     private val onSaveCurrentRequested: (String) -> Unit,
+  34 | [D:0] |     private val onLoadRequested: (String) -> Unit,
+  35 | [D:0] |     private val onExportRequested: (String) -> Unit,
+  36 | [D:0] |     private val onOpenGraphRequested: ((String) -> Unit)? = null
+  37 | [D:0] | ) {
+  38 | [D:1] | 
+  39 | [D:1] |     private var dialogView: View? = null
+  40 | [D:1] |     private var listLayoutRef: LinearLayout? = null
+  41 | [D:1] |     private val profileDetector by lazy { AppProfileDetector(context) }
+  42 | [D:1] |     private val dm = context.resources.displayMetrics
+  43 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  44 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  45 | [D:1] | 
+  46 | [D:1] |     fun show() {
+  47 | [D:2] |         if (dialogView != null) return
+  48 | [D:2] | 
+  49 | [D:2] |         val screenW = dm.widthPixels
+  50 | [D:2] |         val cardW = dp(330).coerceAtMost((screenW * 0.95f).toInt())
+  51 | [D:2] |         val rootCard = LinearLayout(context).apply {
+  52 | [D:3] |             orientation = LinearLayout.VERTICAL
+  53 | [D:3] |             background = GradientDrawable(
+  54 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+  55 | [D:3] |                 intArrayOf("#F8161B22".toColorInt(), "#F80D1117".toColorInt())
+  56 | [D:3] |             ).apply {
+  57 | [D:4] |                 cornerRadius = dpF(16f)
+  58 | [D:4] |                 setStroke(dp(1), "#58A6FF".toColorInt())
+  59 | [D:3] |             }
+  60 | [D:3] |             val p = dp(10)
+  61 | [D:3] |             setPadding(p, p, p, p)
+  62 | [D:3] |             elevation = dpF(16f)
+  63 | [D:2] |         }
+  64 | [D:2] |         dialogView = rootCard
+  65 | [D:2] | 
+  66 | [D:2] |         val header = LinearLayout(context).apply {
+  67 | [D:3] |             tag = "HEADER"
+  68 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+  69 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+  70 | [D:3] |             setPadding(0, 0, 0, dp(6))
+  71 | [D:2] |         }
+  72 | [D:2] | 
+  73 | [D:2] |         val tvTitle = TextView(context).apply {
+  74 | [D:3] |             text = "МЕНЕДЖЕР СЦЕНАРИЕВ"
+  75 | [D:3] |             textSize = 11f
+  76 | [D:3] |             typeface = Typeface.MONOSPACE
+  77 | [D:3] |             includeFontPadding = false
+  78 | [D:3] |             setTextColor("#58A6FF".toColorInt())
+  79 | [D:2] |         }
+  80 | [D:2] |         header.addView(tvTitle, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+  81 | [D:2] | 
+  82 | [D:2] |         val btnHelp = createIconButton(VectorIconDrawer.IconType.HELP, "#21262D", "#00F5D4", dp(28)) {
+  83 | [D:3] |             InteractiveTutorialOverlay(
+  84 | [D:3] |                 context = context,
+  85 | [D:3] |                 overlayWindowManager = overlayWindowManager,
+  86 | [D:3] |                 mode = InteractiveTutorialOverlay.TutorialMode.SCRIPTS,
+  87 | [D:3] |                 hostViewProvider = { dialogView }
+  88 | [D:3] |             ).show()
+  89 | [D:2] |         }
+  90 | [D:2] |         header.addView(btnHelp, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(4) })
+  91 | [D:2] | 
+  92 | [D:2] |         val btnCloseHeader = createIconButton(VectorIconDrawer.IconType.CLOSE, "#21262D", "#F04438", dp(28)) {
+  93 | [D:3] |             dismiss()
+  94 | [D:2] |         }
+  95 | [D:2] |         header.addView(btnCloseHeader)
+  96 | [D:2] |         rootCard.addView(header)
+  97 | [D:2] | 
+  98 | [D:2] |         val saveRow = LinearLayout(context).apply {
+  99 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 100 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 101 | [D:2] |         }
+ 102 | [D:2] | 
+ 103 | [D:2] |         val etName = EditText(context).apply {
+ 104 | [D:3] |             tag = "NAME"
+ 105 | [D:3] |             hint = "Имя сценария..."
+ 106 | [D:3] |             setHintTextColor("#6E7681".toColorInt())
+ 107 | [D:3] |             textSize = 10.5f
+ 108 | [D:3] |             setTextColor(Color.WHITE)
+ 109 | [D:3] |             includeFontPadding = false
+ 110 | [D:3] |             background = GradientDrawable().apply {
+ 111 | [D:4] |                 setColor("#161B22".toColorInt())
+ 112 | [D:4] |                 cornerRadius = dpF(6f)
+ 113 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 114 | [D:3] |             }
+ 115 | [D:3] |             val p = dp(6)
+ 116 | [D:3] |             setPadding(p, p, p, p)
+ 117 | [D:3] |             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+ 118 | [D:4] |                 minHeight = dp(36)
+ 119 | [D:4] |                 marginEnd = dp(4)
+ 120 | [D:3] |             }
+ 121 | [D:2] |         }
+ 122 | [D:2] |         saveRow.addView(etName)
+ 123 | [D:2] | 
+ 124 | [D:2] |         val btnSave = createIconButton(VectorIconDrawer.IconType.CHECK, "#1F6FEB", "#FFFFFF", dp(36), "SAVE") {
+ 125 | [D:3] |             val name = etName.text.toString().trim()
+ 126 | [D:3] |             if (name.isNotEmpty()) {
+ 127 | [D:4] |                 onSaveCurrentRequested(name)
+ 128 | [D:4] |                 dismiss()
+ 129 | [D:3] |             } else {
+ 130 | [D:4] |                 Toast.makeText(context, "Введите имя сценария", Toast.LENGTH_SHORT).show()
+ 131 | [D:3] |             }
+ 132 | [D:2] |         }
+ 133 | [D:2] |         saveRow.addView(btnSave, LinearLayout.LayoutParams(dp(36), dp(36)))
+ 134 | [D:2] |         rootCard.addView(saveRow)
+ 135 | [D:2] | 
+ 136 | [D:2] |         val scrollView = ScrollView(context).apply {
+ 137 | [D:3] |             tag = "LIST"
+ 138 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(210)).apply {
+ 139 | [D:4] |                 val t = dp(8)
+ 140 | [D:4] |                 setMargins(0, t, 0, t)
+ 141 | [D:3] |             }
+ 142 | [D:2] |         }
+ 143 | [D:2] | 
+ 144 | [D:2] |         val listLayout = LinearLayout(context).apply {
+ 145 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 146 | [D:2] |         }
+ 147 | [D:2] |         listLayoutRef = listLayout
+ 148 | [D:2] | 
+ 149 | [D:2] |         populateScenarioList(listLayout)
+ 150 | [D:2] | 
+ 151 | [D:2] |         scrollView.addView(listLayout)
+ 152 | [D:2] |         rootCard.addView(scrollView)
+ 153 | [D:2] | 
+ 154 | [D:2] |         val params = overlayWindowManager.createDialogLayoutParams(
+ 155 | [D:2] |             width = cardW,
+ 156 | [D:2] |             height = WindowManager.LayoutParams.WRAP_CONTENT,
+ 157 | [D:2] |             gravity = Gravity.CENTER
+ 158 | [D:2] |         )
+ 159 | [D:2] |         overlayWindowManager.addViewSafe(rootCard, params)
+ 160 | [D:1] |     }
+ 161 | [D:1] | 
+ 162 | [D:1] |     private fun populateScenarioList(listLayout: LinearLayout) {
+ 163 | [D:2] |         listLayout.removeAllViews()
+ 164 | [D:2] |         val scenarios = scenarioRepository.listScenarios()
+ 165 | [D:2] |         if (scenarios.isEmpty()) {
+ 166 | [D:3] |             val tvEmpty = TextView(context).apply {
+ 167 | [D:4] |                 text = "Сохраненных сценариев нет"
+ 168 | [D:4] |                 setTextColor("#8B949E".toColorInt())
+ 169 | [D:4] |                 textSize = 10f
+ 170 | [D:4] |                 gravity = Gravity.CENTER
+ 171 | [D:4] |                 setPadding(0, dp(20), 0, dp(20))
+ 172 | [D:3] |             }
+ 173 | [D:3] |             listLayout.addView(tvEmpty)
+ 174 | [D:2] |         } else {
+ 175 | [D:3] |             for (scName in scenarios) {
+ 176 | [D:4] |                 val itemRow = LinearLayout(context).apply {
+ 177 | [D:5] |                     orientation = LinearLayout.HORIZONTAL
+ 178 | [D:5] |                     gravity = Gravity.CENTER_VERTICAL
+ 179 | [D:5] |                     background = GradientDrawable().apply {
+ 180 | [D:6] |                         setColor("#161B22".toColorInt())
+ 181 | [D:6] |                         cornerRadius = dpF(6f)
+ 182 | [D:5] |                     }
+ 183 | [D:5] |                     val p = dp(6)
+ 184 | [D:5] |                     setPadding(p, p, p, p)
+ 185 | [D:5] |                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+ 186 | [D:6] |                         val m = dp(2)
+ 187 | [D:6] |                         setMargins(0, m, 0, m)
+ 188 | [D:5] |                     }
+ 189 | [D:4] |                 }
+ 190 | [D:4] | 
+ 191 | [D:4] |                 val tvScName = TextView(context).apply {
+ 192 | [D:5] |                     text = scName
+ 193 | [D:5] |                     textSize = 10f
+ 194 | [D:5] |                     setTextColor(Color.WHITE)
+ 195 | [D:5] |                     setOnClickListener {
+ 196 | [D:6] |                         dismiss()
+ 197 | [D:6] |                         onLoadRequested(scName)
+ 198 | [D:5] |                     }
+ 199 | [D:4] |                 }
+ 200 | [D:4] |                 itemRow.addView(tvScName, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+ 201 | [D:4] | 
+ 202 | [D:4] |                 val btnGraph = Button(context).apply {
+ 203 | [D:5] |                     text = "ГРАФ"
+ 204 | [D:5] |                     textSize = 7.5f
+ 205 | [D:5] |                     typeface = Typeface.DEFAULT_BOLD
+ 206 | [D:5] |                     includeFontPadding = false
+ 207 | [D:5] |                     setTextColor(Color.BLACK)
+ 208 | [D:5] |                     background = GradientDrawable().apply {
+ 209 | [D:6] |                         setColor("#00F5D4".toColorInt())
+ 210 | [D:6] |                         cornerRadius = dpF(4f)
+ 211 | [D:5] |                     }
+ 212 | [D:5] |                     minHeight = 0; minimumHeight = 0
+ 213 | [D:5] |                     setPadding(dp(5), 0, dp(5), 0)
+ 214 | [D:5] |                     setOnClickListener {
+ 215 | [D:6] |                         dismiss()
+ 216 | [D:6] |                         onOpenGraphRequested?.invoke(scName)
+ 217 | [D:5] |                     }
+ 218 | [D:4] |                 }
+ 219 | [D:4] |                 itemRow.addView(btnGraph, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(3) })
+ 220 | [D:4] | 
+ 221 | [D:4] |                 val btnBind = createIconButton(VectorIconDrawer.IconType.PLUS, "#21262D", "#00F5D4", dp(26)) {
+ 222 | [D:5] |                     showAppBindingDialog(scName)
+ 223 | [D:4] |                 }
+ 224 | [D:4] |                 itemRow.addView(btnBind, LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginEnd = dp(3) })
+ 225 | [D:4] | 
+ 226 | [D:4] |                 val btnExp = createIconButton(VectorIconDrawer.IconType.SHARE, "#21262D", "#58A6FF", dp(26)) {
+ 227 | [D:5] |                     onExportRequested(scName)
+ 228 | [D:4] |                 }
+ 229 | [D:4] |                 itemRow.addView(btnExp, LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginEnd = dp(3) })
+ 230 | [D:4] | 
+ 231 | [D:4] |                 val btnDel = createIconButton(VectorIconDrawer.IconType.DELETE, "#21262D", "#F04438", dp(26)) {
+ 232 | [D:5] |                     confirmAndDeleteScenario(scName)
+ 233 | [D:4] |                 }
+ 234 | [D:4] |                 itemRow.addView(btnDel, LinearLayout.LayoutParams(dp(26), dp(26)))
+ 235 | [D:4] |                 listLayout.addView(itemRow)
+ 236 | [D:3] |             }
+ 237 | [D:2] |         }
+ 238 | [D:1] |     }
+ 239 | [D:1] | 
+ 240 | [D:1] |     private fun confirmAndDeleteScenario(scName: String) {
+ 241 | [D:2] |         val dialog = AlertDialog.Builder(context)
+ 242 | [D:2] |             .setTitle("Удалить сценарий?")
+ 243 | [D:2] |             .setMessage("Вы уверены, что хотите удалить '$scName'?")
+ 244 | [D:2] |             .setPositiveButton("Удалить") { _, _ ->
+ 245 | [D:3] |                 scenarioRepository.deleteScenario(scName)
+ 246 | [D:3] |                 listLayoutRef?.let { populateScenarioList(it) }
+ 247 | [D:3] |                 Toast.makeText(context, "Сценарий удален", Toast.LENGTH_SHORT).show()
+ 248 | [D:2] |             }
+ 249 | [D:2] |             .setNegativeButton("Отмена", null)
+ 250 | [D:2] |             .create()
+ 251 | [D:2] |         dialog.window?.setType(overlayWindowManager.getOverlayType(false))
+ 252 | [D:2] |         dialog.show()
+ 253 | [D:1] |     }
+ 254 | [D:1] | 
+ 255 | [D:1] |     private fun showAppBindingDialog(scriptName: String) {
+ 256 | [D:2] |         val detectedPkg = AutoTapAccessibilityService.instance?.currentForegroundPackage?.ifEmpty { "com.example.game" } ?: "com.example.game"
+ 257 | [D:2] |         val input = EditText(context).apply {
+ 258 | [D:3] |             hint = "com.package.name"
+ 259 | [D:3] |             setText(detectedPkg)
+ 260 | [D:3] |             setTextColor(Color.WHITE)
+ 261 | [D:3] |             textSize = 10f
+ 262 | [D:3] |             background = GradientDrawable().apply {
+ 263 | [D:4] |                 setColor("#161B22".toColorInt())
+ 264 | [D:4] |                 cornerRadius = dpF(4f)
+ 265 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 266 | [D:3] |             }
+ 267 | [D:3] |             setPadding(dp(8), dp(6), dp(8), dp(6))
+ 268 | [D:2] |         }
+ 269 | [D:2] | 
+ 270 | [D:2] |         val dialog = AlertDialog.Builder(context)
+ 271 | [D:2] |             .setTitle("Привязать '$scriptName' к приложению")
+ 272 | [D:2] |             .setMessage("Сценарий запустится автоматически при открытии выбранного пакета:")
+ 273 | [D:2] |             .setView(input)
+ 274 | [D:2] |             .setPositiveButton("Привязать") { _, _ ->
+ 275 | [D:3] |                 val pkg = input.text.toString().trim()
+ 276 | [D:3] |                 if (pkg.isNotEmpty()) {
+ 277 | [D:4] |                     profileDetector.bindPackageToScript(pkg, scriptName)
+ 278 | [D:4] |                     Toast.makeText(context, "Сценарий '$scriptName' привязан к '$pkg'", Toast.LENGTH_SHORT).show()
+ 279 | [D:3] |                 }
+ 280 | [D:2] |             }
+ 281 | [D:2] |             .setNegativeButton("Отмена", null)
+ 282 | [D:2] |             .create()
+ 283 | [D:2] |         dialog.window?.setType(overlayWindowManager.getOverlayType(false))
+ 284 | [D:2] |         dialog.show()
+ 285 | [D:1] |     }
+ 286 | [D:1] | 
+ 287 | [D:1] |     fun dismiss() {
+ 288 | [D:2] |         dialogView?.let {
+ 289 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 290 | [D:3] |             dialogView = null
+ 291 | [D:3] |             listLayoutRef = null
+ 292 | [D:2] |         }
+ 293 | [D:1] |     }
+ 294 | [D:1] | 
+ 295 | [D:1] |     private fun createIconButton(type: VectorIconDrawer.IconType, bgHex: String, iconHex: String, sizePx: Int, tagStr: String = "", onClick: () -> Unit = {}): View {
+ 296 | [D:2] |         return object : View(context) {
+ 297 | [D:3] |             private val bounds = RectF()
+ 298 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 299 | [D:4] |                 super.onDraw(canvas)
+ 300 | [D:4] |                 bounds.set(dpF(6f), dpF(6f), width - dpF(6f), height - dpF(6f))
+ 301 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, type, bounds, iconHex.toColorInt(), dpF(2f))
+ 302 | [D:3] |             }
+ 303 | [D:2] |         }.apply {
+ 304 | [D:3] |             tag = tagStr
+ 305 | [D:3] |             background = GradientDrawable(
+ 306 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 307 | [D:3] |                 intArrayOf(bgHex.toColorInt(), "#161B22".toColorInt())
+ 308 | [D:3] |             ).apply {
+ 309 | [D:4] |                 cornerRadius = dpF(6f)
+ 310 | [D:4] |                 setStroke(dp(1), iconHex.toColorInt())
+ 311 | [D:3] |             }
+ 312 | [D:3] |             layoutParams = LinearLayout.LayoutParams(sizePx, sizePx)
+ 313 | [D:3] |             setOnClickListener { onClick() }
+ 314 | [D:2] |         }
+ 315 | [D:1] |     }
+ 316 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_dialog_ScriptsDialog.kt_part_01_lines_0001_to_0316.txt
+================================================================================

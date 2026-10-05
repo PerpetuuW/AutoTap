@@ -1,0 +1,77 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\visualizer\LaserScanVisualizer.kt
+ PART: 1/1 | LINES: 1..67
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.visualizer
+   2 | [D:0] | 
+   3 | [D:0] | import android.content.Context
+   4 | [D:0] | import android.graphics.Color
+   5 | [D:0] | import android.os.Handler
+   6 | [D:0] | import android.os.Looper
+   7 | [D:0] | import android.view.Gravity
+   8 | [D:0] | import android.view.View
+   9 | [D:0] | import android.view.WindowManager
+  10 | [D:0] | import android.widget.FrameLayout
+  11 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  12 | [D:0] | import java.util.concurrent.atomic.AtomicBoolean
+  13 | [D:0] | 
+  14 | [D:0] | object LaserScanVisualizer {
+  15 | [D:1] | 
+  16 | [D:1] |     private val mainHandler = Handler(Looper.getMainLooper())
+  17 | [D:1] | 
+  18 | [D:1] |     fun showSweepLaser(context: Context, overlayWindowManager: OverlayWindowManager, onFinished: () -> Unit) {
+  19 | [D:2] |         val dm = context.resources.displayMetrics
+  20 | [D:2] |         val screenH = dm.heightPixels.toFloat()
+  21 | [D:2] |         val isCompleted = AtomicBoolean(false)
+  22 | [D:2] | 
+  23 | [D:2] |         val container = FrameLayout(context)
+  24 | [D:2] |         val laserLine = View(context).apply {
+  25 | [D:3] |             background = android.graphics.drawable.GradientDrawable().apply {
+  26 | [D:4] |                 setColor(Color.parseColor("#00F5D4"))
+  27 | [D:3] |             }
+  28 | [D:3] |             elevation = 16f
+  29 | [D:2] |         }
+  30 | [D:2] |         container.addView(laserLine, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, (3 * dm.density).toInt()).apply {
+  31 | [D:3] |             gravity = Gravity.TOP or Gravity.START
+  32 | [D:2] |         })
+  33 | [D:2] | 
+  34 | [D:2] |         val params = overlayWindowManager.createLayoutParams(
+  35 | [D:2] |             width = WindowManager.LayoutParams.MATCH_PARENT,
+  36 | [D:2] |             height = WindowManager.LayoutParams.MATCH_PARENT,
+  37 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+  38 | [D:2] |                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+  39 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+  40 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+  41 | [D:2] |         )
+  42 | [D:2] | 
+  43 | [D:2] |         overlayWindowManager.addViewSafe(container, params)
+  44 | [D:2] | 
+  45 | [D:2] |         fun completeSweep() {
+  46 | [D:3] |             if (isCompleted.compareAndSet(false, true)) {
+  47 | [D:4] |                 try {
+  48 | [D:5] |                     overlayWindowManager.removeViewSafe(container)
+  49 | [D:4] |                 } catch (_: Exception) {}
+  50 | [D:4] |                 onFinished()
+  51 | [D:3] |             }
+  52 | [D:2] |         }
+  53 | [D:2] | 
+  54 | [D:2] |         mainHandler.postDelayed({
+  55 | [D:3] |             completeSweep()
+  56 | [D:2] |         }, 400L)
+  57 | [D:2] | 
+  58 | [D:2] |         laserLine.animate()
+  59 | [D:2] |             .translationY(screenH)
+  60 | [D:2] |             .setDuration(340)
+  61 | [D:2] |             .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())
+  62 | [D:2] |             .withEndAction {
+  63 | [D:3] |                 completeSweep()
+  64 | [D:2] |             }
+  65 | [D:2] |             .start()
+  66 | [D:1] |     }
+  67 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_visualizer_LaserScanVisualizer.kt_part_01_lines_0001_to_0067.txt
+================================================================================

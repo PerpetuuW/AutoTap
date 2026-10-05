@@ -1,0 +1,54 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\domain\model\ExecutionState.kt
+ PART: 1/1 | LINES: 1..44
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.domain.model
+   2 | [D:0] | 
+   3 | [D:0] | sealed interface ExecutionState {
+   4 | [D:1] |     object Idle : ExecutionState
+   5 | [D:1] | 
+   6 | [D:1] |     data class Running(
+   7 | [D:1] |         val currentStepIndex: Int,
+   8 | [D:1] |         val totalSteps: Int,
+   9 | [D:1] |         val currentRepeat: Int,
+  10 | [D:1] |         val totalRepeats: Int,
+  11 | [D:1] |         val isDebugPaused: Boolean = false,
+  12 | [D:1] |         val isSearching: Boolean = false,
+  13 | [D:1] |         val searchProgress: Float = 0f,
+  14 | [D:1] |         val searchTitle: String = "",
+  15 | [D:1] |         val stepType: ActionType = ActionType.CLICK,
+  16 | [D:1] |         val stepDescription: String = "",
+  17 | [D:1] |         val stepProgress: Float = 0f,
+  18 | [D:1] |         val searchStartTime: Long = 0L,
+  19 | [D:1] |         val searchTimeoutMs: Long = 5000L,
+  20 | [D:1] |         val isInfiniteSearch: Boolean = false,
+  21 | [D:1] |         val targetTagOrName: String = "",
+  22 | [D:1] |         val activeNodeId: String = "",
+  23 | [D:1] |         val activeNodeTitle: String = ""
+  24 | [D:1] |     ) : ExecutionState
+  25 | [D:1] | 
+  26 | [D:1] |     data class Paused(val reason: PauseReason) : ExecutionState
+  27 | [D:1] | 
+  28 | [D:1] |     data class Completed(
+  29 | [D:1] |         val totalExecutedSteps: Int,
+  30 | [D:1] |         val durationMs: Long
+  31 | [D:1] |     ) : ExecutionState
+  32 | [D:1] | 
+  33 | [D:1] |     data class Error(
+  34 | [D:1] |         val throwable: Throwable,
+  35 | [D:1] |         val message: String
+  36 | [D:1] |     ) : ExecutionState
+  37 | [D:0] | }
+  38 | [D:0] | 
+  39 | [D:0] | enum class PauseReason {
+  40 | [D:1] |     USER_MANUAL,
+  41 | [D:1] |     STEP_BY_STEP_DEBUG,
+  42 | [D:1] |     THERMAL_THROTTLING,
+  43 | [D:1] |     LOW_BATTERY
+  44 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_domain_model_ExecutionState.kt_part_01_lines_0001_to_0044.txt
+================================================================================

@@ -1,0 +1,431 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\panel\ControlPanelOverlay.kt
+ PART: 1/1 | LINES: 1..421
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.panel
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Canvas
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.Paint
+   8 | [D:0] | import android.graphics.RectF
+   9 | [D:0] | import android.graphics.drawable.GradientDrawable
+  10 | [D:0] | import android.view.Gravity
+  11 | [D:0] | import android.view.MotionEvent
+  12 | [D:0] | import android.view.View
+  13 | [D:0] | import android.view.ViewOutlineProvider
+  14 | [D:0] | import android.widget.FrameLayout
+  15 | [D:0] | import android.widget.LinearLayout
+  16 | [D:0] | import com.example.autotap.core.logger.AppLogger
+  17 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  18 | [D:0] | import com.example.autotap.infrastructure.overlay.model.PanelDisplayMode
+  19 | [D:0] | import com.example.autotap.infrastructure.overlay.tutorial.InteractiveTutorialOverlay
+  20 | [D:0] | import com.example.autotap.infrastructure.overlay.ui.VectorIconDrawer
+  21 | [D:0] | import kotlin.math.abs
+  22 | [D:0] | 
+  23 | [D:0] | @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
+  24 | [D:0] | class ControlPanelOverlay(
+  25 | [D:0] |     private val context: Context,
+  26 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  27 | [D:0] |     private val listener: ControlPanelListener
+  28 | [D:0] | ) {
+  29 | [D:1] | 
+  30 | [D:1] |     private var rootView: View? = null
+  31 | [D:1] |     private var rootLinearView: LinearLayout? = null
+  32 | [D:1] |     private var currentMode: PanelDisplayMode = PanelDisplayMode.EXPANDED
+  33 | [D:1] |     private var isPlayingState: Boolean = false
+  34 | [D:1] |     private var isNumbersHiddenState: Boolean = false
+  35 | [D:1] |     private var btnHideRef: View? = null
+  36 | [D:1] | 
+  37 | [D:1] |     private val dm = context.resources.displayMetrics
+  38 | [D:1] |     private fun dp(value: Int): Int = (value * dm.density).toInt()
+  39 | [D:1] |     private fun dpF(value: Float): Float = value * dm.density
+  40 | [D:1] | 
+  41 | [D:1] |     private var posX = dp(20)
+  42 | [D:1] |     private var posY = dp(140)
+  43 | [D:1] | 
+  44 | [D:1] |     fun updateNumbersHiddenState(isHidden: Boolean) {
+  45 | [D:2] |         isNumbersHiddenState = isHidden
+  46 | [D:2] |         btnHideRef?.invalidate()
+  47 | [D:1] |     }
+  48 | [D:1] | 
+  49 | [D:1] |     fun show() {
+  50 | [D:2] |         if (rootView != null && rootView?.parent != null) {
+  51 | [D:3] |             rootView?.visibility = View.VISIBLE
+  52 | [D:3] |             return
+  53 | [D:2] |         }
+  54 | [D:2] | 
+  55 | [D:2] |         if (rootView != null && rootView?.parent == null) {
+  56 | [D:3] |             rootView = null
+  57 | [D:2] |         }
+  58 | [D:2] | 
+  59 | [D:2] |         val container = FrameLayout(context)
+  60 | [D:2] |         rootView = container
+  61 | [D:2] | 
+  62 | [D:2] |         buildViewHierarchy(container)
+  63 | [D:2] | 
+  64 | [D:2] |         val layoutParams = overlayWindowManager.createLayoutParams().apply {
+  65 | [D:3] |             this.x = posX
+  66 | [D:3] |             this.y = posY
+  67 | [D:2] |         }
+  68 | [D:2] | 
+  69 | [D:2] |         overlayWindowManager.addViewSafe(container, layoutParams)
+  70 | [D:2] |         applyDisplayMode(currentMode)
+  71 | [D:2] |         AppLogger.log(context, "PANEL", "Плавающая панель управления открыта")
+  72 | [D:1] |     }
+  73 | [D:1] | 
+  74 | [D:1] |     fun hide() {
+  75 | [D:2] |         rootView?.let {
+  76 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+  77 | [D:3] |             rootView = null
+  78 | [D:3] |             rootLinearView = null
+  79 | [D:3] |             btnHideRef = null
+  80 | [D:2] |         }
+  81 | [D:1] |     }
+  82 | [D:1] | 
+  83 | [D:1] |     fun setPlayState(isPlaying: Boolean) {
+  84 | [D:2] |         isPlayingState = isPlaying
+  85 | [D:2] |         rootView?.findViewWithTag<View>("BTN_PLAY_VIEW")?.let { v ->
+  86 | [D:3] |             v.background = GradientDrawable(
+  87 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+  88 | [D:3] |                 intArrayOf(Color.parseColor(if (isPlaying) "#F04438" else "#10B981"), Color.parseColor("#161B22"))
+  89 | [D:3] |             ).apply {
+  90 | [D:4] |                 cornerRadius = dpF(10f)
+  91 | [D:4] |                 setStroke(dp(1), Color.parseColor(if (isPlaying) "#F04438" else "#00F5D4"))
+  92 | [D:3] |             }
+  93 | [D:3] |             v.invalidate()
+  94 | [D:2] |         }
+  95 | [D:1] |     }
+  96 | [D:1] | 
+  97 | [D:1] |     fun applyDisplayMode(mode: PanelDisplayMode) {
+  98 | [D:2] |         currentMode = mode
+  99 | [D:2] |         val mainRow = rootView?.findViewWithTag<LinearLayout>("MAIN_ROW")
+ 100 | [D:2] |         val subRow = rootView?.findViewWithTag<LinearLayout>("SUB_ROW")
+ 101 | [D:2] |         val bubble = rootView?.findViewWithTag<View>("MINI_BUBBLE")
+ 102 | [D:2] |         val toggleBtn = rootView?.findViewWithTag<View>("BTN_TOGGLE_VIEW")
+ 103 | [D:2] | 
+ 104 | [D:2] |         when (mode) {
+ 105 | [D:3] |             PanelDisplayMode.EXPANDED -> {
+ 106 | [D:4] |                 rootLinearView?.visibility = View.VISIBLE
+ 107 | [D:4] |                 mainRow?.visibility = View.VISIBLE
+ 108 | [D:4] |                 subRow?.visibility = View.VISIBLE
+ 109 | [D:4] |                 bubble?.visibility = View.GONE
+ 110 | [D:3] |             }
+ 111 | [D:3] |             PanelDisplayMode.COMPACT_SINGLE_ROW -> {
+ 112 | [D:4] |                 rootLinearView?.visibility = View.VISIBLE
+ 113 | [D:4] |                 mainRow?.visibility = View.VISIBLE
+ 114 | [D:4] |                 subRow?.visibility = View.GONE
+ 115 | [D:4] |                 bubble?.visibility = View.GONE
+ 116 | [D:3] |             }
+ 117 | [D:3] |             PanelDisplayMode.MINI_BUBBLE -> {
+ 118 | [D:4] |                 rootLinearView?.visibility = View.GONE
+ 119 | [D:4] |                 mainRow?.visibility = View.GONE
+ 120 | [D:4] |                 subRow?.visibility = View.GONE
+ 121 | [D:4] |                 bubble?.visibility = View.VISIBLE
+ 122 | [D:3] |             }
+ 123 | [D:2] |         }
+ 124 | [D:2] |         toggleBtn?.invalidate()
+ 125 | [D:2] | 
+ 126 | [D:2] |         rootView?.let { v ->
+ 127 | [D:3] |             val lp = overlayWindowManager.createLayoutParams().apply {
+ 128 | [D:4] |                 this.x = posX
+ 129 | [D:4] |                 this.y = posY
+ 130 | [D:3] |             }
+ 131 | [D:3] |             overlayWindowManager.updateViewSafe(v, lp)
+ 132 | [D:2] |         }
+ 133 | [D:1] |     }
+ 134 | [D:1] | 
+ 135 | [D:1] |     private fun buildViewHierarchy(container: FrameLayout) {
+ 136 | [D:2] |         val rootLinear = LinearLayout(context).apply {
+ 137 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 138 | [D:3] |             background = GradientDrawable(
+ 139 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 140 | [D:3] |                 intArrayOf(Color.parseColor("#F8161B22"), Color.parseColor("#F80D1117"))
+ 141 | [D:3] |             ).apply {
+ 142 | [D:4] |                 cornerRadius = dpF(18f)
+ 143 | [D:4] |                 setStroke(dp(1), Color.parseColor("#00F5D4"))
+ 144 | [D:3] |             }
+ 145 | [D:3] |             val p = dp(5)
+ 146 | [D:3] |             setPadding(p, p, p, p)
+ 147 | [D:3] |             elevation = dpF(18f)
+ 148 | [D:2] |         }
+ 149 | [D:2] |         rootLinearView = rootLinear
+ 150 | [D:2] | 
+ 151 | [D:2] |         val miniBubble = object : View(context) {
+ 152 | [D:3] |             private val bounds = RectF()
+ 153 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 154 | [D:4] |                 super.onDraw(canvas)
+ 155 | [D:4] |                 bounds.set(dpF(8f), dpF(8f), width - dpF(8f), height - dpF(8f))
+ 156 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, VectorIconDrawer.IconType.DRAG_HANDLE, bounds, Color.parseColor("#00F5D4"), dpF(2.5f))
+ 157 | [D:3] |             }
+ 158 | [D:2] |         }.apply {
+ 159 | [D:3] |             tag = "MINI_BUBBLE"
+ 160 | [D:3] |             outlineProvider = ViewOutlineProvider.BACKGROUND
+ 161 | [D:3] |             background = GradientDrawable(
+ 162 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 163 | [D:3] |                 intArrayOf(Color.parseColor("#1F6FEB"), Color.parseColor("#161B22"))
+ 164 | [D:3] |             ).apply {
+ 165 | [D:4] |                 shape = GradientDrawable.OVAL
+ 166 | [D:4] |                 setStroke(dp(1), Color.parseColor("#58A6FF"))
+ 167 | [D:3] |             }
+ 168 | [D:3] |             layoutParams = FrameLayout.LayoutParams(dp(44), dp(44))
+ 169 | [D:3] |             elevation = dpF(8f)
+ 170 | [D:3] |             visibility = View.GONE
+ 171 | [D:3] |             setOnClickListener {
+ 172 | [D:4] |                 applyDisplayMode(PanelDisplayMode.EXPANDED)
+ 173 | [D:3] |             }
+ 174 | [D:2] |         }
+ 175 | [D:2] |         attachDragListener(miniBubble)
+ 176 | [D:2] |         container.addView(miniBubble)
+ 177 | [D:2] | 
+ 178 | [D:2] |         val mainRow = LinearLayout(context).apply {
+ 179 | [D:3] |             tag = "MAIN_ROW"
+ 180 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 181 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 182 | [D:2] |         }
+ 183 | [D:2] | 
+ 184 | [D:2] |         val dragHandle = createIconButton(VectorIconDrawer.IconType.DRAG_HANDLE, "#21262D", "#58A6FF", dp(42), "BTN_DRAG") {}
+ 185 | [D:2] |         attachDragListener(dragHandle)
+ 186 | [D:2] |         mainRow.addView(dragHandle)
+ 187 | [D:2] | 
+ 188 | [D:2] |         val playIconView = object : View(context) {
+ 189 | [D:3] |             private val bounds = RectF()
+ 190 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 191 | [D:4] |                 super.onDraw(canvas)
+ 192 | [D:4] |                 bounds.set(dpF(10f), dpF(10f), width - dpF(10f), height - dpF(10f))
+ 193 | [D:4] |                 val icon = if (isPlayingState) VectorIconDrawer.IconType.PAUSE else VectorIconDrawer.IconType.PLAY
+ 194 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, icon, bounds, Color.WHITE, dpF(2.5f))
+ 195 | [D:3] |             }
+ 196 | [D:2] |         }.apply {
+ 197 | [D:3] |             tag = "BTN_PLAY_VIEW"
+ 198 | [D:3] |             background = GradientDrawable(
+ 199 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 200 | [D:3] |                 intArrayOf(Color.parseColor(if (isPlayingState) "#F04438" else "#10B981"), Color.parseColor("#161B22"))
+ 201 | [D:3] |             ).apply {
+ 202 | [D:4] |                 cornerRadius = dpF(10f)
+ 203 | [D:4] |                 setStroke(dp(1), Color.parseColor(if (isPlayingState) "#F04438" else "#00F5D4"))
+ 204 | [D:3] |             }
+ 205 | [D:3] |             elevation = dpF(4f)
+ 206 | [D:3] |             val size = dp(42)
+ 207 | [D:3] |             layoutParams = LinearLayout.LayoutParams(size, size).apply {
+ 208 | [D:4] |                 val m = dp(2)
+ 209 | [D:4] |                 setMargins(m, m, m, m)
+ 210 | [D:3] |             }
+ 211 | [D:3] |             setOnClickListener { listener.onPlayClicked() }
+ 212 | [D:3] |             setOnLongClickListener {
+ 213 | [D:4] |                 listener.onPlayLongClicked()
+ 214 | [D:4] |                 true
+ 215 | [D:3] |             }
+ 216 | [D:2] |         }
+ 217 | [D:2] |         mainRow.addView(playIconView)
+ 218 | [D:2] | 
+ 219 | [D:2] |         val btnAdd = createIconButton(VectorIconDrawer.IconType.PLUS, "#21262D", "#00F5D4", dp(42), "BTN_ADD") { listener.onAddClicked() }
+ 220 | [D:2] |         mainRow.addView(btnAdd)
+ 221 | [D:2] | 
+ 222 | [D:2] |         val btnRecord = createIconButton(VectorIconDrawer.IconType.RECORD, "#21262D", "#F04438", dp(42), "BTN_RECORD") { listener.onRecordClicked() }
+ 223 | [D:2] |         mainRow.addView(btnRecord)
+ 224 | [D:2] | 
+ 225 | [D:2] |         val btnCapture = createIconButton(VectorIconDrawer.IconType.CAPTURE, "#21262D", "#38BDF8", dp(42), "BTN_CAPTURE") { listener.onCaptureClicked() }
+ 226 | [D:2] |         mainRow.addView(btnCapture)
+ 227 | [D:2] | 
+ 228 | [D:2] |         val btnToggle = object : View(context) {
+ 229 | [D:3] |             private val bounds = RectF()
+ 230 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 231 | [D:4] |                 super.onDraw(canvas)
+ 232 | [D:4] |                 bounds.set(dpF(10f), dpF(10f), width - dpF(10f), height - dpF(10f))
+ 233 | [D:4] |                 val icon = if (currentMode == PanelDisplayMode.EXPANDED) VectorIconDrawer.IconType.PANEL_COLLAPSE else VectorIconDrawer.IconType.PANEL_EXPAND
+ 234 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, icon, bounds, Color.parseColor("#FFB703"), dpF(2.2f))
+ 235 | [D:3] |             }
+ 236 | [D:2] |         }.apply {
+ 237 | [D:3] |             tag = "BTN_TOGGLE_VIEW"
+ 238 | [D:3] |             background = GradientDrawable(
+ 239 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 240 | [D:3] |                 intArrayOf(Color.parseColor("#21262D"), Color.parseColor("#161B22"))
+ 241 | [D:3] |             ).apply {
+ 242 | [D:4] |                 cornerRadius = dpF(10f)
+ 243 | [D:4] |                 setStroke(dp(1), Color.parseColor("#FFB703"))
+ 244 | [D:3] |             }
+ 245 | [D:3] |             elevation = dpF(4f)
+ 246 | [D:3] |             val size = dp(42)
+ 247 | [D:3] |             layoutParams = LinearLayout.LayoutParams(size, size).apply {
+ 248 | [D:4] |                 val m = dp(2)
+ 249 | [D:4] |                 setMargins(m, m, m, m)
+ 250 | [D:3] |             }
+ 251 | [D:3] |             setOnClickListener {
+ 252 | [D:4] |                 val next = when (currentMode) {
+ 253 | [D:5] |                     PanelDisplayMode.EXPANDED -> PanelDisplayMode.COMPACT_SINGLE_ROW
+ 254 | [D:5] |                     PanelDisplayMode.COMPACT_SINGLE_ROW -> PanelDisplayMode.MINI_BUBBLE
+ 255 | [D:5] |                     PanelDisplayMode.MINI_BUBBLE -> PanelDisplayMode.EXPANDED
+ 256 | [D:4] |                 }
+ 257 | [D:4] |                 applyDisplayMode(next)
+ 258 | [D:3] |             }
+ 259 | [D:2] |         }
+ 260 | [D:2] |         mainRow.addView(btnToggle)
+ 261 | [D:2] | 
+ 262 | [D:2] |         val btnClose = createIconButton(VectorIconDrawer.IconType.CLOSE, "#21262D", "#F04438", dp(42), "BTN_CLOSE") { listener.onCloseClicked() }
+ 263 | [D:2] |         mainRow.addView(btnClose)
+ 264 | [D:2] | 
+ 265 | [D:2] |         rootLinear.addView(mainRow)
+ 266 | [D:2] | 
+ 267 | [D:2] |         val subRow = LinearLayout(context).apply {
+ 268 | [D:3] |             tag = "SUB_ROW"
+ 269 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 270 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 271 | [D:3] |             setPadding(0, dp(3), 0, 0)
+ 272 | [D:2] |         }
+ 273 | [D:2] | 
+ 274 | [D:2] |         val btnGraph = createIconButton(VectorIconDrawer.IconType.GRAPH_TREE, "#1F6FEB", "#00F5D4", dp(36), "BTN_GRAPH") {
+ 275 | [D:3] |             listener.onGraphClicked()
+ 276 | [D:2] |         }
+ 277 | [D:2] |         subRow.addView(btnGraph)
+ 278 | [D:2] | 
+ 279 | [D:2] |         val btnScripts = createIconButton(VectorIconDrawer.IconType.SCRIPTS, "#161B22", "#58A6FF", dp(36), "BTN_SCRIPTS") { listener.onScriptsClicked() }
+ 280 | [D:2] |         subRow.addView(btnScripts)
+ 281 | [D:2] | 
+ 282 | [D:2] |         val btnSettings = createIconButton(VectorIconDrawer.IconType.SETTINGS, "#161B22", "#38BDF8", dp(36), "BTN_SETTINGS") { listener.onSettingsClicked() }
+ 283 | [D:2] |         subRow.addView(btnSettings)
+ 284 | [D:2] | 
+ 285 | [D:2] |         val btnJoystick = createIconButton(VectorIconDrawer.IconType.JOYSTICK, "#161B22", "#38BDF8", dp(36), "BTN_JOYSTICK") { listener.onJoystickClicked() }
+ 286 | [D:2] |         subRow.addView(btnJoystick)
+ 287 | [D:2] | 
+ 288 | [D:2] |         val btnLock = createIconButton(VectorIconDrawer.IconType.LOCK, "#161B22", "#38BDF8", dp(36), "BTN_LOCK") { listener.onScreenLockClicked() }
+ 289 | [D:2] |         subRow.addView(btnLock)
+ 290 | [D:2] | 
+ 291 | [D:2] |         val btnHide = object : View(context) {
+ 292 | [D:3] |             private val bounds = RectF()
+ 293 | [D:3] |             private val slashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+ 294 | [D:4] |                 color = Color.parseColor("#F04438")
+ 295 | [D:4] |                 strokeWidth = dpF(2f)
+ 296 | [D:4] |                 strokeCap = Paint.Cap.ROUND
+ 297 | [D:3] |             }
+ 298 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 299 | [D:4] |                 super.onDraw(canvas)
+ 300 | [D:4] |                 bounds.set(dpF(9f), dpF(9f), width - dpF(9f), height - dpF(9f))
+ 301 | [D:4] |                 val iconColor = if (isNumbersHiddenState) Color.parseColor("#8B949E") else Color.parseColor("#00F5D4")
+ 302 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, VectorIconDrawer.IconType.VISIBILITY, bounds, iconColor, dpF(2.2f))
+ 303 | [D:4] |                 if (isNumbersHiddenState) {
+ 304 | [D:5] |                     canvas.drawLine(bounds.left + dpF(2f), bounds.top + dpF(2f), bounds.right - dpF(2f), bounds.bottom - dpF(2f), slashPaint)
+ 305 | [D:4] |                 }
+ 306 | [D:3] |             }
+ 307 | [D:2] |         }.apply {
+ 308 | [D:3] |             tag = "BTN_HIDE"
+ 309 | [D:3] |             background = GradientDrawable(
+ 310 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 311 | [D:3] |                 intArrayOf(Color.parseColor("#161B22"), Color.parseColor("#161B22"))
+ 312 | [D:3] |             ).apply {
+ 313 | [D:4] |                 cornerRadius = dpF(8f)
+ 314 | [D:4] |                 setStroke(dp(1), Color.parseColor("#00F5D4"))
+ 315 | [D:3] |             }
+ 316 | [D:3] |             elevation = dpF(4f)
+ 317 | [D:3] |             layoutParams = LinearLayout.LayoutParams(dp(31), dp(31)).apply { val m = dp(1); setMargins(m, m, m, m) }.apply {
+ 318 | [D:4] |                 val m = dp(2)
+ 319 | [D:4] |                 setMargins(m, m, m, m)
+ 320 | [D:3] |             }
+ 321 | [D:3] |             setOnClickListener { listener.onToggleNumbersClicked() }
+ 322 | [D:2] |         }
+ 323 | [D:2] |         btnHideRef = btnHide
+ 324 | [D:2] |         subRow.addView(btnHide)
+ 325 | [D:2] | 
+ 326 | [D:2] |         val btnClear = createIconButton(VectorIconDrawer.IconType.CLEAR, "#161B22", "#F04438", dp(36), "BTN_CLEAR") { listener.onClearAllClicked() }
+ 327 | [D:2] |         subRow.addView(btnClear)
+ 328 | [D:2] | 
+ 329 | [D:2] |         val btnLogs = createIconButton(VectorIconDrawer.IconType.LOGS, "#161B22", "#FFB703", dp(36), "BTN_LOGS") { 
+ 330 | [D:3] |             listener.onHelpClicked() 
+ 331 | [D:2] |         }
+ 332 | [D:2] |         subRow.addView(btnLogs)
+ 333 | [D:2] | 
+ 334 | [D:2] |         val btnTut = createIconButton(VectorIconDrawer.IconType.HELP, "#161B22", "#00F5D4", dp(36), "BTN_TUTORIAL") {
+ 335 | [D:3] |             applyDisplayMode(PanelDisplayMode.EXPANDED)
+ 336 | [D:3] |             InteractiveTutorialOverlay(
+ 337 | [D:3] |                 context = context,
+ 338 | [D:3] |                 overlayWindowManager = overlayWindowManager,
+ 339 | [D:3] |                 mode = InteractiveTutorialOverlay.TutorialMode.CONTROL_PANEL,
+ 340 | [D:3] |                 hostViewProvider = { rootView }
+ 341 | [D:3] |             ).show()
+ 342 | [D:2] |         }
+ 343 | [D:2] |         subRow.addView(btnTut)
+ 344 | [D:2] | 
+ 345 | [D:2] |         rootLinear.addView(subRow)
+ 346 | [D:2] |         container.addView(rootLinear)
+ 347 | [D:1] |     }
+ 348 | [D:1] | 
+ 349 | [D:1] |     private fun createIconButton(type: VectorIconDrawer.IconType, bgHex: String, iconHex: String, sizePx: Int, tagStr: String = "", onClick: () -> Unit): View {
+ 350 | [D:2] |         return object : View(context) {
+ 351 | [D:3] |             private val bounds = RectF()
+ 352 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 353 | [D:4] |                 super.onDraw(canvas)
+ 354 | [D:4] |                 bounds.set(dpF(9f), dpF(9f), width - dpF(9f), height - dpF(9f))
+ 355 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, type, bounds, Color.parseColor(iconHex), dpF(2.2f))
+ 356 | [D:3] |             }
+ 357 | [D:2] |         }.apply {
+ 358 | [D:3] |             tag = tagStr
+ 359 | [D:3] |             background = GradientDrawable(
+ 360 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 361 | [D:3] |                 intArrayOf(Color.parseColor(bgHex), Color.parseColor("#161B22"))
+ 362 | [D:3] |             ).apply {
+ 363 | [D:4] |                 cornerRadius = dpF(8f)
+ 364 | [D:4] |                 setStroke(dp(1), Color.parseColor(iconHex))
+ 365 | [D:3] |             }
+ 366 | [D:3] |             elevation = dpF(4f)
+ 367 | [D:3] |             layoutParams = LinearLayout.LayoutParams(sizePx, sizePx).apply {
+ 368 | [D:4] |                 val m = dp(2)
+ 369 | [D:4] |                 setMargins(m, m, m, m)
+ 370 | [D:3] |             }
+ 371 | [D:3] |             setOnClickListener { onClick() }
+ 372 | [D:2] |         }
+ 373 | [D:1] |     }
+ 374 | [D:1] | 
+ 375 | [D:1] |     private fun attachDragListener(view: View) {
+ 376 | [D:2] |         view.setOnTouchListener(object : View.OnTouchListener {
+ 377 | [D:3] |             private var initX = 0
+ 378 | [D:3] |             private var initY = 0
+ 379 | [D:3] |             private var touchX = 0f
+ 380 | [D:3] |             private var touchY = 0f
+ 381 | [D:3] |             private var isMoved = false
+ 382 | [D:3] | 
+ 383 | [D:3] |             override fun onTouch(v: View, event: MotionEvent): Boolean {
+ 384 | [D:4] |                 when (event.action) {
+ 385 | [D:5] |                     MotionEvent.ACTION_DOWN -> {
+ 386 | [D:6] |                         initX = posX
+ 387 | [D:6] |                         initY = posY
+ 388 | [D:6] |                         touchX = event.rawX
+ 389 | [D:6] |                         touchY = event.rawY
+ 390 | [D:6] |                         isMoved = false
+ 391 | [D:6] |                         return true
+ 392 | [D:5] |                     }
+ 393 | [D:5] |                     MotionEvent.ACTION_MOVE -> {
+ 394 | [D:6] |                         val dx = abs(event.rawX - touchX)
+ 395 | [D:6] |                         val dy = abs(event.rawY - touchY)
+ 396 | [D:6] |                         if (dx > 10 || dy > 10) {
+ 397 | [D:7] |                             isMoved = true
+ 398 | [D:7] |                             posX = (initX + (event.rawX - touchX).toInt()).coerceIn(0, dm.widthPixels - dp(50))
+ 399 | [D:7] |                             posY = (initY + (event.rawY - touchY).toInt()).coerceIn(0, dm.heightPixels - dp(50))
+ 400 | [D:7] |                             rootView?.let {
+ 401 | [D:8] |                                 val lp = overlayWindowManager.createLayoutParams().apply {
+ 402 | [D:9] |                                     this.x = posX
+ 403 | [D:9] |                                     this.y = posY
+ 404 | [D:8] |                                 }
+ 405 | [D:8] |                                 overlayWindowManager.updateViewSafe(it, lp)
+ 406 | [D:7] |                             }
+ 407 | [D:6] |                         }
+ 408 | [D:6] |                         return true
+ 409 | [D:5] |                     }
+ 410 | [D:5] |                     MotionEvent.ACTION_UP -> {
+ 411 | [D:6] |                         if (!isMoved) {
+ 412 | [D:7] |                             v.performClick()
+ 413 | [D:6] |                         }
+ 414 | [D:6] |                         return true
+ 415 | [D:5] |                     }
+ 416 | [D:4] |                 }
+ 417 | [D:4] |                 return false
+ 418 | [D:3] |             }
+ 419 | [D:2] |         })
+ 420 | [D:1] |     }
+ 421 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_panel_ControlPanelOverlay.kt_part_01_lines_0001_to_0421.txt
+================================================================================

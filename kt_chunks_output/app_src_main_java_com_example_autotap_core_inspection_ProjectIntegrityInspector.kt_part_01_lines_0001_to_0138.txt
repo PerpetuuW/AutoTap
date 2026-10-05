@@ -1,0 +1,148 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\core\inspection\ProjectIntegrityInspector.kt
+ PART: 1/1 | LINES: 1..138
+ START DEPTH: [D:0] | END DEPTH: [D:1]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.core.inspection
+   2 | [D:0] | 
+   3 | [D:0] | import android.content.Context
+   4 | [D:0] | import com.example.autotap.core.logger.AppLogger
+   5 | [D:0] | import java.io.File
+   6 | [D:0] | import org.json.JSONArray
+   7 | [D:0] | import org.json.JSONObject
+   8 | [D:0] | 
+   9 | [D:0] | object ProjectIntegrityInspector {
+  10 | [D:1] | 
+  11 | [D:1] |     data class InspectionReport(
+  12 | [D:1] |         val totalScripts: Int,
+  13 | [D:1] |         val totalTemplates: Int,
+  14 | [D:1] |         val totalTrashItems: Int,
+  15 | [D:1] |         val orphanedMetaFiles: List<String>,
+  16 | [D:1] |         val corruptedScriptFiles: List<String>,
+  17 | [D:1] |         val duplicateScriptNames: List<String>,
+  18 | [D:1] |         val isHealthy: Boolean
+  19 | [D:1] |     )
+  20 | [D:1] | 
+  21 | [D:1] |     fun inspectProjectStorage(context: Context): InspectionReport {
+  22 | [D:2] |         val filesDir = context.filesDir
+  23 | [D:2] |         val scriptsDir = File(filesDir, "scripts").apply { mkdirs() }
+  24 | [D:2] |         val templatesDir = File(filesDir, "templates").apply { mkdirs() }
+  25 | [D:2] |         val trashDir = File(filesDir, "trash_templates").apply { mkdirs() }
+  26 | [D:2] | 
+  27 | [D:2] |         val scriptFiles = scriptsDir.listFiles()?.filter { it.isFile && it.name.endsWith(".json") } ?: emptyList()
+  28 | [D:2] |         val corruptedScripts = mutableListOf<String>()
+  29 | [D:2] |         val seenScriptKeys = mutableSetOf<String>()
+  30 | [D:2] |         val duplicateScripts = mutableListOf<String>()
+  31 | [D:2] | 
+  32 | [D:2] |         for (sf in scriptFiles) {
+  33 | [D:3] |             val baseName = if (sf.name.endsWith(".graph.json")) {
+  34 | [D:4] |                 sf.name.removeSuffix(".graph.json").lowercase()
+  35 | [D:3] |             } else {
+  36 | [D:4] |                 sf.nameWithoutExtension.lowercase()
+  37 | [D:3] |             }
+  38 | [D:3] |             val uniqueKey = if (sf.name.endsWith(".graph.json")) "${baseName}_graph" else "${baseName}_linear"
+  39 | [D:3] |             if (!seenScriptKeys.add(uniqueKey)) {
+  40 | [D:4] |                 duplicateScripts.add(sf.name)
+  41 | [D:3] |             }
+  42 | [D:3] | 
+  43 | [D:3] |             try {
+  44 | [D:4] |                 val content = sf.readText(Charsets.UTF_8).trim()
+  45 | [D:4] |                 if (content.startsWith("{")) {
+  46 | [D:6] |                     val jsonObj = JSONObject(content)
+  47 | [D:6] |                     if (!jsonObj.has("name") && !jsonObj.has("nodes")) {
+  48 | [D:7] |                         corruptedScripts.add(sf.name)
+  49 | [D:6] |                     }
+  50 | [D:5] |                 } else if (content.startsWith("[")) {
+  51 | [D:6] |                     val jsonArr = JSONArray(content)
+  52 | [D:6] |                     if (jsonArr.length() == 0) {
+  53 | [D:7] |                         corruptedScripts.add(sf.name)
+  54 | [D:6] |                     }
+  55 | [D:5] |                 } else {
+  56 | [D:6] |                     corruptedScripts.add(sf.name)
+  57 | [D:5] |                 }
+  58 | [D:4] |             } catch (t: Throwable) {
+  59 | [D:5] |                 corruptedScripts.add(sf.name)
+  60 | [D:5] |                 AppLogger.logError(context, "INSPECTOR", t)
+  61 | [D:4] |             }
+  62 | [D:3] |         }
+  63 | [D:3] | 
+  64 | [D:3] |         val allMaskFiles = templatesDir.walkTopDown()
+  65 | [D:3] |             .filter { it.isFile && it.name.startsWith("mask_") && it.name.endsWith(".png") }
+  66 | [D:3] |             .toList()
+  67 | [D:3] | 
+  68 | [D:3] |         val allMetaFiles = templatesDir.walkTopDown()
+  69 | [D:3] |             .filter { it.isFile && it.name.startsWith("mask_") && it.name.endsWith(".json") }
+  70 | [D:3] |             .toList()
+  71 | [D:3] | 
+  72 | [D:3] |         val orphanedMeta = mutableListOf<String>()
+  73 | [D:3] |         for (meta in allMetaFiles) {
+  74 | [D:4] |             val maskPngName = "${meta.nameWithoutExtension}.png"
+  75 | [D:4] |             val expectedPng = File(meta.parentFile, maskPngName)
+  76 | [D:4] |             if (!expectedPng.exists()) {
+  77 | [D:5] |                 orphanedMeta.add(meta.absolutePath)
+  78 | [D:4] |             }
+  79 | [D:3] |         }
+  80 | [D:3] | 
+  81 | [D:3] |         val trashItems = trashDir.walkTopDown()
+  82 | [D:3] |             .filter { it.isFile && it.name.startsWith("mask_") && it.name.endsWith(".png") }
+  83 | [D:3] |             .toList()
+  84 | [D:3] | 
+  85 | [D:3] |         val healthy = corruptedScripts.isEmpty() && orphanedMeta.isEmpty() && duplicateScripts.isEmpty()
+  86 | [D:3] |         val report = InspectionReport(
+  87 | [D:3] |             totalScripts = scriptFiles.size,
+  88 | [D:3] |             totalTemplates = allMaskFiles.size,
+  89 | [D:3] |             totalTrashItems = trashItems.size,
+  90 | [D:3] |             orphanedMetaFiles = orphanedMeta,
+  91 | [D:3] |             corruptedScriptFiles = corruptedScripts,
+  92 | [D:3] |             duplicateScriptNames = duplicateScripts,
+  93 | [D:3] |             isHealthy = healthy
+  94 | [D:3] |         )
+  95 | [D:3] | 
+  96 | [D:3] |         if (!healthy) {
+  97 | [D:4] |             AppLogger.log(
+  98 | [D:4] |                 context,
+  99 | [D:4] |                 "INSPECTOR",
+ 100 | [D:4] |                 "Обнаружены отклонения хранилища: Дубликатов=${report.duplicateScriptNames.size}, Ошибок=${report.corruptedScriptFiles.size + report.orphanedMetaFiles.size}"
+ 101 | [D:4] |             )
+ 102 | [D:3] |         }
+ 103 | [D:3] | 
+ 104 | [D:3] |         if (orphanedMeta.isNotEmpty()) {
+ 105 | [D:4] |             pruneOrphanedMetadata(context)
+ 106 | [D:3] |         }
+ 107 | [D:3] | 
+ 108 | [D:3] |         return report
+ 109 | [D:2] |     }
+ 110 | [D:2] | 
+ 111 | [D:2] |     fun pruneOrphanedMetadata(context: Context): Int {
+ 112 | [D:3] |         val templatesDir = File(context.filesDir, "templates").apply { mkdirs() }
+ 113 | [D:3] |         val allMetaFiles = templatesDir.walkTopDown()
+ 114 | [D:3] |             .filter { it.isFile && it.name.startsWith("mask_") && it.name.endsWith(".json") }
+ 115 | [D:3] |             .toList()
+ 116 | [D:3] | 
+ 117 | [D:3] |         val allRawFiles = templatesDir.walkTopDown()
+ 118 | [D:3] |             .filter { it.isFile && it.name.startsWith("raw_") && it.name.endsWith(".png") }
+ 119 | [D:3] |             .toList()
+ 120 | [D:3] | 
+ 121 | [D:3] |         var pruned = 0
+ 122 | [D:3] |         for (meta in allMetaFiles) {
+ 123 | [D:4] |             val expectedPng = File(meta.parentFile, "${meta.nameWithoutExtension}.png")
+ 124 | [D:4] |             if (!expectedPng.exists() && meta.delete()) {
+ 125 | [D:5] |                 pruned++
+ 126 | [D:4] |             }
+ 127 | [D:3] |         }
+ 128 | [D:3] | 
+ 129 | [D:3] |         for (raw in allRawFiles) {
+ 130 | [D:4] |             val expectedMask = File(raw.parentFile, "mask_" + raw.name.removePrefix("raw_"))
+ 131 | [D:4] |             if (!expectedMask.exists() && raw.delete()) {
+ 132 | [D:5] |                 pruned++
+ 133 | [D:4] |             }
+ 134 | [D:3] |         }
+ 135 | [D:3] | 
+ 136 | [D:3] |         return pruned
+ 137 | [D:2] |     }
+ 138 | [D:1] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_core_inspection_ProjectIntegrityInspector.kt_part_01_lines_0001_to_0138.txt
+================================================================================

@@ -1,0 +1,26 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\domain\repository\IScenarioRepository.kt
+ PART: 1/1 | LINES: 1..16
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.domain.repository
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.domain.model.MacroScenario
+   4 | [D:0] | import com.example.autotap.domain.model.graph.GraphMacroScenario
+   5 | [D:0] | 
+   6 | [D:0] | interface IScenarioRepository {
+   7 | [D:1] |     fun saveScenario(scenario: MacroScenario): Boolean
+   8 | [D:1] |     fun loadScenario(name: String): MacroScenario?
+   9 | [D:1] |     fun saveGraphScenario(scenario: GraphMacroScenario): Boolean
+  10 | [D:1] |     fun loadGraphScenario(name: String): GraphMacroScenario?
+  11 | [D:1] |     fun hasGraphScenario(name: String): Boolean
+  12 | [D:1] |     fun listScenarios(): List<String>
+  13 | [D:1] |     fun deleteScenario(name: String): Boolean
+  14 | [D:1] |     fun duplicateScenario(name: String): Boolean
+  15 | [D:1] |     fun normalizeScenarioName(rawName: String): String
+  16 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_domain_repository_IScenarioRepository.kt_part_01_lines_0001_to_0016.txt
+================================================================================

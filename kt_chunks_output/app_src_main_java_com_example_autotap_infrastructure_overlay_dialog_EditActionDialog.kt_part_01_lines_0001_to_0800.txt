@@ -1,0 +1,810 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\dialog\EditActionDialog.kt
+ PART: 1/2 | LINES: 1..800
+ START DEPTH: [D:0] | END DEPTH: [D:3]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.dialog
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Canvas
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.Rect
+   8 | [D:0] | import android.graphics.RectF
+   9 | [D:0] | import android.graphics.Typeface
+  10 | [D:0] | import android.graphics.drawable.GradientDrawable
+  11 | [D:0] | import android.os.Build
+  12 | [D:0] | import android.text.InputType
+  13 | [D:0] | import android.view.Gravity
+  14 | [D:0] | import android.view.MotionEvent
+  15 | [D:0] | import android.view.View
+  16 | [D:0] | import android.view.ViewTreeObserver
+  17 | [D:0] | import android.view.WindowInsets
+  18 | [D:0] | import android.view.WindowManager
+  19 | [D:0] | import android.view.inputmethod.EditorInfo
+  20 | [D:0] | import android.view.inputmethod.InputMethodManager
+  21 | [D:0] | import android.widget.Button
+  22 | [D:0] | import android.widget.EditText
+  23 | [D:0] | import android.widget.FrameLayout
+  24 | [D:0] | import android.widget.HorizontalScrollView
+  25 | [D:0] | import android.widget.ImageView
+  26 | [D:0] | import android.widget.LinearLayout
+  27 | [D:0] | import android.widget.ScrollView
+  28 | [D:0] | import android.widget.TextView
+  29 | [D:0] | import android.widget.Toast
+  30 | [D:0] | import androidx.core.graphics.toColorInt
+  31 | [D:0] | import com.example.autotap.domain.model.ActionType
+  32 | [D:0] | import com.example.autotap.domain.model.MacroAction
+  33 | [D:0] | import com.example.autotap.domain.repository.IScenarioRepository
+  34 | [D:0] | import com.example.autotap.domain.repository.ITemplateRepository
+  35 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  36 | [D:0] | import com.example.autotap.infrastructure.overlay.capture.MaskPreviewView
+  37 | [D:0] | import com.example.autotap.infrastructure.overlay.tutorial.InteractiveTutorialOverlay
+  38 | [D:0] | import com.example.autotap.infrastructure.overlay.ui.VectorIconDrawer
+  39 | [D:0] | import java.io.File
+  40 | [D:0] | 
+  41 | [D:0] | @SuppressLint("SetTextI18n", "ClickableViewAccessibility")
+  42 | [D:0] | class EditActionDialog(
+  43 | [D:0] |     private val context: Context,
+  44 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  45 | [D:0] |     private val templateRepository: ITemplateRepository,
+  46 | [D:0] |     private val scenarioRepository: IScenarioRepository,
+  47 | [D:0] |     private val action: MacroAction,
+  48 | [D:0] |     private val totalActionsCount: Int,
+  49 | [D:0] |     private val onSave: (MacroAction) -> Unit,
+  50 | [D:0] |     private val onClone: (MacroAction) -> Unit,
+  51 | [D:0] |     private val onDelete: (MacroAction) -> Unit,
+  52 | [D:0] |     private val onCalibrate: (MacroAction) -> Unit,
+  53 | [D:0] |     private val onSelectRoi: ((MacroAction) -> Unit)? = null,
+  54 | [D:0] |     private val onNavigateStep: (Int) -> Unit,
+  55 | [D:0] |     private val onTest: ((MacroAction) -> Unit)? = null
+  56 | [D:0] | ) {
+  57 | [D:1] | 
+  58 | [D:1] |     private var dialogView: View? = null
+  59 | [D:1] |     private var selectedType = action.type
+  60 | [D:1] |     private var boundTemplatePath: String = action.templatePath
+  61 | [D:1] |     
+  62 | [D:1] |     private val selectedMultiPaths = LinkedHashSet<String>().apply {
+  63 | [D:2] |         if (action.multiTemplatePaths.isNotEmpty()) {
+  64 | [D:3] |             addAll(action.multiTemplatePaths.filter { it.isNotBlank() })
+  65 | [D:2] |         }
+  66 | [D:2] |         if (action.templatePath.isNotBlank()) {
+  67 | [D:3] |             add(action.templatePath)
+  68 | [D:2] |         }
+  69 | [D:1] |     }
+  70 | [D:1] | 
+  71 | [D:1] |     private var isMultiScale = action.isMultiScaleMode
+  72 | [D:1] |     private var isDeltaEMode = action.colorDeltaEMode
+  73 | [D:1] |     private var isShapeOnly = action.isShapeOnlyMode
+  74 | [D:1] |     private var btnToggleShapeRef: Button? = null
+  75 | [D:1] | 
+  76 | [D:1] |     private var currentRoiLeft = action.roiLeft
+  77 | [D:1] |     private var currentRoiTop = action.roiTop
+  78 | [D:1] |     private var currentRoiRight = action.roiRight
+  79 | [D:1] |     private var currentRoiBottom = action.roiBottom
+  80 | [D:1] | 
+  81 | [D:1] |     private var currentActionSimilarity = action.similarityPercent
+  82 | [D:1] | 
+  83 | [D:1] |     private var selectedSubroutineScenario: String = action.subroutineTarget.ifEmpty { action.targetScriptOrQuery.ifEmpty { action.subroutineTag } }
+  84 | [D:1] |     private var globalLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+  85 | [D:1] | 
+  86 | [D:1] |     private val dm = context.resources.displayMetrics
+  87 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  88 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  89 | [D:1] | 
+  90 | [D:1] |     fun show() {
+  91 | [D:2] |         if (dialogView != null) return
+  92 | [D:2] | 
+  93 | [D:2] |         val screenW = dm.widthPixels
+  94 | [D:2] |         val screenH = dm.heightPixels
+  95 | [D:2] |         val cardW = dp(340).coerceAtMost((screenW * 0.96f).toInt())
+  96 | [D:2] |         val scrollMaxH = dp(420).coerceAtMost((screenH * 0.72f).toInt())
+  97 | [D:2] | 
+  98 | [D:2] |         val rootCard = LinearLayout(context).apply {
+  99 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 100 | [D:3] |             background = GradientDrawable(
+ 101 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 102 | [D:3] |                 intArrayOf("#F8161B22".toColorInt(), "#F80D1117".toColorInt())
+ 103 | [D:3] |             ).apply {
+ 104 | [D:4] |                 cornerRadius = dpF(16f)
+ 105 | [D:4] |                 setStroke(dp(1), "#58A6FF".toColorInt())
+ 106 | [D:3] |             }
+ 107 | [D:3] |             val p = dp(8)
+ 108 | [D:3] |             setPadding(p, p, p, p)
+ 109 | [D:3] |             elevation = dpF(18f)
+ 110 | [D:2] |         }
+ 111 | [D:2] |         dialogView = rootCard
+ 112 | [D:2] | 
+ 113 | [D:2] |         val btnHideKeyboard = Button(context).apply {
+ 114 | [D:3] |             text = "СКРЫТЬ КЛАВИАТУРУ"
+ 115 | [D:3] |             textSize = 9f
+ 116 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 117 | [D:3] |             includeFontPadding = false
+ 118 | [D:3] |             setTextColor(Color.BLACK)
+ 119 | [D:3] |             background = GradientDrawable().apply {
+ 120 | [D:4] |                 setColor("#00F5D4".toColorInt())
+ 121 | [D:4] |                 cornerRadius = dpF(6f)
+ 122 | [D:3] |             }
+ 123 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 124 | [D:3] |             setPadding(dp(8), dp(4), dp(8), dp(4))
+ 125 | [D:3] |             visibility = View.GONE
+ 126 | [D:3] |             setOnClickListener { hideKeyboard(this) }
+ 127 | [D:2] |         }
+ 128 | [D:2] |         rootCard.addView(btnHideKeyboard, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)).apply {
+ 129 | [D:3] |             bottomMargin = dp(4)
+ 130 | [D:2] |         })
+ 131 | [D:2] | 
+ 132 | [D:2] |         globalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
+ 133 | [D:3] |             val r = Rect()
+ 134 | [D:3] |             rootCard.getWindowVisibleDisplayFrame(r)
+ 135 | [D:3] |             val screenHeight = rootCard.rootView.height
+ 136 | [D:3] |             val keypadHeight = screenHeight - r.bottom
+ 137 | [D:3] |             btnHideKeyboard.visibility = if (keypadHeight > screenHeight * 0.15) View.VISIBLE else View.GONE
+ 138 | [D:2] |         }
+ 139 | [D:2] |         rootCard.viewTreeObserver.addOnGlobalLayoutListener(globalLayoutListener)
+ 140 | [D:2] | 
+ 141 | [D:2] |         val navHeader = LinearLayout(context).apply {
+ 142 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 143 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 144 | [D:3] |             background = GradientDrawable().apply {
+ 145 | [D:4] |                 setColor("#21262D".toColorInt())
+ 146 | [D:4] |                 cornerRadius = dpF(8f)
+ 147 | [D:3] |             }
+ 148 | [D:3] |             setPadding(dp(4), dp(3), dp(4), dp(3))
+ 149 | [D:2] |         }
+ 150 | [D:2] | 
+ 151 | [D:2] |         val btnPrev = createNavVectorBtn(VectorIconDrawer.IconType.STEP_PREV) { onNavigateStep(action.id - 1) }
+ 152 | [D:2] |         navHeader.addView(btnPrev)
+ 153 | [D:2] | 
+ 154 | [D:2] |         val stepInfoLayout = LinearLayout(context).apply {
+ 155 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 156 | [D:3] |             gravity = Gravity.CENTER
+ 157 | [D:3] |             setPadding(dp(4), 0, dp(4), 0)
+ 158 | [D:2] |         }
+ 159 | [D:2] | 
+ 160 | [D:2] |         val tvTitle = TextView(context).apply {
+ 161 | [D:3] |             text = "ШАГ ${action.id} из $totalActionsCount"
+ 162 | [D:3] |             textSize = 10f
+ 163 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 164 | [D:3] |             includeFontPadding = false
+ 165 | [D:3] |             setTextColor("#58A6FF".toColorInt())
+ 166 | [D:2] |         }
+ 167 | [D:2] |         stepInfoLayout.addView(tvTitle)
+ 168 | [D:2] |         navHeader.addView(stepInfoLayout, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+ 169 | [D:2] | 
+ 170 | [D:2] |         val btnNext = createNavVectorBtn(VectorIconDrawer.IconType.STEP_NEXT) { onNavigateStep(action.id + 1) }
+ 171 | [D:2] |         navHeader.addView(btnNext)
+ 172 | [D:2] | 
+ 173 | [D:2] |         val btnHelp = createNavVectorBtn(VectorIconDrawer.IconType.HELP) {
+ 174 | [D:3] |             InteractiveTutorialOverlay(
+ 175 | [D:3] |                 context = context,
+ 176 | [D:3] |                 overlayWindowManager = overlayWindowManager,
+ 177 | [D:3] |                 mode = InteractiveTutorialOverlay.TutorialMode.EDIT_STEP,
+ 178 | [D:3] |                 hostViewProvider = { dialogView }
+ 179 | [D:3] |             ).show()
+ 180 | [D:2] |         }
+ 181 | [D:2] |         navHeader.addView(btnHelp)
+ 182 | [D:2] | 
+ 183 | [D:2] |         val btnClose = createNavVectorBtn(VectorIconDrawer.IconType.CLOSE) { dismiss() }
+ 184 | [D:2] |         navHeader.addView(btnClose)
+ 185 | [D:2] |         rootCard.addView(navHeader)
+ 186 | [D:2] | 
+ 187 | [D:2] |         val scrollView = ScrollView(context).apply {
+ 188 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, scrollMaxH)
+ 189 | [D:3] |             isVerticalScrollBarEnabled = true
+ 190 | [D:2] |         }
+ 191 | [D:2] | 
+ 192 | [D:2] |         val contentLayout = LinearLayout(context).apply {
+ 193 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 194 | [D:3] |             val p = dp(4)
+ 195 | [D:3] |             setPadding(0, p, 0, p)
+ 196 | [D:2] |         }
+ 197 | [D:2] | 
+ 198 | [D:2] |         val allTypeButtons = ArrayList<Button>()
+ 199 | [D:2] |         var layoutTimingsRef: View? = null
+ 200 | [D:2] |         var layoutTriggerCardRef: LinearLayout? = null
+ 201 | [D:2] |         var layoutPinchRef: LinearLayout? = null
+ 202 | [D:2] |         var layoutSubroutinePickerRef: View? = null
+ 203 | [D:2] |         var layoutTimeoutRef: View? = null
+ 204 | [D:2] |         var layoutOcrRef: View? = null
+ 205 | [D:2] |         var layoutColorRef: View? = null
+ 206 | [D:2] |         var layoutJumpsRef: View? = null
+ 207 | [D:2] |         
+ 208 | [D:2] |         var tvSimRef: TextView? = null
+ 209 | [D:2] |         var btnToggleScaleRef: Button? = null
+ 210 | [D:2] | 
+ 211 | [D:2] |         fun updateDynamicSections() {
+ 212 | [D:3] |             val isTrigger = (selectedType == ActionType.TRIGGER)
+ 213 | [D:3] |             val isOcr = (selectedType == ActionType.OCR)
+ 214 | [D:3] |             val isColor = (selectedType == ActionType.COLOR_CHECK)
+ 215 | [D:3] |             val isSubroutine = (selectedType == ActionType.SUBROUTINE)
+ 216 | [D:3] |             val isReturn = (selectedType == ActionType.RETURN)
+ 217 | [D:3] |             val isPinch = (selectedType == ActionType.PINCH)
+ 218 | [D:3] |             val isDetection = isTrigger || isOcr || isColor
+ 219 | [D:3] | 
+ 220 | [D:3] |             layoutTimingsRef?.visibility = if (!isReturn) View.VISIBLE else View.GONE
+ 221 | [D:3] |             layoutTriggerCardRef?.visibility = if (isTrigger) View.VISIBLE else View.GONE
+ 222 | [D:3] |             layoutPinchRef?.visibility = if (isPinch) View.VISIBLE else View.GONE
+ 223 | [D:3] |             layoutSubroutinePickerRef?.visibility = if (isSubroutine) View.VISIBLE else View.GONE
+ 224 | [D:3] |             layoutTimeoutRef?.visibility = if (isDetection) View.VISIBLE else View.GONE
+ 225 | [D:3] |             layoutOcrRef?.visibility = if (isOcr) View.VISIBLE else View.GONE
+ 226 | [D:3] |             layoutColorRef?.visibility = if (isColor) View.VISIBLE else View.GONE
+ 227 | [D:3] |             layoutJumpsRef?.visibility = if (isDetection) View.VISIBLE else View.GONE
+ 228 | [D:2] |         }
+ 229 | [D:2] | 
+ 230 | [D:2] |         val tvGesturesLabel = createCategoryLabel("1. БАЗОВЫЕ ЖЕСТЫ И МУЛЬТИТАЧ")
+ 231 | [D:2] |         contentLayout.addView(tvGesturesLabel)
+ 232 | [D:2] |         val typeRow1 = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+ 233 | [D:2] |         allTypeButtons.add(createTypeBtn("КЛИК", ActionType.CLICK, typeRow1, allTypeButtons) { updateDynamicSections() })
+ 234 | [D:2] |         allTypeButtons.add(createTypeBtn("УДЕРЖАНИЕ", ActionType.LONG_PRESS, typeRow1, allTypeButtons) { updateDynamicSections() })
+ 235 | [D:2] |         allTypeButtons.add(createTypeBtn("СВАЙП", ActionType.SWIPE, typeRow1, allTypeButtons) { updateDynamicSections() })
+ 236 | [D:2] |         allTypeButtons.add(createTypeBtn("ПУТЬ", ActionType.PATH, typeRow1, allTypeButtons) { updateDynamicSections() })
+ 237 | [D:2] |         allTypeButtons.add(createTypeBtn("ПИНЧ", ActionType.PINCH, typeRow1, allTypeButtons) { updateDynamicSections() })
+ 238 | [D:2] |         contentLayout.addView(typeRow1)
+ 239 | [D:2] | 
+ 240 | [D:2] |         val tvVisionLabel = createCategoryLabel("2. УМНОЕ ЗРЕНИЕ И РАСПОЗНАВАНИЕ")
+ 241 | [D:2] |         contentLayout.addView(tvVisionLabel)
+ 242 | [D:2] |         val typeRow2 = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+ 243 | [D:2] |         allTypeButtons.add(createTypeBtn("ТРИГГЕР ИИ", ActionType.TRIGGER, typeRow2, allTypeButtons) { updateDynamicSections() })
+ 244 | [D:2] |         allTypeButtons.add(createTypeBtn("OCR ТЕКСТ", ActionType.OCR, typeRow2, allTypeButtons) { updateDynamicSections() })
+ 245 | [D:2] |         allTypeButtons.add(createTypeBtn("ЦВЕТ", ActionType.COLOR_CHECK, typeRow2, allTypeButtons) { updateDynamicSections() })
+ 246 | [D:2] |         contentLayout.addView(typeRow2)
+ 247 | [D:2] | 
+ 248 | [D:2] |         val tvLogicLabel = createCategoryLabel("3. СЦЕНАРИИ И ЛОГИКА")
+ 249 | [D:2] |         contentLayout.addView(tvLogicLabel)
+ 250 | [D:2] |         val typeRow3 = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(3)) }
+ 251 | [D:2] |         allTypeButtons.add(createTypeBtn("ПОДПРОГРАММА", ActionType.SUBROUTINE, typeRow3, allTypeButtons) { updateDynamicSections() })
+ 252 | [D:2] |         allTypeButtons.add(createTypeBtn("ВОЗВРАТ", ActionType.RETURN, typeRow3, allTypeButtons) { updateDynamicSections() })
+ 253 | [D:2] |         contentLayout.addView(typeRow3)
+ 254 | [D:2] | 
+ 255 | [D:2] |         val layoutPinch = LinearLayout(context).apply {
+ 256 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 257 | [D:3] |             background = GradientDrawable().apply {
+ 258 | [D:4] |                 setColor("#161B22".toColorInt())
+ 259 | [D:4] |                 cornerRadius = dpF(8f)
+ 260 | [D:4] |                 setStroke(dp(1), "#38BDF8".toColorInt())
+ 261 | [D:3] |             }
+ 262 | [D:3] |             val p = dp(6)
+ 263 | [D:3] |             setPadding(p, p, p, p)
+ 264 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+ 265 | [D:4] |                 val m = dp(3)
+ 266 | [D:4] |                 setMargins(0, m, 0, m)
+ 267 | [D:3] |             }
+ 268 | [D:2] |         }
+ 269 | [D:2] |         layoutPinchRef = layoutPinch
+ 270 | [D:2] |         val (etPinchStart, _) = createNumericInputWithSteppers(layoutPinch, "Начальное расстояние пальцев (px):", action.pinchStartDistance.toInt().toString(), 50L)
+ 271 | [D:2] |         val (etPinchEnd, _) = createNumericInputWithSteppers(layoutPinch, "Конечное расстояние пальцев (px):", action.pinchEndDistance.toInt().toString(), 50L)
+ 272 | [D:2] |         contentLayout.addView(layoutPinch)
+ 273 | [D:2] | 
+ 274 | [D:2] |         val layoutTriggerCard = LinearLayout(context).apply {
+ 275 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 276 | [D:3] |             background = GradientDrawable(
+ 277 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 278 | [D:3] |                 intArrayOf("#161B22".toColorInt(), "#0D1117".toColorInt())
+ 279 | [D:3] |             ).apply {
+ 280 | [D:4] |                 cornerRadius = dpF(8f)
+ 281 | [D:4] |                 setStroke(dp(1), "#FB923C".toColorInt())
+ 282 | [D:3] |             }
+ 283 | [D:3] |             val p = dp(6)
+ 284 | [D:3] |             setPadding(p, p, p, p)
+ 285 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+ 286 | [D:4] |                 val m = dp(3)
+ 287 | [D:4] |                 setMargins(0, m, 0, m)
+ 288 | [D:3] |             }
+ 289 | [D:2] |         }
+ 290 | [D:2] |         layoutTriggerCardRef = layoutTriggerCard
+ 291 | [D:2] | 
+ 292 | [D:2] |         val tvCardHeader = TextView(context).apply {
+ 293 | [D:3] |             textSize = 8.5f
+ 294 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 295 | [D:3] |             setTextColor("#FB923C".toColorInt())
+ 296 | [D:2] |         }
+ 297 | [D:2] |         layoutTriggerCard.addView(tvCardHeader)
+ 298 | [D:2] | 
+ 299 | [D:2] |         val previewRow = LinearLayout(context).apply {
+ 300 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 301 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 302 | [D:3] |             setPadding(0, dp(4), 0, dp(4))
+ 303 | [D:2] |         }
+ 304 | [D:2] | 
+ 305 | [D:2] |         val previewView = MaskPreviewView(context).apply {
+ 306 | [D:3] |             layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
+ 307 | [D:2] |         }
+ 308 | [D:2] |         previewRow.addView(previewView)
+ 309 | [D:2] | 
+ 310 | [D:2] |         val metaInfoLayout = LinearLayout(context).apply {
+ 311 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 312 | [D:3] |             setPadding(dp(8), 0, 0, 0)
+ 313 | [D:2] |         }
+ 314 | [D:2] |         val tvTplName = TextView(context).apply {
+ 315 | [D:3] |             textSize = 8.5f
+ 316 | [D:3] |             typeface = Typeface.MONOSPACE
+ 317 | [D:3] |             setTextColor(Color.WHITE)
+ 318 | [D:2] |         }
+ 319 | [D:2] |         metaInfoLayout.addView(tvTplName)
+ 320 | [D:2] | 
+ 321 | [D:2] |         val tvTplSpecs = TextView(context).apply {
+ 322 | [D:3] |             textSize = 7.5f
+ 323 | [D:3] |             setTextColor("#8B949E".toColorInt())
+ 324 | [D:2] |         }
+ 325 | [D:2] |         metaInfoLayout.addView(tvTplSpecs)
+ 326 | [D:2] |         previewRow.addView(metaInfoLayout, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+ 327 | [D:2] |         layoutTriggerCard.addView(previewRow)
+ 328 | [D:2] | 
+ 329 | [D:2] |         val allTemplates = templateRepository.loadAllTemplates()
+ 330 | [D:2] | 
+ 331 | [D:2] |         fun applyTemplateMetadata(path: String) {
+ 332 | [D:3] |             val meta = templateRepository.getTemplateMetadata(path) ?: return
+ 333 | [D:3] |             
+ 334 | [D:3] |             meta["similarityPercent"]?.let { currentActionSimilarity = (it as? Int) ?: 88 }
+ 335 | [D:3] |             meta["isMultiScaleMode"]?.let { isMultiScale = (it as? Boolean) ?: false }
+ 336 | [D:3] |             meta["isShapeOnlyMode"]?.let { isShapeOnly = (it as? Boolean) ?: false }
+ 337 | [D:3] |             meta["colorDeltaEMode"]?.let { isDeltaEMode = (it as? Boolean) ?: false }
+ 338 | [D:3] |             
+ 339 | [D:3] |             tvSimRef?.text = "ПОРОГ: $currentActionSimilarity%"
+ 340 | [D:3] |             
+ 341 | [D:3] |             val btnScaleStr = if (isMultiScale) "МАСШТАБ: ПИРАМИДА (0.88x - 1.12x)" else "МАСШТАБ: ФИКСИРОВАННЫЙ (1:1)"
+ 342 | [D:3] |             btnToggleScaleRef?.text = btnScaleStr
+ 343 | [D:3] |             btnToggleScaleRef?.setTextColor(if (isMultiScale) Color.BLACK else Color.WHITE)
+ 344 | [D:3] |             btnToggleScaleRef?.background = GradientDrawable().apply {
+ 345 | [D:4] |                 setColor(if (isMultiScale) "#00F5D4".toColorInt() else "#21262D".toColorInt())
+ 346 | [D:4] |                 cornerRadius = dpF(4f)
+ 347 | [D:3] |             }
+ 348 | [D:3] | 
+ 349 | [D:3] |             btnToggleShapeRef?.text = if (isShapeOnly) "РЕЖИМ: ТОЛЬКО ФОРМА" else "РЕЖИМ: ГИБРИД"
+ 350 | [D:3] |             btnToggleShapeRef?.setTextColor(Color.BLACK)
+ 351 | [D:3] |             btnToggleShapeRef?.background = GradientDrawable().apply {
+ 352 | [D:4] |                 setColor(if (isShapeOnly) "#FFB703".toColorInt() else "#00F5D4".toColorInt())
+ 353 | [D:4] |                 cornerRadius = dpF(4f)
+ 354 | [D:3] |             }
+ 355 | [D:3] |             Toast.makeText(context, "Все параметры формы загружены из шаблона", Toast.LENGTH_SHORT).show()
+ 356 | [D:2] |         }
+ 357 | [D:2] | 
+ 358 | [D:2] |         fun updateMultiSelectHeader() {
+ 359 | [D:3] |             val count = selectedMultiPaths.size
+ 360 | [D:3] |             tvCardHeader.text = "МУЛЬТИПОИСК ($count из ${allTemplates.size} выбрано):"
+ 361 | [D:2] |         }
+ 362 | [D:2] | 
+ 363 | [D:2] |         fun refreshActiveTemplateCard() {
+ 364 | [D:3] |             updateMultiSelectHeader()
+ 365 | [D:3] |             val effectivePrimary = boundTemplatePath.ifBlank { selectedMultiPaths.firstOrNull() ?: "" }
+ 366 | [D:3] |             val bmp = if (effectivePrimary.isNotBlank()) templateRepository.getTemplate(effectivePrimary) else null
+ 367 | [D:3] |             if (bmp != null && !bmp.isRecycled) {
+ 368 | [D:4] |                 previewView.bind(bmp, isMask = true, isCircle = action.isCircleShape)
+ 369 | [D:4] |                 tvTplName.text = File(effectivePrimary).nameWithoutExtension
+ 370 | [D:4] |                 tvTplSpecs.text = "${bmp.width}x${bmp.height} px • В мультипоиске: ${selectedMultiPaths.size} цели"
+ 371 | [D:3] |             } else {
+ 372 | [D:4] |                 previewView.bind(null, isMask = false)
+ 373 | [D:4] |                 tvTplName.text = "Шаблоны не выбраны"
+ 374 | [D:4] |                 tvTplSpecs.text = "Выберите один или несколько ниже"
+ 375 | [D:3] |             }
+ 376 | [D:2] |         }
+ 377 | [D:2] |         refreshActiveTemplateCard()
+ 378 | [D:2] | 
+ 379 | [D:2] |         val multiControlRow = LinearLayout(context).apply {
+ 380 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 381 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 382 | [D:3] |             setPadding(0, dp(2), 0, dp(4))
+ 383 | [D:2] |         }
+ 384 | [D:2] | 
+ 385 | [D:2] |         val btnSelectAll = createSmallButton("ВЫБРАТЬ ВСЕ (${allTemplates.size})") {
+ 386 | [D:3] |             selectedMultiPaths.clear()
+ 387 | [D:3] |             allTemplates.forEach { selectedMultiPaths.add(it.first) }
+ 388 | [D:3] |             if (boundTemplatePath.isBlank() && allTemplates.isNotEmpty()) {
+ 389 | [D:4] |                 boundTemplatePath = allTemplates.first().first
+ 390 | [D:3] |             }
+ 391 | [D:3] |             refreshActiveTemplateCard()
+ 392 | [D:3] |             Toast.makeText(context, "Выбраны все ${allTemplates.size} шаблона", Toast.LENGTH_SHORT).show()
+ 393 | [D:2] |         }
+ 394 | [D:2] |         multiControlRow.addView(btnSelectAll, LinearLayout.LayoutParams(0, dp(24), 1.3f).apply { marginEnd = dp(2) })
+ 395 | [D:2] | 
+ 396 | [D:2] |         val btnSelectOnlyCurrent = createSmallButton("ТОЛЬКО ЭТОТ") {
+ 397 | [D:3] |             val primary = boundTemplatePath.ifBlank { selectedMultiPaths.firstOrNull() ?: "" }
+ 398 | [D:3] |             selectedMultiPaths.clear()
+ 399 | [D:3] |             if (primary.isNotBlank()) selectedMultiPaths.add(primary)
+ 400 | [D:3] |             refreshActiveTemplateCard()
+ 401 | [D:2] |         }
+ 402 | [D:2] |         multiControlRow.addView(btnSelectOnlyCurrent, LinearLayout.LayoutParams(0, dp(24), 1f))
+ 403 | [D:2] |         layoutTriggerCard.addView(multiControlRow)
+ 404 | [D:2] | 
+ 405 | [D:2] |         val libraryScroll = HorizontalScrollView(context).apply {
+ 406 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+ 407 | [D:2] |         }
+ 408 | [D:2] |         val libraryRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+ 409 | [D:2] | 
+ 410 | [D:2] |         fun renderCarouselItems() {
+ 411 | [D:3] |             libraryRow.removeAllViews()
+ 412 | [D:3] |             for ((path, bmp) in allTemplates) {
+ 413 | [D:4] |                 val isSelected = selectedMultiPaths.contains(path)
+ 414 | [D:4] |                 val isPrimary = (path == boundTemplatePath)
+ 415 | [D:4] | 
+ 416 | [D:4] |                 val thumbCard = FrameLayout(context).apply {
+ 417 | [D:5] |                     background = GradientDrawable().apply {
+ 418 | [D:6] |                         setColor(if (isSelected) "#2500F5D4".toColorInt() else "#21262D".toColorInt())
+ 419 | [D:6] |                         cornerRadius = dpF(6f)
+ 420 | [D:6] |                         setStroke(dp(1), if (isSelected) "#00F5D4".toColorInt() else "#30363D".toColorInt())
+ 421 | [D:5] |                     }
+ 422 | [D:5] |                     val p = dp(3)
+ 423 | [D:5] |                     setPadding(p, p, p, p)
+ 424 | [D:5] |                     layoutParams = LinearLayout.LayoutParams(dp(56), dp(66)).apply { marginEnd = dp(4) }
+ 425 | [D:5] |                     setOnClickListener {
+ 426 | [D:6] |                         if (selectedMultiPaths.contains(path)) {
+ 427 | [D:7] |                             if (selectedMultiPaths.size > 1) {
+ 428 | [D:8] |                                 selectedMultiPaths.remove(path)
+ 429 | [D:8] |                                 if (boundTemplatePath == path) {
+ 430 | [D:9] |                                     boundTemplatePath = selectedMultiPaths.first()
+ 431 | [D:8] |                                 }
+ 432 | [D:7] |                             } else {
+ 433 | [D:8] |                                 Toast.makeText(context, "Должен остаться хотя бы один шаблон", Toast.LENGTH_SHORT).show()
+ 434 | [D:7] |                             }
+ 435 | [D:6] |                         } else {
+ 436 | [D:7] |                             selectedMultiPaths.add(path)
+ 437 | [D:7] |                             boundTemplatePath = path
+ 438 | [D:7] |                             applyTemplateMetadata(path)
+ 439 | [D:6] |                         }
+ 440 | [D:6] |                         refreshActiveTemplateCard()
+ 441 | [D:6] |                         renderCarouselItems()
+ 442 | [D:5] |                     }
+ 443 | [D:4] |                 }
+ 444 | [D:4] | 
+ 445 | [D:4] |                 val contentLinear = LinearLayout(context).apply {
+ 446 | [D:5] |                     orientation = LinearLayout.VERTICAL
+ 447 | [D:5] |                     gravity = Gravity.CENTER
+ 448 | [D:4] |                 }
+ 449 | [D:4] |                 val iv = ImageView(context).apply {
+ 450 | [D:5] |                     setImageBitmap(bmp)
+ 451 | [D:5] |                     scaleType = ImageView.ScaleType.FIT_CENTER
+ 452 | [D:5] |                     layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
+ 453 | [D:4] |                 }
+ 454 | [D:4] |                 contentLinear.addView(iv)
+ 455 | [D:4] | 
+ 456 | [D:4] |                 val tvName = TextView(context).apply {
+ 457 | [D:5] |                     text = File(path).nameWithoutExtension.removePrefix("mask_").take(6)
+ 458 | [D:5] |                     textSize = 7f
+ 459 | [D:5] |                     typeface = Typeface.MONOSPACE
+ 460 | [D:5] |                     setTextColor(if (isSelected) "#00F5D4".toColorInt() else Color.WHITE)
+ 461 | [D:4] |                 }
+ 462 | [D:4] |                 contentLinear.addView(tvName)
+ 463 | [D:4] |                 thumbCard.addView(contentLinear, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+ 464 | [D:4] | 
+ 465 | [D:4] |                 if (isSelected) {
+ 466 | [D:5] |                     val tvCheck = TextView(context).apply {
+ 467 | [D:6] |                         text = if (isPrimary) "★" else "✓"
+ 468 | [D:6] |                         textSize = 7.5f
+ 469 | [D:6] |                         typeface = Typeface.DEFAULT_BOLD
+ 470 | [D:6] |                         setTextColor(Color.BLACK)
+ 471 | [D:6] |                         gravity = Gravity.CENTER
+ 472 | [D:6] |                         background = GradientDrawable().apply {
+ 473 | [D:7] |                             shape = GradientDrawable.OVAL
+ 474 | [D:7] |                             setColor((if (isPrimary) "#FFB703" else "#00F5D4").toColorInt())
+ 475 | [D:6] |                         }
+ 476 | [D:6] |                         layoutParams = FrameLayout.LayoutParams(dp(14), dp(14), Gravity.TOP or Gravity.END)
+ 477 | [D:5] |                     }
+ 478 | [D:5] |                     thumbCard.addView(tvCheck)
+ 479 | [D:4] |                 }
+ 480 | [D:4] | 
+ 481 | [D:4] |                 libraryRow.addView(thumbCard)
+ 482 | [D:3] |             }
+ 483 | [D:2] |         }
+ 484 | [D:2] |         renderCarouselItems()
+ 485 | [D:2] |         libraryScroll.addView(libraryRow)
+ 486 | [D:2] |         layoutTriggerCard.addView(libraryScroll)
+ 487 | [D:2] | 
+ 488 | [D:2] |         val btnToggleScale = Button(context).apply {
+ 489 | [D:3] |             text = if (isMultiScale) "МАСШТАБ: ПИРАМИДА (0.88x - 1.12x)" else "МАСШТАБ: ФИКСИРОВАННЫЙ (1:1)"
+ 490 | [D:3] |             textSize = 7.5f
+ 491 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 492 | [D:3] |             includeFontPadding = false
+ 493 | [D:3] |             setTextColor(if (isMultiScale) Color.BLACK else Color.WHITE)
+ 494 | [D:3] |             background = GradientDrawable().apply {
+ 495 | [D:4] |                 setColor(if (isMultiScale) "#00F5D4".toColorInt() else "#21262D".toColorInt())
+ 496 | [D:4] |                 cornerRadius = dpF(4f)
+ 497 | [D:3] |             }
+ 498 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 499 | [D:3] |             setPadding(dp(6), dp(4), dp(6), dp(4))
+ 500 | [D:3] |             setOnClickListener {
+ 501 | [D:4] |                 isMultiScale = !isMultiScale
+ 502 | [D:4] |                 text = if (isMultiScale) "МАСШТАБ: ПИРАМИДА (0.88x - 1.12x)" else "МАСШТАБ: ФИКСИРОВАННЫЙ (1:1)"
+ 503 | [D:4] |                 setTextColor(if (isMultiScale) Color.BLACK else Color.WHITE)
+ 504 | [D:4] |                 background = GradientDrawable().apply {
+ 505 | [D:5] |                     setColor(if (isMultiScale) "#00F5D4".toColorInt() else "#21262D".toColorInt())
+ 506 | [D:5] |                     cornerRadius = dpF(4f)
+ 507 | [D:4] |                 }
+ 508 | [D:3] |             }
+ 509 | [D:2] |         }
+ 510 | [D:2] |         btnToggleScaleRef = btnToggleScale
+ 511 | [D:2] |         layoutTriggerCard.addView(btnToggleScale, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(26)).apply { 
+ 512 | [D:3] |             topMargin = dp(4)
+ 513 | [D:3] |             bottomMargin = dp(2) 
+ 514 | [D:2] |         })
+ 515 | [D:2] | 
+ 516 | [D:2] |         val btnToggleShape = Button(context).apply {
+ 517 | [D:3] |             text = if (isShapeOnly) "РЕЖИМ: ТОЛЬКО ФОРМА" else "РЕЖИМ: ГИБРИД"
+ 518 | [D:3] |             textSize = 7.5f
+ 519 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 520 | [D:3] |             includeFontPadding = false
+ 521 | [D:3] |             setTextColor(Color.BLACK)
+ 522 | [D:3] |             background = GradientDrawable().apply {
+ 523 | [D:4] |                 setColor(if (isShapeOnly) "#FFB703".toColorInt() else "#00F5D4".toColorInt())
+ 524 | [D:4] |                 cornerRadius = dpF(4f)
+ 525 | [D:3] |             }
+ 526 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 527 | [D:3] |             setPadding(dp(6), dp(4), dp(6), dp(4))
+ 528 | [D:3] |             setOnClickListener {
+ 529 | [D:4] |                 isShapeOnly = !isShapeOnly
+ 530 | [D:4] |                 text = if (isShapeOnly) "РЕЖИМ: ТОЛЬКО ФОРМА" else "РЕЖИМ: ГИБРИД"
+ 531 | [D:4] |                 background = GradientDrawable().apply {
+ 532 | [D:5] |                     setColor(if (isShapeOnly) "#FFB703".toColorInt() else "#00F5D4".toColorInt())
+ 533 | [D:5] |                     cornerRadius = dpF(4f)
+ 534 | [D:4] |                 }
+ 535 | [D:3] |             }
+ 536 | [D:2] |         }
+ 537 | [D:2] |         btnToggleShapeRef = btnToggleShape
+ 538 | [D:2] |         layoutTriggerCard.addView(btnToggleShape, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(26)).apply { 
+ 539 | [D:3] |             bottomMargin = dp(4) 
+ 540 | [D:2] |         })
+ 541 | [D:2] | 
+ 542 | [D:2] |         val simRow = LinearLayout(context).apply {
+ 543 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 544 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 545 | [D:3] |             setPadding(0, dp(2), 0, dp(2))
+ 546 | [D:2] |         }
+ 547 | [D:2] |         
+ 548 | [D:2] |         val btnSyncMeta = Button(context).apply {
+ 549 | [D:3] |             text = "ИЗ ШАБЛОНА"
+ 550 | [D:3] |             textSize = 7.5f
+ 551 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 552 | [D:3] |             includeFontPadding = false
+ 553 | [D:3] |             setTextColor(Color.BLACK)
+ 554 | [D:3] |             background = GradientDrawable().apply {
+ 555 | [D:4] |                 setColor("#00F5D4".toColorInt())
+ 556 | [D:4] |                 cornerRadius = dpF(4f)
+ 557 | [D:3] |             }
+ 558 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 559 | [D:3] |             setPadding(dp(4), dp(2), dp(4), dp(2))
+ 560 | [D:3] |             setOnClickListener {
+ 561 | [D:4] |                 val effectivePrimary = boundTemplatePath.ifBlank { selectedMultiPaths.firstOrNull() ?: "" }
+ 562 | [D:4] |                 applyTemplateMetadata(effectivePrimary)
+ 563 | [D:3] |             }
+ 564 | [D:2] |         }
+ 565 | [D:2] |         simRow.addView(btnSyncMeta, LinearLayout.LayoutParams(dp(70), dp(24)).apply { marginEnd = dp(4) })
+ 566 | [D:2] | 
+ 567 | [D:2] |         val tvSim = TextView(context).apply {
+ 568 | [D:3] |             text = "ПОРОГ: $currentActionSimilarity%"
+ 569 | [D:3] |             textSize = 8.5f
+ 570 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 571 | [D:3] |             setTextColor("#FB923C".toColorInt())
+ 572 | [D:2] |         }
+ 573 | [D:2] |         tvSimRef = tvSim
+ 574 | [D:2] |         simRow.addView(tvSim, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+ 575 | [D:2] | 
+ 576 | [D:2] |         val btnSimMinus = createSmallButton("-5%") {
+ 577 | [D:3] |             currentActionSimilarity = (currentActionSimilarity - 5).coerceAtLeast(35)
+ 578 | [D:3] |             tvSim.text = "ПОРОГ: $currentActionSimilarity%"
+ 579 | [D:2] |         }
+ 580 | [D:2] |         simRow.addView(btnSimMinus, LinearLayout.LayoutParams(dp(36), dp(24)).apply { marginEnd = dp(2) })
+ 581 | [D:2] | 
+ 582 | [D:2] |         val btnSimPlus = createSmallButton("+5%") {
+ 583 | [D:3] |             currentActionSimilarity = (currentActionSimilarity + 5).coerceAtMost(98)
+ 584 | [D:3] |             tvSim.text = "ПОРОГ: $currentActionSimilarity%"
+ 585 | [D:2] |         }
+ 586 | [D:2] |         simRow.addView(btnSimPlus, LinearLayout.LayoutParams(dp(36), dp(24)))
+ 587 | [D:2] |         layoutTriggerCard.addView(simRow)
+ 588 | [D:2] |         contentLayout.addView(layoutTriggerCard)
+ 589 | [D:2] | 
+ 590 | [D:2] |         // Блок выбора ПОДПРОГРАММЫ
+ 591 | [D:2] |         val layoutSubroutinePicker = LinearLayout(context).apply {
+ 592 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 593 | [D:3] |             background = GradientDrawable().apply {
+ 594 | [D:4] |                 setColor("#161B22".toColorInt())
+ 595 | [D:4] |                 cornerRadius = dpF(8f)
+ 596 | [D:4] |                 setStroke(dp(1), "#A78BFA".toColorInt())
+ 597 | [D:3] |             }
+ 598 | [D:3] |             val p = dp(6)
+ 599 | [D:3] |             setPadding(p, p, p, p)
+ 600 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+ 601 | [D:4] |                 val m = dp(3)
+ 602 | [D:4] |                 setMargins(0, m, 0, m)
+ 603 | [D:3] |             }
+ 604 | [D:2] |         }
+ 605 | [D:2] |         layoutSubroutinePickerRef = layoutSubroutinePicker
+ 606 | [D:2] | 
+ 607 | [D:2] |         val etSubroutineName = createTextInput(layoutSubroutinePicker, "Целевой сценарий подпрограммы:", selectedSubroutineScenario)
+ 608 | [D:2] |         val availableScenarios = scenarioRepository.listScenarios()
+ 609 | [D:2] |         if (availableScenarios.isNotEmpty()) {
+ 610 | [D:3] |             val scScroll = HorizontalScrollView(context).apply {
+ 611 | [D:4] |                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+ 612 | [D:5] |                     topMargin = dp(4)
+ 613 | [D:4] |                 }
+ 614 | [D:3] |             }
+ 615 | [D:3] |             val scRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+ 616 | [D:3] |             for (sc in availableScenarios) {
+ 617 | [D:4] |                 val btnSc = createSmallButton(sc) {
+ 618 | [D:5] |                     selectedSubroutineScenario = sc
+ 619 | [D:5] |                     etSubroutineName.setText(sc)
+ 620 | [D:4] |                 }
+ 621 | [D:4] |                 scRow.addView(btnSc, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)).apply { marginEnd = dp(3) })
+ 622 | [D:3] |             }
+ 623 | [D:3] |             scScroll.addView(scRow)
+ 624 | [D:3] |             layoutSubroutinePicker.addView(scScroll)
+ 625 | [D:2] |         }
+ 626 | [D:2] |         contentLayout.addView(layoutSubroutinePicker)
+ 627 | [D:2] | 
+ 628 | [D:2] |         // Блок таймингов со степперами
+ 629 | [D:2] |         val layoutTimings = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+ 630 | [D:2] |         layoutTimingsRef = layoutTimings
+ 631 | [D:2] | 
+ 632 | [D:2] |         val (etDelay, _) = createNumericInputWithSteppers(layoutTimings, "Пауза шага (мс):", action.delayMs.toString(), 50L)
+ 633 | [D:2] |         val (etHold, _) = createNumericInputWithSteppers(layoutTimings, "Длительность нажатия (мс):", action.holdDurationMs.toString(), 20L)
+ 634 | [D:2] |         val (etRepeats, _) = createNumericInputWithSteppers(layoutTimings, "Повторения (0 = бесконечно):", action.repeatCount.toString(), 1L)
+ 635 | [D:2] |         val (etRadius, _) = createNumericInputWithSteppers(layoutTimings, "Разброс радиуса (px):", action.randomRadiusPx.toString(), 1L)
+ 636 | [D:2] |         contentLayout.addView(layoutTimings)
+ 637 | [D:2] | 
+ 638 | [D:2] |         // Таймаут
+ 639 | [D:2] |         val layoutTimeout = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+ 640 | [D:2] |         layoutTimeoutRef = layoutTimeout
+ 641 | [D:2] |         val (etAiTimeout, _) = createNumericInputWithSteppers(layoutTimeout, "Таймаут поиска (сек):", (if (action.aiTimeoutSeconds > 0) action.aiTimeoutSeconds else 5).toString(), 1L)
+ 642 | [D:2] |         contentLayout.addView(layoutTimeout)
+ 643 | [D:2] | 
+ 644 | [D:2] |         // Блок УСЛОВНЫХ ПЕРЕХОДОВ И ВЕТВЛЕНИЙ
+ 645 | [D:2] |         val layoutJumps = LinearLayout(context).apply {
+ 646 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 647 | [D:3] |             tag = "JUMPS_SECTION"
+ 648 | [D:3] |             background = GradientDrawable().apply {
+ 649 | [D:4] |                 setColor("#161B22".toColorInt())
+ 650 | [D:4] |                 cornerRadius = dpF(8f)
+ 651 | [D:4] |                 setStroke(dp(1), "#10B981".toColorInt())
+ 652 | [D:3] |             }
+ 653 | [D:3] |             val p = dp(6)
+ 654 | [D:3] |             setPadding(p, p, p, p)
+ 655 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+ 656 | [D:4] |                 val m = dp(3)
+ 657 | [D:4] |                 setMargins(0, m, 0, m)
+ 658 | [D:3] |             }
+ 659 | [D:2] |         }
+ 660 | [D:2] |         layoutJumpsRef = layoutJumps
+ 661 | [D:2] | 
+ 662 | [D:2] |         val (etJumpMatch, _) = createNumericInputWithSteppers(layoutJumps, "Переход при совпадении (Шаг #, 0 = След.):", (action.jumpToStepOnMatch ?: 0).toString(), 1L)
+ 663 | [D:2] |         val (etJumpTimeout, _) = createNumericInputWithSteppers(layoutJumps, "Переход при таймауте (Шаг #, 0 = След.):", (action.jumpToStepOnTimeout ?: 0).toString(), 1L)
+ 664 | [D:2] |         contentLayout.addView(layoutJumps)
+ 665 | [D:2] | 
+ 666 | [D:2] |         // OCR
+ 667 | [D:2] |         val layoutOcr = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+ 668 | [D:2] |         layoutOcrRef = layoutOcr
+ 669 | [D:2] |         val etOcrQuery = createTextInput(layoutOcr, "Искомый текст / Выражение:", action.targetScriptOrQuery)
+ 670 | [D:2] | 
+ 671 | [D:2] |         val ocrChipsRow = LinearLayout(context).apply {
+ 672 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 673 | [D:3] |             setPadding(0, dp(2), 0, dp(4))
+ 674 | [D:2] |         }
+ 675 | [D:2] |         val btnChipGold = createSmallButton("{gold}>=10k") { etOcrQuery.setText("{gold} >= 10k") }
+ 676 | [D:2] |         ocrChipsRow.addView(btnChipGold, LinearLayout.LayoutParams(0, dp(22), 1f).apply { marginEnd = dp(2) })
+ 677 | [D:2] |         val btnChipHp = createSmallButton("{hp}<=30") { etOcrQuery.setText("{hp} <= 30") }
+ 678 | [D:2] |         ocrChipsRow.addView(btnChipHp, LinearLayout.LayoutParams(0, dp(22), 1f).apply { marginEnd = dp(2) })
+ 679 | [D:2] |         val btnChipRegex = createSmallButton("Regex") { etOcrQuery.setText("regex:\\b(\\d+k?)\\b") }
+ 680 | [D:2] |         ocrChipsRow.addView(btnChipRegex, LinearLayout.LayoutParams(0, dp(22), 1f))
+ 681 | [D:2] |         layoutOcr.addView(ocrChipsRow)
+ 682 | [D:2] |         contentLayout.addView(layoutOcr)
+ 683 | [D:2] | 
+ 684 | [D:2] |         // Цвет
+ 685 | [D:2] |         val layoutColor = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+ 686 | [D:2] |         layoutColorRef = layoutColor
+ 687 | [D:2] |         val etColorHex = createTextInput(layoutColor, "HEX цвет пикселя (#RRGGBB):", action.targetColorHex)
+ 688 | [D:2] |         val (etColorTolerance, _) = createNumericInputWithSteppers(layoutColor, "Допуск цвета (0..100):", action.colorTolerance.toString(), 5L)
+ 689 | [D:2] | 
+ 690 | [D:2] |         val btnToggleDeltaE = Button(context).apply {
+ 691 | [D:3] |             text = if (isDeltaEMode) "КОЛОРИМЕТРИЯ: CIELAB DELTA-E (СВЕТОСТОЙКИЙ)" else "КОЛОРИМЕТРИЯ: sRGB ЕВКЛИД"
+ 692 | [D:3] |             textSize = 7.5f
+ 693 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 694 | [D:3] |             includeFontPadding = false
+ 695 | [D:3] |             setTextColor(if (isDeltaEMode) Color.BLACK else Color.WHITE)
+ 696 | [D:3] |             background = GradientDrawable().apply {
+ 697 | [D:4] |                 setColor(if (isDeltaEMode) "#EC4899".toColorInt() else "#21262D".toColorInt())
+ 698 | [D:4] |                 cornerRadius = dpF(4f)
+ 699 | [D:3] |             }
+ 700 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 701 | [D:3] |             setPadding(dp(6), dp(4), dp(6), dp(4))
+ 702 | [D:3] |             setOnClickListener {
+ 703 | [D:4] |                 isDeltaEMode = !isDeltaEMode
+ 704 | [D:4] |                 text = if (isDeltaEMode) "КОЛОРИМЕТРИЯ: CIELAB DELTA-E (СВЕТОСТОЙКИЙ)" else "КОЛОРИМЕТРИЯ: sRGB ЕВКЛИД"
+ 705 | [D:4] |                 setTextColor(if (isDeltaEMode) Color.BLACK else Color.WHITE)
+ 706 | [D:4] |                 background = GradientDrawable().apply {
+ 707 | [D:5] |                     setColor(if (isDeltaEMode) "#EC4899".toColorInt() else "#21262D".toColorInt())
+ 708 | [D:5] |                     cornerRadius = dpF(4f)
+ 709 | [D:4] |                 }
+ 710 | [D:3] |             }
+ 711 | [D:2] |         }
+ 712 | [D:2] |         layoutColor.addView(btnToggleDeltaE, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(26)).apply {
+ 713 | [D:3] |             topMargin = dp(2)
+ 714 | [D:3] |             bottomMargin = dp(4)
+ 715 | [D:2] |         })
+ 716 | [D:2] |         contentLayout.addView(layoutColor)
+ 717 | [D:2] | 
+ 718 | [D:2] |         scrollView.addView(contentLayout)
+ 719 | [D:2] |         rootCard.addView(scrollView)
+ 720 | [D:2] | 
+ 721 | [D:2] |         val actionRow = LinearLayout(context).apply {
+ 722 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 723 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 724 | [D:3] |             setPadding(0, dp(4), 0, 0)
+ 725 | [D:2] |         }
+ 726 | [D:2] | 
+ 727 | [D:2] |         val btnClone = createTextActionButton("КЛОН", "#21262D", "#58A6FF") {
+ 728 | [D:3] |             dismiss()
+ 729 | [D:3] |             onClone(action)
+ 730 | [D:2] |         }
+ 731 | [D:2] |         actionRow.addView(btnClone, LinearLayout.LayoutParams(0, dp(34), 0.9f).apply { marginEnd = dp(2) })
+ 732 | [D:2] | 
+ 733 | [D:2] |         val btnCalib = createTextActionButton("КАЛИБР", "#1F6FEB", "#FFFFFF") {
+ 734 | [D:3] |             dismiss()
+ 735 | [D:3] |             onCalibrate(action.copy(templatePath = boundTemplatePath))
+ 736 | [D:2] |         }
+ 737 | [D:2] |         actionRow.addView(btnCalib, LinearLayout.LayoutParams(0, dp(34), 1.1f).apply { marginEnd = dp(2) })
+ 738 | [D:2] | 
+ 739 | [D:2] |         val btnRoi = createTextActionButton("ROI", "#21262D", "#FFB703") {
+ 740 | [D:3] |             dismiss()
+ 741 | [D:3] |             onSelectRoi?.invoke(action)
+ 742 | [D:2] |         }
+ 743 | [D:2] |         actionRow.addView(btnRoi, LinearLayout.LayoutParams(0, dp(34), 0.8f).apply { marginEnd = dp(2) })
+ 744 | [D:2] | 
+ 745 | [D:2] |         val btnTest = createTextActionButton("ТЕСТ", "#21262D", "#00F5D4") {
+ 746 | [D:3] |             val jumpM = etJumpMatch.text.toString().toIntOrNull()?.let { if (it > 0) it else null }
+ 747 | [D:3] |             val jumpT = etJumpTimeout.text.toString().toIntOrNull()?.let { if (it > 0) it else null }
+ 748 | [D:3] |             val subTarget = if (selectedType == ActionType.SUBROUTINE) etSubroutineName.text.toString().trim() else action.subroutineTarget
+ 749 | [D:3] | 
+ 750 | [D:3] |             val currentAct = action.copy(
+ 751 | [D:3] |                 type = selectedType,
+ 752 | [D:3] |                 templatePath = boundTemplatePath,
+ 753 | [D:3] |                 multiTemplatePaths = selectedMultiPaths.toList(),
+ 754 | [D:3] |                 similarityPercent = currentActionSimilarity,
+ 755 | [D:3] |                 isMultiScaleMode = isMultiScale,
+ 756 | [D:3] |                 colorDeltaEMode = isDeltaEMode,
+ 757 | [D:3] |                 isShapeOnlyMode = isShapeOnly,
+ 758 | [D:3] |                 pinchStartDistance = etPinchStart.text.toString().toFloatOrNull() ?: action.pinchStartDistance,
+ 759 | [D:3] |                 pinchEndDistance = etPinchEnd.text.toString().toFloatOrNull() ?: action.pinchEndDistance,
+ 760 | [D:3] |                 delayMs = etDelay.text.toString().toLongOrNull() ?: action.delayMs,
+ 761 | [D:3] |                 holdDurationMs = etHold.text.toString().toLongOrNull() ?: action.holdDurationMs,
+ 762 | [D:3] |                 jumpToStepOnMatch = jumpM,
+ 763 | [D:3] |                 jumpToStepOnTimeout = jumpT,
+ 764 | [D:3] |                 subroutineTarget = subTarget,
+ 765 | [D:3] |                 subroutineTag = subTarget,
+ 766 | [D:3] |                 targetScriptOrQuery = when (selectedType) {
+ 767 | [D:4] |                     ActionType.SUBROUTINE -> subTarget
+ 768 | [D:4] |                     ActionType.OCR -> etOcrQuery.text.toString().trim()
+ 769 | [D:4] |                     else -> action.targetScriptOrQuery
+ 770 | [D:3] |                 },
+ 771 | [D:3] |                 targetColorHex = etColorHex.text.toString().trim(),
+ 772 | [D:3] |                 colorTolerance = etColorTolerance.text.toString().toIntOrNull() ?: 15
+ 773 | [D:3] |             )
+ 774 | [D:3] |             onTest?.invoke(currentAct)
+ 775 | [D:2] |         }
+ 776 | [D:2] |         actionRow.addView(btnTest, LinearLayout.LayoutParams(0, dp(34), 0.9f).apply { marginEnd = dp(2) })
+ 777 | [D:2] | 
+ 778 | [D:2] |         val btnDelete = createTextActionButton("УДАЛИТЬ", "#2A0E0C", "#F04438") {
+ 779 | [D:3] |             dismiss()
+ 780 | [D:3] |             onDelete(action)
+ 781 | [D:2] |         }
+ 782 | [D:2] |         actionRow.addView(btnDelete, LinearLayout.LayoutParams(0, dp(34), 1.0f).apply { marginEnd = dp(2) })
+ 783 | [D:2] | 
+ 784 | [D:2] |         val btnSave = createTextActionButton("СОХРАНИТЬ", "#10B981", "#FFFFFF") {
+ 785 | [D:3] |             val effectivePrimary = boundTemplatePath.ifBlank { selectedMultiPaths.firstOrNull() ?: "" }
+ 786 | [D:3] |             val jumpM = etJumpMatch.text.toString().toIntOrNull()?.let { if (it > 0) it else null }
+ 787 | [D:3] |             val jumpT = etJumpTimeout.text.toString().toIntOrNull()?.let { if (it > 0) it else null }
+ 788 | [D:3] |             val subTarget = if (selectedType == ActionType.SUBROUTINE) etSubroutineName.text.toString().trim() else action.subroutineTarget
+ 789 | [D:3] | 
+ 790 | [D:3] |             val updated = action.copy(
+ 791 | [D:3] |                 type = selectedType,
+ 792 | [D:3] |                 templatePath = effectivePrimary,
+ 793 | [D:3] |                 multiTemplatePaths = selectedMultiPaths.toList(),
+ 794 | [D:3] |                 similarityPercent = currentActionSimilarity,
+ 795 | [D:3] |                 isMultiScaleMode = isMultiScale,
+ 796 | [D:3] |                 colorDeltaEMode = isDeltaEMode,
+ 797 | [D:3] |                 isShapeOnlyMode = isShapeOnly,
+ 798 | [D:3] |                 pinchStartDistance = etPinchStart.text.toString().toFloatOrNull() ?: action.pinchStartDistance,
+ 799 | [D:3] |                 pinchEndDistance = etPinchEnd.text.toString().toFloatOrNull() ?: action.pinchEndDistance,
+ 800 | [D:3] |                 delayMs = etDelay.text.toString().toLongOrNull() ?: action.delayMs,
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_dialog_EditActionDialog.kt_part_01_lines_0001_to_0800.txt
+================================================================================

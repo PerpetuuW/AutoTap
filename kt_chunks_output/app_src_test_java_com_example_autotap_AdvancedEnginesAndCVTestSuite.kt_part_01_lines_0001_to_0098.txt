@@ -1,0 +1,108 @@
+================================================================================
+ FILE: app\src\test\java\com\example\autotap\AdvancedEnginesAndCVTestSuite.kt
+ PART: 1/1 | LINES: 1..98
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.core.safety.SafetyGovernor
+   4 | [D:0] | import com.example.autotap.domain.model.ActionType
+   5 | [D:0] | import org.junit.Assert.assertEquals
+   6 | [D:0] | import org.junit.Assert.assertFalse
+   7 | [D:0] | import org.junit.Assert.assertTrue
+   8 | [D:0] | import org.junit.Test
+   9 | [D:0] | import kotlin.math.abs
+  10 | [D:0] | import kotlin.math.atan2
+  11 | [D:0] | import kotlin.math.cos
+  12 | [D:0] | import kotlin.math.hypot
+  13 | [D:0] | import kotlin.math.min
+  14 | [D:0] | import kotlin.math.sin
+  15 | [D:0] | 
+  16 | [D:0] | class AdvancedEnginesAndCVTestSuite {
+  17 | [D:1] | 
+  18 | [D:1] |     @Test
+  19 | [D:1] |     fun testColorTolerance_BrightnessDriftResistance() {
+  20 | [D:2] |         val baseColor = 0x4080C0
+  21 | [D:2] |         val driftedColor = 0x5292D2
+  22 | [D:2] | 
+  23 | [D:2] |         val r1 = (baseColor shr 16) and 0xFF; val g1 = (baseColor shr 8) and 0xFF; val b1 = baseColor and 0xFF
+  24 | [D:2] |         val r2 = (driftedColor shr 16) and 0xFF; val g2 = (driftedColor shr 8) and 0xFF; val b2 = driftedColor and 0xFF
+  25 | [D:2] | 
+  26 | [D:2] |         val deltaTotal = abs(r1 - r2) + abs(g1 - g2) + abs(b1 - b2)
+  27 | [D:2] |         val tolerance = 20
+  28 | [D:2] |         assertTrue("Сдвиг яркости обязан укладываться в динамический допуск", deltaTotal <= tolerance * 3)
+  29 | [D:1] |     }
+  30 | [D:1] | 
+  31 | [D:1] |     @Test
+  32 | [D:1] |     fun testJoystickKnob_ClampsWithinMaxRadiusAcrossAllAngles() {
+  33 | [D:2] |         val maxRadiusPx = 50f
+  34 | [D:2] |         val testAnglesDegrees = listOf(0.0, 45.0, 90.0, 135.0, 180.0, -135.0, -90.0, -45.0)
+  35 | [D:2] | 
+  36 | [D:2] |         for (deg in testAnglesDegrees) {
+  37 | [D:3] |             val rad = Math.toRadians(deg)
+  38 | [D:3] |             val rawDist = 120.0
+  39 | [D:3] |             val rawDx = rawDist * cos(rad)
+  40 | [D:3] |             val rawDy = rawDist * sin(rad)
+  41 | [D:3] | 
+  42 | [D:3] |             val currentDist = hypot(rawDx, rawDy).toFloat()
+  43 | [D:3] |             val angle = atan2(rawDy, rawDx)
+  44 | [D:3] |             val clampedDist = min(currentDist, maxRadiusPx)
+  45 | [D:3] | 
+  46 | [D:3] |             val knobX = (clampedDist * cos(angle)).toFloat()
+  47 | [D:3] |             val knobY = (clampedDist * sin(angle)).toFloat()
+  48 | [D:3] |             val finalDist = hypot(knobX.toDouble(), knobY.toDouble()).toFloat()
+  49 | [D:3] | 
+  50 | [D:3] |             assertTrue("Смещение кноба не должно превышать макс. радиус", finalDist <= maxRadiusPx + 1e-3f)
+  51 | [D:3] |             assertEquals("Угол отклонения обязан сохраняться идеально", rad, angle, 1e-4)
+  52 | [D:2] |         }
+  53 | [D:1] |     }
+  54 | [D:1] | 
+  55 | [D:1] |     @Test
+  56 | [D:1] |     fun testThermalGovernor_StateTransitions() {
+  57 | [D:2] |         var isPlaying = true
+  58 | [D:2] |         var isPausedDueToThermal = false
+  59 | [D:2] | 
+  60 | [D:2] |         fun onTemperatureUpdate(tempCelsius: Float) {
+  61 | [D:3] |             if (tempCelsius >= 42.0f && isPlaying) {
+  62 | [D:4] |                 isPlaying = false
+  63 | [D:4] |                 isPausedDueToThermal = true
+  64 | [D:3] |             } else if (tempCelsius <= 38.0f && isPausedDueToThermal) {
+  65 | [D:4] |                 isPlaying = true
+  66 | [D:4] |                 isPausedDueToThermal = false
+  67 | [D:3] |             }
+  68 | [D:2] |         }
+  69 | [D:2] | 
+  70 | [D:2] |         onTemperatureUpdate(37.0f)
+  71 | [D:2] |         assertTrue("Макрос работает", isPlaying)
+  72 | [D:2] | 
+  73 | [D:2] |         onTemperatureUpdate(42.5f)
+  74 | [D:2] |         assertFalse("Макрос обязан встать на паузу при перегреве", isPlaying)
+  75 | [D:2] |         assertTrue(isPausedDueToThermal)
+  76 | [D:2] | 
+  77 | [D:2] |         onTemperatureUpdate(37.5f)
+  78 | [D:2] |         assertTrue("Макрос обязан автоматически возобновить работу после остывания", isPlaying)
+  79 | [D:2] |         assertFalse(isPausedDueToThermal)
+  80 | [D:1] |     }
+  81 | [D:1] | 
+  82 | [D:1] |     @Test
+  83 | [D:1] |     fun testPinchGeometryCalculation() {
+  84 | [D:2] |         val centerX = 500f
+  85 | [D:2] |         val startDist = 300f
+  86 | [D:2] |         val endDist = 600f
+  87 | [D:2] | 
+  88 | [D:2] |         val p1StartX = centerX - startDist / 2f
+  89 | [D:2] |         val p2StartX = centerX + startDist / 2f
+  90 | [D:2] |         val p1EndX = centerX - endDist / 2f
+  91 | [D:2] |         val p2EndX = centerX + endDist / 2f
+  92 | [D:2] | 
+  93 | [D:2] |         assertEquals(350f, p1StartX, 1e-3f)
+  94 | [D:2] |         assertEquals(650f, p2StartX, 1e-3f)
+  95 | [D:2] |         assertEquals(200f, p1EndX, 1e-3f)
+  96 | [D:2] |         assertEquals(800f, p2EndX, 1e-3f)
+  97 | [D:1] |     }
+  98 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_test_java_com_example_autotap_AdvancedEnginesAndCVTestSuite.kt_part_01_lines_0001_to_0098.txt
+================================================================================

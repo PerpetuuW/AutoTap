@@ -1,0 +1,278 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\dialog\EditActionDialog.kt
+ PART: 2/2 | LINES: 801..1068
+ START DEPTH: [D:3] | END DEPTH: [D:0]
+================================================================================
+
+ 801 | [D:3] |                 holdDurationMs = etHold.text.toString().toLongOrNull() ?: action.holdDurationMs,
+ 802 | [D:3] |                 repeatCount = etRepeats.text.toString().toIntOrNull() ?: 1,
+ 803 | [D:3] |                 randomRadiusPx = etRadius.text.toString().toIntOrNull() ?: 0,
+ 804 | [D:3] |                 aiTimeoutSeconds = etAiTimeout.text.toString().toIntOrNull() ?: 5,
+ 805 | [D:3] |                 jumpToStepOnMatch = jumpM,
+ 806 | [D:3] |                 jumpToStepOnTimeout = jumpT,
+ 807 | [D:3] |                 subroutineTarget = subTarget,
+ 808 | [D:3] |                 subroutineTag = subTarget,
+ 809 | [D:3] |                 targetScriptOrQuery = when (selectedType) {
+ 810 | [D:4] |                     ActionType.SUBROUTINE -> subTarget
+ 811 | [D:4] |                     ActionType.OCR -> etOcrQuery.text.toString().trim()
+ 812 | [D:4] |                     else -> action.targetScriptOrQuery
+ 813 | [D:3] |                 },
+ 814 | [D:3] |                 targetColorHex = etColorHex.text.toString().trim().ifEmpty { "#00F5D4" },
+ 815 | [D:3] |                 colorTolerance = etColorTolerance.text.toString().toIntOrNull() ?: 15,
+ 816 | [D:3] |                 roiLeft = currentRoiLeft,
+ 817 | [D:3] |                 roiTop = currentRoiTop,
+ 818 | [D:3] |                 roiRight = currentRoiRight,
+ 819 | [D:3] |                 roiBottom = currentRoiBottom
+ 820 | [D:3] |             )
+ 821 | [D:3] |             dismiss()
+ 822 | [D:3] |             onSave(updated)
+ 823 | [D:2] |         }
+ 824 | [D:2] |         actionRow.addView(btnSave, LinearLayout.LayoutParams(0, dp(34), 1.2f))
+ 825 | [D:2] |         rootCard.addView(actionRow)
+ 826 | [D:2] | 
+ 827 | [D:2] |         updateDynamicSections()
+ 828 | [D:2] | 
+ 829 | [D:2] |         val params = overlayWindowManager.createDialogLayoutParams(width = cardW, height = WindowManager.LayoutParams.WRAP_CONTENT)
+ 830 | [D:2] |         overlayWindowManager.addViewSafe(rootCard, params)
+ 831 | [D:1] |     }
+ 832 | [D:1] | 
+ 833 | [D:1] |     private fun hideKeyboard(view: View) {
+ 834 | [D:2] |         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+ 835 | [D:2] |         imm?.hideSoftInputFromWindow(view.windowToken, 0)
+ 836 | [D:2] |         view.clearFocus()
+ 837 | [D:1] |     }
+ 838 | [D:1] | 
+ 839 | [D:1] |     fun dismiss() {
+ 840 | [D:2] |         dialogView?.let {
+ 841 | [D:3] |             hideKeyboard(it)
+ 842 | [D:3] |             globalLayoutListener?.let { l -> it.viewTreeObserver.removeOnGlobalLayoutListener(l) }
+ 843 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 844 | [D:3] |             dialogView = null
+ 845 | [D:2] |         }
+ 846 | [D:1] |     }
+ 847 | [D:1] | 
+ 848 | [D:1] |     private fun createCategoryLabel(textStr: String): TextView {
+ 849 | [D:2] |         return TextView(context).apply {
+ 850 | [D:3] |             text = textStr
+ 851 | [D:3] |             textSize = 7.5f
+ 852 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 853 | [D:3] |             includeFontPadding = false
+ 854 | [D:3] |             setTextColor("#8B949E".toColorInt())
+ 855 | [D:3] |             setPadding(0, dp(3), 0, dp(1))
+ 856 | [D:2] |         }
+ 857 | [D:1] |     }
+ 858 | [D:1] | 
+ 859 | [D:1] |     private fun createNavVectorBtn(type: VectorIconDrawer.IconType, onClick: () -> Unit): View {
+ 860 | [D:2] |         return object : View(context) {
+ 861 | [D:3] |             private val bounds = RectF()
+ 862 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 863 | [D:4] |                 super.onDraw(canvas)
+ 864 | [D:4] |                 bounds.set(dpF(5f), dpF(5f), width - dpF(5f), height - dpF(5f))
+ 865 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, type, bounds, Color.WHITE, dpF(1.8f))
+ 866 | [D:3] |             }
+ 867 | [D:2] |         }.apply {
+ 868 | [D:3] |             background = GradientDrawable().apply {
+ 869 | [D:4] |                 setColor("#21262D".toColorInt())
+ 870 | [D:4] |                 cornerRadius = dpF(4f)
+ 871 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 872 | [D:3] |             }
+ 873 | [D:3] |             val sz = dp(26)
+ 874 | [D:3] |             layoutParams = LinearLayout.LayoutParams(sz, sz).apply {
+ 875 | [D:4] |                 val m = dp(1)
+ 876 | [D:4] |                 setMargins(m, 0, m, 0)
+ 877 | [D:3] |             }
+ 878 | [D:3] |             setOnClickListener { onClick() }
+ 879 | [D:2] |         }
+ 880 | [D:1] |     }
+ 881 | [D:1] | 
+ 882 | [D:1] |     private fun createTypeBtn(name: String, type: ActionType, parent: LinearLayout, allButtons: List<Button>, onSelect: () -> Unit): Button {
+ 883 | [D:2] |         val btn = Button(context).apply {
+ 884 | [D:3] |             text = name
+ 885 | [D:3] |             textSize = 7f
+ 886 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 887 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 888 | [D:3] |             includeFontPadding = false
+ 889 | [D:3] |             setPadding(0, 0, 0, 0)
+ 890 | [D:3] |             updateStyle(this, type == selectedType)
+ 891 | [D:3] |             setOnClickListener {
+ 892 | [D:4] |                 selectedType = type
+ 893 | [D:4] |                 allButtons.forEach { updateStyle(it, it.text == name) }
+ 894 | [D:4] |                 onSelect()
+ 895 | [D:3] |             }
+ 896 | [D:2] |         }
+ 897 | [D:2] |         parent.addView(btn, LinearLayout.LayoutParams(0, dp(26), 1f).apply {
+ 898 | [D:3] |             val m = dp(1)
+ 899 | [D:3] |             setMargins(m, m, m, m)
+ 900 | [D:2] |         })
+ 901 | [D:2] |         return btn
+ 902 | [D:1] |     }
+ 903 | [D:1] | 
+ 904 | [D:1] |     private fun updateStyle(btn: Button, isSelected: Boolean) {
+ 905 | [D:2] |         btn.setTextColor(if (isSelected) Color.BLACK else Color.WHITE)
+ 906 | [D:2] |         btn.background = GradientDrawable(
+ 907 | [D:2] |             GradientDrawable.Orientation.TOP_BOTTOM,
+ 908 | [D:2] |             if (isSelected) intArrayOf("#00F5D4".toColorInt(), "#00BB9E".toColorInt())
+ 909 | [D:2] |             else intArrayOf("#21262D".toColorInt(), "#161B22".toColorInt())
+ 910 | [D:2] |         ).apply {
+ 911 | [D:3] |             cornerRadius = dpF(4f)
+ 912 | [D:3] |             if (!isSelected) setStroke(dp(1), "#30363D".toColorInt())
+ 913 | [D:2] |         }
+ 914 | [D:1] |     }
+ 915 | [D:1] | 
+ 916 | [D:1] |     private fun createSmallButton(textStr: String, onClick: () -> Unit): Button {
+ 917 | [D:2] |         return Button(context).apply {
+ 918 | [D:3] |             text = textStr
+ 919 | [D:3] |             textSize = 7.5f
+ 920 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 921 | [D:3] |             includeFontPadding = false
+ 922 | [D:3] |             setTextColor(Color.WHITE)
+ 923 | [D:3] |             background = GradientDrawable().apply {
+ 924 | [D:4] |                 setColor("#21262D".toColorInt())
+ 925 | [D:4] |                 cornerRadius = dpF(4f)
+ 926 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 927 | [D:3] |             }
+ 928 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 929 | [D:3] |             setPadding(dp(4), dp(3), dp(4), dp(3))
+ 930 | [D:3] |             setOnClickListener { onClick() }
+ 931 | [D:2] |         }
+ 932 | [D:1] |     }
+ 933 | [D:1] | 
+ 934 | [D:1] |     private fun createTextActionButton(label: String, bgHex: String, textHex: String, onClick: () -> Unit): View {
+ 935 | [D:2] |         return Button(context).apply {
+ 936 | [D:3] |             text = label
+ 937 | [D:3] |             textSize = 8f
+ 938 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 939 | [D:3] |             includeFontPadding = false
+ 940 | [D:3] |             setTextColor(textHex.toColorInt())
+ 941 | [D:3] |             background = GradientDrawable(
+ 942 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 943 | [D:3] |                 intArrayOf(bgHex.toColorInt(), "#161B22".toColorInt())
+ 944 | [D:3] |             ).apply {
+ 945 | [D:4] |                 cornerRadius = dpF(6f)
+ 946 | [D:4] |                 setStroke(dp(1), textHex.toColorInt())
+ 947 | [D:3] |             }
+ 948 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 949 | [D:3] |             setPadding(dp(2), 0, dp(2), 0)
+ 950 | [D:3] |             setOnClickListener { onClick() }
+ 951 | [D:2] |         }
+ 952 | [D:1] |     }
+ 953 | [D:1] | 
+ 954 | [D:1] |     private fun createNumericInputWithSteppers(parent: LinearLayout, label: String, initialValue: String, stepDelta: Long): Pair<EditText, LinearLayout> {
+ 955 | [D:2] |         val container = LinearLayout(context).apply {
+ 956 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 957 | [D:3] |             setPadding(0, dp(2), 0, dp(2))
+ 958 | [D:2] |         }
+ 959 | [D:2] | 
+ 960 | [D:2] |         val tv = TextView(context).apply {
+ 961 | [D:3] |             text = label
+ 962 | [D:3] |             textSize = 8.5f
+ 963 | [D:3] |             includeFontPadding = false
+ 964 | [D:3] |             setTextColor("#8B949E".toColorInt())
+ 965 | [D:3] |             setPadding(0, dp(2), 0, dp(1))
+ 966 | [D:2] |         }
+ 967 | [D:2] |         container.addView(tv)
+ 968 | [D:2] | 
+ 969 | [D:2] |         val inputRow = LinearLayout(context).apply {
+ 970 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 971 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 972 | [D:2] |         }
+ 973 | [D:2] | 
+ 974 | [D:2] |         val et = EditText(context).apply {
+ 975 | [D:3] |             setText(initialValue)
+ 976 | [D:3] |             isFocusable = true
+ 977 | [D:3] |             isFocusableInTouchMode = true
+ 978 | [D:3] |             textSize = 10.5f
+ 979 | [D:3] |             setTextColor(Color.WHITE)
+ 980 | [D:3] |             includeFontPadding = false
+ 981 | [D:3] |             inputType = InputType.TYPE_CLASS_NUMBER
+ 982 | [D:3] |             imeOptions = EditorInfo.IME_ACTION_DONE
+ 983 | [D:3] |             background = GradientDrawable().apply {
+ 984 | [D:4] |                 setColor("#161B22".toColorInt())
+ 985 | [D:4] |                 cornerRadius = dpF(4f)
+ 986 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+ 987 | [D:3] |             }
+ 988 | [D:3] |             val p = dp(5)
+ 989 | [D:3] |             setPadding(p, p, p, p)
+ 990 | [D:3] |             layoutParams = LinearLayout.LayoutParams(0, dp(30), 1f).apply { marginEnd = dp(4) }
+ 991 | [D:3] |             setOnTouchListener { v, event ->
+ 992 | [D:4] |                 if (event.action == MotionEvent.ACTION_UP) {
+ 993 | [D:5] |                     v.requestFocus()
+ 994 | [D:5] |                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+ 995 | [D:6] |                         v.windowInsetsController?.show(WindowInsets.Type.ime())
+ 996 | [D:5] |                     }
+ 997 | [D:5] |                     val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+ 998 | [D:5] |                     @Suppress("DEPRECATION")
+ 999 | [D:5] |                     imm?.showSoftInput(v, InputMethodManager.SHOW_IMPLICIT)
+1000 | [D:4] |                 }
+1001 | [D:4] |                 false
+1002 | [D:3] |             }
+1003 | [D:2] |         }
+1004 | [D:2] |         inputRow.addView(et)
+1005 | [D:2] | 
+1006 | [D:2] |         val btnMinus = createSmallButton("-$stepDelta") {
+1007 | [D:3] |             val cur = et.text.toString().toLongOrNull() ?: 0L
+1008 | [D:3] |             val next = (cur - stepDelta).coerceAtLeast(0L)
+1009 | [D:3] |             et.setText(next.toString())
+1010 | [D:2] |         }
+1011 | [D:2] |         inputRow.addView(btnMinus, LinearLayout.LayoutParams(dp(36), dp(28)).apply { marginEnd = dp(2) })
+1012 | [D:2] | 
+1013 | [D:2] |         val btnPlus = createSmallButton("+$stepDelta") {
+1014 | [D:3] |             val cur = et.text.toString().toLongOrNull() ?: 0L
+1015 | [D:3] |             val next = cur + stepDelta
+1016 | [D:3] |             et.setText(next.toString())
+1017 | [D:2] |         }
+1018 | [D:2] |         inputRow.addView(btnPlus, LinearLayout.LayoutParams(dp(36), dp(28)))
+1019 | [D:2] | 
+1020 | [D:2] |         container.addView(inputRow)
+1021 | [D:2] |         parent.addView(container)
+1022 | [D:2] |         return Pair(et, container)
+1023 | [D:1] |     }
+1024 | [D:1] | 
+1025 | [D:1] |     private fun createTextInput(parent: LinearLayout, label: String, initialValue: String): EditText {
+1026 | [D:2] |         val tv = TextView(context).apply {
+1027 | [D:3] |             text = label
+1028 | [D:3] |             textSize = 8.5f
+1029 | [D:3] |             includeFontPadding = false
+1030 | [D:3] |             setTextColor("#8B949E".toColorInt())
+1031 | [D:3] |             setPadding(0, dp(2), 0, dp(1))
+1032 | [D:2] |         }
+1033 | [D:2] |         parent.addView(tv)
+1034 | [D:2] | 
+1035 | [D:2] |         val et = EditText(context).apply {
+1036 | [D:3] |             setText(initialValue)
+1037 | [D:3] |             isFocusable = true
+1038 | [D:3] |             isFocusableInTouchMode = true
+1039 | [D:3] |             textSize = 10.5f
+1040 | [D:3] |             setTextColor(Color.WHITE)
+1041 | [D:3] |             includeFontPadding = false
+1042 | [D:3] |             inputType = InputType.TYPE_CLASS_TEXT
+1043 | [D:3] |             imeOptions = EditorInfo.IME_ACTION_DONE
+1044 | [D:3] |             background = GradientDrawable().apply {
+1045 | [D:4] |                 setColor("#161B22".toColorInt())
+1046 | [D:4] |                 cornerRadius = dpF(4f)
+1047 | [D:4] |                 setStroke(dp(1), "#30363D".toColorInt())
+1048 | [D:3] |             }
+1049 | [D:3] |             val p = dp(5)
+1050 | [D:3] |             setPadding(p, p, p, p)
+1051 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(30))
+1052 | [D:3] |             setOnTouchListener { v, event ->
+1053 | [D:4] |                 if (event.action == MotionEvent.ACTION_UP) {
+1054 | [D:5] |                     v.requestFocus()
+1055 | [D:5] |                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+1056 | [D:6] |                         v.windowInsetsController?.show(WindowInsets.Type.ime())
+1057 | [D:5] |                     }
+1058 | [D:5] |                     val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+1059 | [D:5] |                     @Suppress("DEPRECATION")
+1060 | [D:5] |                     imm?.showSoftInput(v, InputMethodManager.SHOW_IMPLICIT)
+1061 | [D:4] |                 }
+1062 | [D:4] |                 false
+1063 | [D:3] |             }
+1064 | [D:2] |         }
+1065 | [D:2] |         parent.addView(et)
+1066 | [D:2] |         return et
+1067 | [D:1] |     }
+1068 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_dialog_EditActionDialog.kt_part_02_lines_0801_to_1068.txt
+================================================================================

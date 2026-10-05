@@ -1,0 +1,92 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\core\math\PathCompressionEngine.kt
+ PART: 1/1 | LINES: 1..82
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.core.math
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.domain.model.Point2D
+   4 | [D:0] | import kotlin.math.abs
+   5 | [D:0] | import kotlin.math.hypot
+   6 | [D:0] | 
+   7 | [D:0] | object PathCompressionEngine {
+   8 | [D:1] | 
+   9 | [D:1] |     /**
+  10 | [D:1] |      * Сжимает последовательность точек жеста алгоритмом Рамера — Дугласа — Пекера (RDP).
+  11 | [D:1] |      * Гарантирует строгое соблюдение лимита вершин AOSP (maxPoints <= 80).
+  12 | [D:1] |      */
+  13 | [D:1] |     fun compressPath(points: List<Point2D>, maxPoints: Int = 80, initialEpsilon: Float = 3.5f): List<Point2D> {
+  14 | [D:2] |         if (points.size <= 2) return points
+  15 | [D:2] |         var eps = initialEpsilon
+  16 | [D:2] |         var compressed = rdpRecursive(points, eps)
+  17 | [D:2] | 
+  18 | [D:2] |         var iterations = 0
+  19 | [D:2] |         while (compressed.size > maxPoints && iterations < 8) {
+  20 | [D:3] |             eps *= 1.45f
+  21 | [D:3] |             compressed = rdpRecursive(points, eps)
+  22 | [D:3] |             iterations++
+  23 | [D:2] |         }
+  24 | [D:2] | 
+  25 | [D:2] |         if (compressed.size > maxPoints) {
+  26 | [D:3] |             compressed = downsampleFixed(compressed, maxPoints)
+  27 | [D:2] |         }
+  28 | [D:2] | 
+  29 | [D:2] |         return compressed
+  30 | [D:1] |     }
+  31 | [D:1] | 
+  32 | [D:1] |     private fun rdpRecursive(points: List<Point2D>, epsilon: Float): List<Point2D> {
+  33 | [D:2] |         if (points.size <= 2) return points
+  34 | [D:2] | 
+  35 | [D:2] |         var maxDistance = 0f
+  36 | [D:2] |         var maxIndex = 0
+  37 | [D:2] | 
+  38 | [D:2] |         val start = points.first()
+  39 | [D:2] |         val end = points.last()
+  40 | [D:2] | 
+  41 | [D:2] |         for (i in 1 until points.size - 1) {
+  42 | [D:3] |             val dist = perpendicularDistance(points[i], start, end)
+  43 | [D:3] |             if (dist > maxDistance) {
+  44 | [D:4] |                 maxDistance = dist
+  45 | [D:4] |                 maxIndex = i
+  46 | [D:3] |             }
+  47 | [D:2] |         }
+  48 | [D:2] | 
+  49 | [D:2] |         return if (maxDistance > epsilon) {
+  50 | [D:3] |             val left = rdpRecursive(points.subList(0, maxIndex + 1), epsilon)
+  51 | [D:3] |             val right = rdpRecursive(points.subList(maxIndex, points.size), epsilon)
+  52 | [D:3] |             left.dropLast(1) + right
+  53 | [D:2] |         } else {
+  54 | [D:3] |             listOf(start, end)
+  55 | [D:2] |         }
+  56 | [D:1] |     }
+  57 | [D:1] | 
+  58 | [D:1] |     private fun downsampleFixed(points: List<Point2D>, targetCount: Int): List<Point2D> {
+  59 | [D:2] |         if (points.size <= targetCount || targetCount < 2) return points
+  60 | [D:2] |         val result = ArrayList<Point2D>(targetCount)
+  61 | [D:2] |         val step = (points.size - 1).toDouble() / (targetCount - 1).toDouble()
+  62 | [D:2] |         for (i in 0 until targetCount - 1) {
+  63 | [D:3] |             val idx = (i * step).toInt().coerceIn(0, points.size - 1)
+  64 | [D:3] |             result.add(points[idx])
+  65 | [D:2] |         }
+  66 | [D:2] |         result.add(points.last())
+  67 | [D:2] |         return result
+  68 | [D:1] |     }
+  69 | [D:1] | 
+  70 | [D:1] |     private fun perpendicularDistance(pt: Point2D, lineStart: Point2D, lineEnd: Point2D): Float {
+  71 | [D:2] |         val dx = lineEnd.x - lineStart.x
+  72 | [D:2] |         val dy = lineEnd.y - lineStart.y
+  73 | [D:2] |         val lineLength = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+  74 | [D:2] | 
+  75 | [D:2] |         if (lineLength < 1e-4f) {
+  76 | [D:3] |             return hypot((pt.x - lineStart.x).toDouble(), (pt.y - lineStart.y).toDouble()).toFloat()
+  77 | [D:2] |         }
+  78 | [D:2] | 
+  79 | [D:2] |         val numerator = abs(dy * pt.x - dx * pt.y + lineEnd.x * lineStart.y - lineEnd.y * lineStart.x)
+  80 | [D:2] |         return numerator / lineLength
+  81 | [D:1] |     }
+  82 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_core_math_PathCompressionEngine.kt_part_01_lines_0001_to_0082.txt
+================================================================================

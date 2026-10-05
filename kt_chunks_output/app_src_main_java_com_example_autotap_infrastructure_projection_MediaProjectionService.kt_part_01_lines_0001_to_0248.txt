@@ -1,0 +1,258 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\projection\MediaProjectionService.kt
+ PART: 1/1 | LINES: 1..248
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.projection
+   2 | [D:0] | 
+   3 | [D:0] | import android.app.Notification
+   4 | [D:0] | import android.app.NotificationChannel
+   5 | [D:0] | import android.app.NotificationManager
+   6 | [D:0] | import android.app.Service
+   7 | [D:0] | import android.content.Context
+   8 | [D:0] | import android.content.Intent
+   9 | [D:0] | import android.content.pm.ServiceInfo
+  10 | [D:0] | import android.graphics.PixelFormat
+  11 | [D:0] | import android.hardware.display.DisplayManager
+  12 | [D:0] | import android.hardware.display.VirtualDisplay
+  13 | [D:0] | import android.media.Image
+  14 | [D:0] | import android.media.ImageReader
+  15 | [D:0] | import android.media.projection.MediaProjection
+  16 | [D:0] | import android.media.projection.MediaProjectionManager
+  17 | [D:0] | import android.os.Build
+  18 | [D:0] | import android.os.Handler
+  19 | [D:0] | import android.os.HandlerThread
+  20 | [D:0] | import android.os.IBinder
+  21 | [D:0] | import androidx.core.app.NotificationCompat
+  22 | [D:0] | import com.example.autotap.R
+  23 | [D:0] | import com.example.autotap.core.logger.AppLogger
+  24 | [D:0] | import java.nio.ByteBuffer
+  25 | [D:0] | import java.util.concurrent.locks.ReentrantLock
+  26 | [D:0] | import kotlin.concurrent.withLock
+  27 | [D:0] | import kotlin.math.min
+  28 | [D:0] | 
+  29 | [D:0] | class MediaProjectionService : Service() {
+  30 | [D:1] | 
+  31 | [D:1] |     companion object {
+  32 | [D:2] |         const val ACTION_START = "com.example.autotap.START_PROJECTION"
+  33 | [D:2] |         const val ACTION_STOP = "com.example.autotap.STOP_PROJECTION"
+  34 | [D:2] |         const val EXTRA_RESULT_CODE = "extra_result_code"
+  35 | [D:2] |         const val EXTRA_RESULT_DATA = "extra_result_data"
+  36 | [D:2] | 
+  37 | [D:2] |         private const val NOTIFICATION_ID = 9901
+  38 | [D:2] |         private const val CHANNEL_ID = "autotap_screen_stream_channel"
+  39 | [D:2] | 
+  40 | [D:2] |         @Volatile
+  41 | [D:2] |         var isStreaming: Boolean = false
+  42 | [D:2] |             private set
+  43 | [D:2] | 
+  44 | [D:2] |         private val frameLock = ReentrantLock()
+  45 | [D:2] |         private var latestBuffer: IntArray? = null
+  46 | [D:2] |         private var frameWidth = 0
+  47 | [D:2] |         private var frameHeight = 0
+  48 | [D:2] | 
+  49 | [D:2] |         fun copyLatestFrame(outPixels: IntArray, width: Int, height: Int): Boolean {
+  50 | [D:3] |             if (!isStreaming) return false
+  51 | [D:3] |             frameLock.withLock {
+  52 | [D:4] |                 val buf = latestBuffer ?: return false
+  53 | [D:4] |                 if (frameWidth != width || frameHeight != height || buf.size < width * height) return false
+  54 | [D:4] |                 System.arraycopy(buf, 0, outPixels, 0, width * height)
+  55 | [D:4] |                 return true
+  56 | [D:3] |             }
+  57 | [D:2] |         }
+  58 | [D:1] |     }
+  59 | [D:1] | 
+  60 | [D:1] |     private var mediaProjection: MediaProjection? = null
+  61 | [D:1] |     private var virtualDisplay: VirtualDisplay? = null
+  62 | [D:1] |     private var imageReader: ImageReader? = null
+  63 | [D:1] | 
+  64 | [D:1] |     private var captureThread: HandlerThread? = null
+  65 | [D:1] |     private var captureHandler: Handler? = null
+  66 | [D:1] |     private var cachedRowBytes: ByteArray? = null
+  67 | [D:1] | 
+  68 | [D:1] |     override fun onBind(intent: Intent?): IBinder? = null
+  69 | [D:1] | 
+  70 | [D:1] |     override fun onCreate() {
+  71 | [D:2] |         super.onCreate()
+  72 | [D:2] |         createNotificationChannel()
+  73 | [D:2] |         val thread = HandlerThread("AutoTapStreamThread").apply { start() }
+  74 | [D:2] |         captureThread = thread
+  75 | [D:2] |         captureHandler = Handler(thread.looper)
+  76 | [D:1] |     }
+  77 | [D:1] | 
+  78 | [D:1] |     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+  79 | [D:2] |         when (intent?.action) {
+  80 | [D:3] |             ACTION_START -> {
+  81 | [D:4] |                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
+  82 | [D:4] |                 val resultData: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+  83 | [D:5] |                     intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+  84 | [D:4] |                 } else {
+  85 | [D:5] |                     @Suppress("DEPRECATION")
+  86 | [D:5] |                     intent.getParcelableExtra(EXTRA_RESULT_DATA)
+  87 | [D:4] |                 }
+  88 | [D:4] |                 if (resultCode != 0 && resultData != null) {
+  89 | [D:5] |                     startStreaming(resultCode, resultData)
+  90 | [D:4] |                 }
+  91 | [D:3] |             }
+  92 | [D:3] |             ACTION_STOP -> {
+  93 | [D:4] |                 stopStreaming()
+  94 | [D:4] |                 stopSelf()
+  95 | [D:3] |             }
+  96 | [D:2] |         }
+  97 | [D:2] |         return START_NOT_STICKY
+  98 | [D:1] |     }
+  99 | [D:1] | 
+ 100 | [D:1] |     private fun startStreaming(resultCode: Int, resultData: Intent) {
+ 101 | [D:2] |         val notification = createNotification()
+ 102 | [D:2] |         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+ 103 | [D:3] |             startForeground(
+ 104 | [D:3] |                 NOTIFICATION_ID,
+ 105 | [D:3] |                 notification,
+ 106 | [D:3] |                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+ 107 | [D:4] |                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+ 108 | [D:3] |                 } else 0
+ 109 | [D:3] |             )
+ 110 | [D:2] |         } else {
+ 111 | [D:3] |             startForeground(NOTIFICATION_ID, notification)
+ 112 | [D:2] |         }
+ 113 | [D:2] | 
+ 114 | [D:2] |         try {
+ 115 | [D:3] |             val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+ 116 | [D:3] |             mediaProjection = mpManager.getMediaProjection(resultCode, resultData)
+ 117 | [D:3] | 
+ 118 | [D:3] |             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+ 119 | [D:4] |                 mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+ 120 | [D:5] |                     override fun onStop() {
+ 121 | [D:6] |                         stopStreaming()
+ 122 | [D:5] |                     }
+ 123 | [D:4] |                 }, captureHandler)
+ 124 | [D:3] |             }
+ 125 | [D:3] | 
+ 126 | [D:3] |             setupVirtualDisplay()
+ 127 | [D:3] |             isStreaming = true
+ 128 | [D:3] |             AppLogger.log(this, "PROJECTION", "60 FPS захват экрана (MediaProjection) успешно активирован")
+ 129 | [D:2] |         } catch (e: Exception) {
+ 130 | [D:3] |             AppLogger.logError(this, "PROJECTION", e)
+ 131 | [D:3] |             stopStreaming()
+ 132 | [D:2] |         }
+ 133 | [D:1] |     }
+ 134 | [D:1] | 
+ 135 | [D:1] |     private fun setupVirtualDisplay() {
+ 136 | [D:2] |         val dm = resources.displayMetrics
+ 137 | [D:2] |         val width = dm.widthPixels
+ 138 | [D:2] |         val height = dm.heightPixels
+ 139 | [D:2] |         val dpi = dm.densityDpi
+ 140 | [D:2] | 
+ 141 | [D:2] |         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+ 142 | [D:2] |         imageReader?.setOnImageAvailableListener({ reader ->
+ 143 | [D:3] |             var image: Image? = null
+ 144 | [D:3] |             try {
+ 145 | [D:4] |                 image = reader.acquireLatestImage()
+ 146 | [D:4] |                 if (image != null) {
+ 147 | [D:5] |                     val plane = image.planes[0]
+ 148 | [D:5] |                     val buffer: ByteBuffer = plane.buffer
+ 149 | [D:5] |                     val pixelStride = plane.pixelStride
+ 150 | [D:5] |                     val rowStride = plane.rowStride
+ 151 | [D:5] | 
+ 152 | [D:5] |                     frameLock.withLock {
+ 153 | [D:6] |                         if (latestBuffer == null || latestBuffer?.size != width * height) {
+ 154 | [D:7] |                             latestBuffer = IntArray(width * height)
+ 155 | [D:6] |                         }
+ 156 | [D:6] |                         if (cachedRowBytes == null || cachedRowBytes?.size != rowStride) {
+ 157 | [D:7] |                             cachedRowBytes = ByteArray(rowStride)
+ 158 | [D:6] |                         }
+ 159 | [D:6] | 
+ 160 | [D:6] |                         val dest = latestBuffer ?: return@withLock
+ 161 | [D:6] |                         val rowBuf = cachedRowBytes ?: return@withLock
+ 162 | [D:6] |                         frameWidth = width
+ 163 | [D:6] |                         frameHeight = height
+ 164 | [D:6] | 
+ 165 | [D:6] |                         var offset = 0
+ 166 | [D:6] |                         var rowOffset = 0
+ 167 | [D:6] |                         for (y in 0 until height) {
+ 168 | [D:7] |                             buffer.position(rowOffset)
+ 169 | [D:7] |                             val bytesToRead = min(rowStride, buffer.remaining())
+ 170 | [D:7] |                             buffer.get(rowBuf, 0, bytesToRead)
+ 171 | [D:7] | 
+ 172 | [D:7] |                             var byteIdx = 0
+ 173 | [D:7] |                             for (x in 0 until width) {
+ 174 | [D:8] |                                 val r = rowBuf[byteIdx].toInt() and 0xFF
+ 175 | [D:8] |                                 val g = rowBuf[byteIdx + 1].toInt() and 0xFF
+ 176 | [D:8] |                                 val b = rowBuf[byteIdx + 2].toInt() and 0xFF
+ 177 | [D:8] |                                 val a = if (pixelStride >= 4) rowBuf[byteIdx + 3].toInt() and 0xFF else 0xFF
+ 178 | [D:8] |                                 dest[offset++] = (a shl 24) or (r shl 16) or (g shl 8) or b
+ 179 | [D:8] |                                 byteIdx += pixelStride
+ 180 | [D:7] |                             }
+ 181 | [D:7] |                             rowOffset += rowStride
+ 182 | [D:6] |                         }
+ 183 | [D:5] |                     }
+ 184 | [D:4] |                 }
+ 185 | [D:3] |             } catch (_: Exception) {
+ 186 | [D:3] |             } finally {
+ 187 | [D:4] |                 image?.close()
+ 188 | [D:3] |             }
+ 189 | [D:2] |         }, captureHandler)
+ 190 | [D:2] | 
+ 191 | [D:2] |         virtualDisplay = mediaProjection?.createVirtualDisplay(
+ 192 | [D:2] |             "AutoTapVirtualDisplay",
+ 193 | [D:2] |             width, height, dpi,
+ 194 | [D:2] |             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+ 195 | [D:2] |             imageReader?.surface, null, captureHandler
+ 196 | [D:2] |         )
+ 197 | [D:1] |     }
+ 198 | [D:1] | 
+ 199 | [D:1] |     private fun stopStreaming() {
+ 200 | [D:2] |         isStreaming = false
+ 201 | [D:2] |         try {
+ 202 | [D:3] |             virtualDisplay?.release()
+ 203 | [D:3] |             virtualDisplay = null
+ 204 | [D:3] |             imageReader?.close()
+ 205 | [D:3] |             imageReader = null
+ 206 | [D:3] |             mediaProjection?.stop()
+ 207 | [D:3] |             mediaProjection = null
+ 208 | [D:2] |         } catch (_: Exception) {}
+ 209 | [D:2] | 
+ 210 | [D:2] |         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+ 211 | [D:3] |             stopForeground(STOP_FOREGROUND_REMOVE)
+ 212 | [D:2] |         } else {
+ 213 | [D:3] |             @Suppress("DEPRECATION")
+ 214 | [D:3] |             stopForeground(true)
+ 215 | [D:2] |         }
+ 216 | [D:2] |         AppLogger.log(this, "PROJECTION", "60 FPS захват экрана остановлен")
+ 217 | [D:1] |     }
+ 218 | [D:1] | 
+ 219 | [D:1] |     override fun onDestroy() {
+ 220 | [D:2] |         stopStreaming()
+ 221 | [D:2] |         captureThread?.quitSafely()
+ 222 | [D:2] |         super.onDestroy()
+ 223 | [D:1] |     }
+ 224 | [D:1] | 
+ 225 | [D:1] |     private fun createNotificationChannel() {
+ 226 | [D:2] |         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+ 227 | [D:3] |             val channel = NotificationChannel(
+ 228 | [D:3] |                 CHANNEL_ID,
+ 229 | [D:3] |                 "AutoTap 60 FPS Screen Stream",
+ 230 | [D:3] |                 NotificationManager.IMPORTANCE_LOW
+ 231 | [D:3] |             ).apply {
+ 232 | [D:4] |                 description = "Используется для прямого низколатентного захвата экрана"
+ 233 | [D:3] |             }
+ 234 | [D:3] |             val manager = getSystemService(NotificationManager::class.java)
+ 235 | [D:3] |             manager.createNotificationChannel(channel)
+ 236 | [D:2] |         }
+ 237 | [D:1] |     }
+ 238 | [D:1] | 
+ 239 | [D:1] |     private fun createNotification(): Notification {
+ 240 | [D:2] |         return NotificationCompat.Builder(this, CHANNEL_ID)
+ 241 | [D:2] |             .setContentTitle("AutoTap Ultra 60 FPS")
+ 242 | [D:2] |             .setContentText("Прямой аппаратный захват экрана активен")
+ 243 | [D:2] |             .setSmallIcon(R.mipmap.ic_launcher)
+ 244 | [D:2] |             .setPriority(NotificationCompat.PRIORITY_LOW)
+ 245 | [D:2] |             .setOngoing(true)
+ 246 | [D:2] |             .build()
+ 247 | [D:1] |     }
+ 248 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_projection_MediaProjectionService.kt_part_01_lines_0001_to_0248.txt
+================================================================================

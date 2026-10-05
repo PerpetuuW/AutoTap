@@ -1,0 +1,352 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\badge\RunningBadgeOverlay.kt
+ PART: 1/1 | LINES: 1..342
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.badge
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Canvas
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.RectF
+   8 | [D:0] | import android.graphics.Typeface
+   9 | [D:0] | import android.graphics.drawable.ClipDrawable
+  10 | [D:0] | import android.graphics.drawable.GradientDrawable
+  11 | [D:0] | import android.graphics.drawable.LayerDrawable
+  12 | [D:0] | import android.os.Build
+  13 | [D:0] | import android.os.Handler
+  14 | [D:0] | import android.os.Looper
+  15 | [D:0] | import android.os.VibrationEffect
+  16 | [D:0] | import android.os.Vibrator
+  17 | [D:0] | import android.view.Gravity
+  18 | [D:0] | import android.view.MotionEvent
+  19 | [D:0] | import android.view.View
+  20 | [D:0] | import android.view.ViewOutlineProvider
+  21 | [D:0] | import android.view.WindowManager
+  22 | [D:0] | import android.widget.LinearLayout
+  23 | [D:0] | import android.widget.ProgressBar
+  24 | [D:0] | import android.widget.TextView
+  25 | [D:0] | import androidx.core.graphics.toColorInt
+  26 | [D:0] | import com.example.autotap.domain.model.ActionType
+  27 | [D:0] | import com.example.autotap.domain.model.ExecutionState
+  28 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  29 | [D:0] | import com.example.autotap.infrastructure.overlay.ui.VectorIconDrawer
+  30 | [D:0] | import com.example.autotap.infrastructure.projection.MediaProjectionService
+  31 | [D:0] | import java.util.Locale
+  32 | [D:0] | import kotlin.math.abs
+  33 | [D:0] | 
+  34 | [D:0] | @SuppressLint("SetTextI18n", "ClickableViewAccessibility")
+  35 | [D:0] | class RunningBadgeOverlay(
+  36 | [D:0] |     private val context: Context,
+  37 | [D:0] |     private val overlayWindowManager: OverlayWindowManager
+  38 | [D:0] | ) {
+  39 | [D:1] | 
+  40 | [D:1] |     private var badgeView: View? = null
+  41 | [D:1] |     private var tvStepHeader: TextView? = null
+  42 | [D:1] |     private var tvActionStatus: TextView? = null
+  43 | [D:1] |     private var actionProgressBar: ProgressBar? = null
+  44 | [D:1] |     private var fillProgressDrawable: GradientDrawable? = null
+  45 | [D:1] | 
+  46 | [D:1] |     private val mainHandler = Handler(Looper.getMainLooper())
+  47 | [D:1] | 
+  48 | [D:1] |     private var currentStepStartTime = 0L
+  49 | [D:1] |     private var currentStepDurationMs = 1000L
+  50 | [D:1] |     private var currentActionTitle = ""
+  51 | [D:1] |     private var isSearchingMode = false
+  52 | [D:1] |     private var isInfiniteMode = false
+  53 | [D:1] | 
+  54 | [D:1] |     private val dm = context.resources.displayMetrics
+  55 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  56 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  57 | [D:1] | 
+  58 | [D:1] |     private val contentWidthDp = 78
+  59 | [D:1] | 
+  60 | [D:1] |     private val tickerRunnable = object : Runnable {
+  61 | [D:2] |         override fun run() {
+  62 | [D:3] |             if (badgeView != null) {
+  63 | [D:4] |                 val elapsed = System.currentTimeMillis() - currentStepStartTime
+  64 | [D:4] |                 if (isSearchingMode) {
+  65 | [D:5] |                     if (isInfiniteMode) {
+  66 | [D:6] |                         tvActionStatus?.text = "$currentActionTitle (inf)"
+  67 | [D:6] |                         actionProgressBar?.progress = 50
+  68 | [D:5] |                     } else {
+  69 | [D:6] |                         val remainingMs = (currentStepDurationMs - elapsed).coerceAtLeast(0L)
+  70 | [D:6] |                         val ratio = (elapsed.toFloat() / currentStepDurationMs.toFloat()).coerceIn(0f, 1f)
+  71 | [D:6] |                         val remainingSec = String.format(Locale.US, "%.1fс", remainingMs / 1000f)
+  72 | [D:6] |                         tvActionStatus?.text = "$currentActionTitle ($remainingSec)"
+  73 | [D:6] |                         actionProgressBar?.progress = (ratio * 100).toInt()
+  74 | [D:5] |                     }
+  75 | [D:4] |                 } else {
+  76 | [D:5] |                     val ratio = (elapsed.toFloat() / currentStepDurationMs.toFloat()).coerceIn(0f, 1f)
+  77 | [D:5] |                     actionProgressBar?.progress = (ratio * 100).toInt()
+  78 | [D:4] |                 }
+  79 | [D:4] |                 mainHandler.postDelayed(this, 40L)
+  80 | [D:3] |             }
+  81 | [D:2] |         }
+  82 | [D:1] |     }
+  83 | [D:1] | 
+  84 | [D:1] |     private fun vibrate(durationMs: Long) {
+  85 | [D:2] |         try {
+  86 | [D:3] |             val vibrator = context.getSystemService(Vibrator::class.java)
+  87 | [D:3] |             if (vibrator != null && vibrator.hasVibrator()) {
+  88 | [D:4] |                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+  89 | [D:5] |                     vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+  90 | [D:4] |                 } else {
+  91 | [D:5] |                     @Suppress("DEPRECATION")
+  92 | [D:5] |                     vibrator.vibrate(durationMs)
+  93 | [D:4] |                 }
+  94 | [D:3] |             }
+  95 | [D:2] |         } catch (_: Exception) {}
+  96 | [D:1] |     }
+  97 | [D:1] | 
+  98 | [D:1] |     fun show(onLockClick: () -> Unit, onStopClick: () -> Unit) {
+  99 | [D:2] |         if (badgeView != null) return
+ 100 | [D:2] | 
+ 101 | [D:2] |         val contentW = dp(contentWidthDp)
+ 102 | [D:2] |         val padH = dp(6)
+ 103 | [D:2] |         val totalCardW = contentW + padH * 2
+ 104 | [D:2] | 
+ 105 | [D:2] |         val wmParams = overlayWindowManager.createLayoutParams(
+ 106 | [D:2] |             width = WindowManager.LayoutParams.WRAP_CONTENT,
+ 107 | [D:2] |             height = WindowManager.LayoutParams.WRAP_CONTENT,
+ 108 | [D:2] |             gravity = Gravity.TOP or Gravity.START
+ 109 | [D:2] |         ).apply {
+ 110 | [D:3] |             x = (dm.widthPixels - totalCardW - dp(10)).coerceAtLeast(dp(6))
+ 111 | [D:3] |             y = dp(110)
+ 112 | [D:2] |         }
+ 113 | [D:2] | 
+ 114 | [D:2] |         val rootCard = LinearLayout(context).apply {
+ 115 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 116 | [D:3] |             gravity = Gravity.CENTER_HORIZONTAL
+ 117 | [D:3] |             clipChildren = false
+ 118 | [D:3] |             clipToPadding = false
+ 119 | [D:3] |             background = GradientDrawable(
+ 120 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 121 | [D:3] |                 intArrayOf("#F8161B22".toColorInt(), "#F80D1117".toColorInt())
+ 122 | [D:3] |             ).apply {
+ 123 | [D:4] |                 cornerRadius = dpF(18f)
+ 124 | [D:4] |                 setStroke(dp(1), "#38BDF8".toColorInt())
+ 125 | [D:3] |             }
+ 126 | [D:3] |             setPadding(padH, padH, padH, padH)
+ 127 | [D:3] |             elevation = dpF(12f)
+ 128 | [D:2] |         }
+ 129 | [D:2] | 
+ 130 | [D:2] |         val tvHeader = TextView(context).apply {
+ 131 | [D:3] |             text = "ШАГ 1/1"
+ 132 | [D:3] |             setTextColor("#58A6FF".toColorInt())
+ 133 | [D:3] |             textSize = 7.5f
+ 134 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 135 | [D:3] |             includeFontPadding = false
+ 136 | [D:3] |             gravity = Gravity.CENTER
+ 137 | [D:3] |             layoutParams = LinearLayout.LayoutParams(contentW, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+ 138 | [D:4] |                 bottomMargin = dp(2)
+ 139 | [D:3] |             }
+ 140 | [D:2] |         }
+ 141 | [D:2] |         tvStepHeader = tvHeader
+ 142 | [D:2] |         rootCard.addView(tvHeader)
+ 143 | [D:2] | 
+ 144 | [D:2] |         val infoContainer = LinearLayout(context).apply {
+ 145 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 146 | [D:3] |             gravity = Gravity.CENTER_HORIZONTAL
+ 147 | [D:3] |             layoutParams = LinearLayout.LayoutParams(contentW, dp(18)).apply {
+ 148 | [D:4] |                 bottomMargin = dp(4)
+ 149 | [D:3] |             }
+ 150 | [D:2] |         }
+ 151 | [D:2] | 
+ 152 | [D:2] |         val tvStatus = TextView(context).apply {
+ 153 | [D:3] |             text = "Запуск..."
+ 154 | [D:3] |             setTextColor("#00F5D4".toColorInt())
+ 155 | [D:3] |             textSize = 7f
+ 156 | [D:3] |             typeface = Typeface.MONOSPACE
+ 157 | [D:3] |             includeFontPadding = false
+ 158 | [D:3] |             maxLines = 1
+ 159 | [D:3] |             gravity = Gravity.CENTER
+ 160 | [D:3] |             layoutParams = LinearLayout.LayoutParams(contentW, LinearLayout.LayoutParams.WRAP_CONTENT)
+ 161 | [D:2] |         }
+ 162 | [D:2] |         tvActionStatus = tvStatus
+ 163 | [D:2] |         infoContainer.addView(tvStatus)
+ 164 | [D:2] | 
+ 165 | [D:2] |         val bgProgress = GradientDrawable().apply {
+ 166 | [D:3] |             setColor("#21262D".toColorInt())
+ 167 | [D:3] |             cornerRadius = dpF(2f)
+ 168 | [D:2] |         }
+ 169 | [D:2] |         val fillProgress = GradientDrawable().apply {
+ 170 | [D:3] |             setColor("#00F5D4".toColorInt())
+ 171 | [D:3] |             cornerRadius = dpF(2f)
+ 172 | [D:2] |         }
+ 173 | [D:2] |         fillProgressDrawable = fillProgress
+ 174 | [D:2] | 
+ 175 | [D:2] |         val clipFill = ClipDrawable(fillProgress, Gravity.START, ClipDrawable.HORIZONTAL)
+ 176 | [D:2] |         val progressDrawable = LayerDrawable(arrayOf(bgProgress, clipFill)).apply {
+ 177 | [D:3] |             setId(0, android.R.id.background)
+ 178 | [D:3] |             setId(1, android.R.id.progress)
+ 179 | [D:2] |         }
+ 180 | [D:2] | 
+ 181 | [D:2] |         val pBar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+ 182 | [D:3] |             val barHeight = (3.5f * dm.density).toInt().coerceAtLeast(1)
+ 183 | [D:3] |             layoutParams = LinearLayout.LayoutParams(contentW, barHeight)
+ 184 | [D:3] |             max = 100
+ 185 | [D:3] |             progress = 0
+ 186 | [D:3] |             this.progressDrawable = progressDrawable
+ 187 | [D:2] |         }
+ 188 | [D:2] |         actionProgressBar = pBar
+ 189 | [D:2] |         infoContainer.addView(pBar)
+ 190 | [D:2] |         rootCard.addView(infoContainer)
+ 191 | [D:2] | 
+ 192 | [D:2] |         val buttonsRow = LinearLayout(context).apply {
+ 193 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 194 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 195 | [D:3] |             clipChildren = false
+ 196 | [D:3] |             clipToPadding = false
+ 197 | [D:3] |             layoutParams = LinearLayout.LayoutParams(contentW, dp(36))
+ 198 | [D:2] |         }
+ 199 | [D:2] | 
+ 200 | [D:2] |         val btnLock = object : View(context) {
+ 201 | [D:3] |             private val bounds = RectF()
+ 202 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 203 | [D:4] |                 super.onDraw(canvas)
+ 204 | [D:4] |                 bounds.set(dpF(8.5f), dpF(8.5f), width - dpF(8.5f), height - dpF(8.5f))
+ 205 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, VectorIconDrawer.IconType.LOCK, bounds, Color.WHITE, dpF(2f))
+ 206 | [D:3] |             }
+ 207 | [D:2] |         }.apply {
+ 208 | [D:3] |             outlineProvider = ViewOutlineProvider.BACKGROUND
+ 209 | [D:3] |             background = GradientDrawable(
+ 210 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 211 | [D:3] |                 intArrayOf("#1F6FEB".toColorInt(), "#161B22".toColorInt())
+ 212 | [D:3] |             ).apply {
+ 213 | [D:4] |                 shape = GradientDrawable.OVAL
+ 214 | [D:4] |                 setStroke(dp(1), "#58A6FF".toColorInt())
+ 215 | [D:3] |             }
+ 216 | [D:3] |             layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+ 217 | [D:4] |                 marginEnd = dp(6)
+ 218 | [D:3] |             }
+ 219 | [D:3] |             setOnClickListener {
+ 220 | [D:4] |                 vibrate(30L)
+ 221 | [D:4] |                 onLockClick()
+ 222 | [D:3] |             }
+ 223 | [D:2] |         }
+ 224 | [D:2] |         buttonsRow.addView(btnLock)
+ 225 | [D:2] | 
+ 226 | [D:2] |         val btnStop = object : View(context) {
+ 227 | [D:3] |             private val bounds = RectF()
+ 228 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 229 | [D:4] |                 super.onDraw(canvas)
+ 230 | [D:4] |                 bounds.set(dpF(8.5f), dpF(8.5f), width - dpF(8.5f), height - dpF(8.5f))
+ 231 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, VectorIconDrawer.IconType.STOP, bounds, Color.WHITE, dpF(2f))
+ 232 | [D:3] |             }
+ 233 | [D:2] |         }.apply {
+ 234 | [D:3] |             outlineProvider = ViewOutlineProvider.BACKGROUND
+ 235 | [D:3] |             background = GradientDrawable(
+ 236 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 237 | [D:3] |                 intArrayOf("#F04438".toColorInt(), "#B42318".toColorInt())
+ 238 | [D:3] |             ).apply {
+ 239 | [D:4] |                 shape = GradientDrawable.OVAL
+ 240 | [D:4] |                 setStroke(dp(1), "#FDA29B".toColorInt())
+ 241 | [D:3] |             }
+ 242 | [D:3] |             layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
+ 243 | [D:3] |             setOnClickListener {
+ 244 | [D:4] |                 vibrate(45L)
+ 245 | [D:4] |                 onStopClick()
+ 246 | [D:3] |             }
+ 247 | [D:2] |         }
+ 248 | [D:2] |         buttonsRow.addView(btnStop)
+ 249 | [D:2] |         rootCard.addView(buttonsRow)
+ 250 | [D:2] | 
+ 251 | [D:2] |         rootCard.setOnTouchListener(object : View.OnTouchListener {
+ 252 | [D:3] |             private var initX = 0
+ 253 | [D:3] |             private var initY = 0
+ 254 | [D:3] |             private var touchX = 0f
+ 255 | [D:3] |             private var touchY = 0f
+ 256 | [D:3] |             private var isMoved = false
+ 257 | [D:3] | 
+ 258 | [D:3] |             override fun onTouch(v: View, event: MotionEvent): Boolean {
+ 259 | [D:4] |                 when (event.action) {
+ 260 | [D:5] |                     MotionEvent.ACTION_DOWN -> {
+ 261 | [D:6] |                         initX = wmParams.x
+ 262 | [D:6] |                         initY = wmParams.y
+ 263 | [D:6] |                         touchX = event.rawX
+ 264 | [D:6] |                         touchY = event.rawY
+ 265 | [D:6] |                         isMoved = false
+ 266 | [D:6] |                         return true
+ 267 | [D:5] |                     }
+ 268 | [D:5] |                     MotionEvent.ACTION_MOVE -> {
+ 269 | [D:6] |                         val dx = abs(event.rawX - touchX)
+ 270 | [D:6] |                         val dy = abs(event.rawY - touchY)
+ 271 | [D:6] |                         if (dx > dp(5) || dy > dp(5)) {
+ 272 | [D:7] |                             isMoved = true
+ 273 | [D:7] |                             val maxPosX = (dm.widthPixels - totalCardW - dp(6)).coerceAtLeast(0)
+ 274 | [D:7] |                             wmParams.x = (initX + (event.rawX - touchX).toInt()).coerceIn(dp(6), maxPosX)
+ 275 | [D:7] |                             wmParams.y = (initY + (event.rawY - touchY).toInt()).coerceIn(dp(20), dm.heightPixels - dp(80))
+ 276 | [D:7] |                             overlayWindowManager.updateViewSafe(rootCard, wmParams)
+ 277 | [D:6] |                         }
+ 278 | [D:6] |                         return true
+ 279 | [D:5] |                     }
+ 280 | [D:5] |                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+ 281 | [D:6] |                         return true
+ 282 | [D:5] |                     }
+ 283 | [D:4] |                 }
+ 284 | [D:4] |                 return false
+ 285 | [D:3] |             }
+ 286 | [D:2] |         })
+ 287 | [D:2] | 
+ 288 | [D:2] |         badgeView = rootCard
+ 289 | [D:2] |         overlayWindowManager.addViewSafe(rootCard, wmParams)
+ 290 | [D:2] |         mainHandler.post(tickerRunnable)
+ 291 | [D:1] |     }
+ 292 | [D:1] | 
+ 293 | [D:1] |     fun updateState(state: ExecutionState.Running) {
+ 294 | [D:2] |         mainHandler.post {
+ 295 | [D:3] |             val fpsTag = if (MediaProjectionService.isStreaming) "60 FPS" else "МАКРОС"
+ 296 | [D:3] |             val repeatStr = if (state.totalRepeats > 1) " (${state.currentRepeat}/${state.totalRepeats})" else ""
+ 297 | [D:3] |             val stepPrefix = if (state.activeNodeTitle.isNotEmpty()) "ГРАФ" else "ШАГ"
+ 298 | [D:3] |             tvStepHeader?.text = "$fpsTag • $stepPrefix ${state.currentStepIndex}/${state.totalSteps}$repeatStr"
+ 299 | [D:3] | 
+ 300 | [D:3] |             currentStepStartTime = if (state.searchStartTime > 0L) state.searchStartTime else System.currentTimeMillis()
+ 301 | [D:3] |             isSearchingMode = state.isSearching
+ 302 | [D:3] |             isInfiniteMode = state.isInfiniteSearch
+ 303 | [D:3] | 
+ 304 | [D:3] |             if (state.isSearching) {
+ 305 | [D:4] |                 currentStepDurationMs = state.searchTimeoutMs
+ 306 | [D:4] |                 currentActionTitle = state.searchTitle.substringBefore(" (")
+ 307 | [D:4] |                 tvActionStatus?.setTextColor("#FFB703".toColorInt())
+ 308 | [D:4] |                 fillProgressDrawable?.setColor("#FFB703".toColorInt())
+ 309 | [D:3] |             } else {
+ 310 | [D:4] |                 currentStepDurationMs = if (state.searchTimeoutMs > 0L) state.searchTimeoutMs else 1000L
+ 311 | [D:4] |                 currentActionTitle = when {
+ 312 | [D:5] |                     state.activeNodeTitle.isNotEmpty() -> "★ ${state.activeNodeTitle}"
+ 313 | [D:5] |                     state.stepDescription.isNotEmpty() -> state.stepDescription
+ 314 | [D:5] |                     else -> when (state.stepType) {
+ 315 | [D:6] |                         ActionType.CLICK -> "⚡ Клик #${state.currentStepIndex}"
+ 316 | [D:6] |                         ActionType.LONG_PRESS -> "⏱ Удержание #${state.currentStepIndex}"
+ 317 | [D:6] |                         ActionType.SWIPE -> "➔ Свайп #${state.currentStepIndex}"
+ 318 | [D:6] |                         ActionType.PATH -> "〰 Путь #${state.currentStepIndex}"
+ 319 | [D:6] |                         ActionType.PINCH -> "🤏 Пинч #${state.currentStepIndex}"
+ 320 | [D:6] |                         ActionType.SUBROUTINE -> "⮑ Сценарий"
+ 321 | [D:6] |                         ActionType.RETURN -> "⮐ Возврат"
+ 322 | [D:6] |                         ActionType.TRIGGER, ActionType.OCR, ActionType.COLOR_CHECK -> "Фаза #${state.currentStepIndex}"
+ 323 | [D:5] |                     }
+ 324 | [D:4] |                 }
+ 325 | [D:4] |                 tvActionStatus?.text = currentActionTitle
+ 326 | [D:4] |                 tvActionStatus?.setTextColor("#00F5D4".toColorInt())
+ 327 | [D:4] |                 fillProgressDrawable?.setColor("#00F5D4".toColorInt())
+ 328 | [D:3] |             }
+ 329 | [D:2] |         }
+ 330 | [D:1] |     }
+ 331 | [D:1] | 
+ 332 | [D:1] |     fun dismiss() {
+ 333 | [D:2] |         mainHandler.removeCallbacks(tickerRunnable)
+ 334 | [D:2] |         badgeView?.let {
+ 335 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 336 | [D:3] |             badgeView = null
+ 337 | [D:3] |             tvStepHeader = null
+ 338 | [D:3] |             tvActionStatus = null
+ 339 | [D:3] |             actionProgressBar = null
+ 340 | [D:2] |         }
+ 341 | [D:1] |     }
+ 342 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_badge_RunningBadgeOverlay.kt_part_01_lines_0001_to_0342.txt
+================================================================================

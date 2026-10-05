@@ -1,0 +1,278 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\graph\GraphEditorOverlay.kt
+ PART: 1/1 | LINES: 1..268
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.graph
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Color
+   6 | [D:0] | import android.graphics.Typeface
+   7 | [D:0] | import android.graphics.drawable.GradientDrawable
+   8 | [D:0] | import android.view.Gravity
+   9 | [D:0] | import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+  10 | [D:0] | import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+  11 | [D:0] | import android.widget.Button
+  12 | [D:0] | import android.widget.FrameLayout
+  13 | [D:0] | import android.widget.LinearLayout
+  14 | [D:0] | import android.widget.TextView
+  15 | [D:0] | import android.widget.Toast
+  16 | [D:0] | import androidx.core.graphics.toColorInt
+  17 | [D:0] | import com.example.autotap.core.math.LinearToGraphMigrator
+  18 | [D:0] | import com.example.autotap.domain.model.ActionType
+  19 | [D:0] | import com.example.autotap.domain.model.graph.EvaluationPolicy
+  20 | [D:0] | import com.example.autotap.domain.model.graph.GraphMacroScenario
+  21 | [D:0] | import com.example.autotap.domain.model.graph.NodeActionSpec
+  22 | [D:0] | import com.example.autotap.domain.model.graph.ScenarioNode
+  23 | [D:0] | import com.example.autotap.domain.repository.IScenarioRepository
+  24 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  25 | [D:0] | 
+  26 | [D:0] | @SuppressLint("SetTextI18n")
+  27 | [D:0] | class GraphEditorOverlay(
+  28 | [D:0] |     private val context: Context,
+  29 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  30 | [D:0] |     private val scenarioRepository: IScenarioRepository
+  31 | [D:0] | ) {
+  32 | [D:1] |     private var overlayContainerView: FrameLayout? = null
+  33 | [D:1] |     private var canvasView: GraphCanvasView? = null
+  34 | [D:1] |     private var inspectorCard: LinearLayout? = null
+  35 | [D:1] |     private var currentScenario: GraphMacroScenario? = null
+  36 | [D:1] | 
+  37 | [D:1] |     var onStartGraphRequested: ((GraphMacroScenario) -> Unit)? = null
+  38 | [D:1] | 
+  39 | [D:1] |     private val dm = context.resources.displayMetrics
+  40 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  41 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  42 | [D:1] | 
+  43 | [D:1] |     fun show(scenarioName: String) {
+  44 | [D:2] |         if (overlayContainerView != null) return
+  45 | [D:2] |         val graph = scenarioRepository.loadGraphScenario(scenarioName)
+  46 | [D:2] |             ?: scenarioRepository.loadScenario(scenarioName)?.let { linear ->
+  47 | [D:3] |                 val converted = LinearToGraphMigrator.linearToGraph(linear)
+  48 | [D:3] |                 scenarioRepository.saveGraphScenario(converted)
+  49 | [D:3] |                 converted
+  50 | [D:2] |             } ?: return
+  51 | [D:2] | 
+  52 | [D:2] |         currentScenario = graph
+  53 | [D:2] | 
+  54 | [D:2] |         val root = FrameLayout(context).apply { setBackgroundColor("#0D1117".toColorInt()) }
+  55 | [D:2] |         overlayContainerView = root
+  56 | [D:2] | 
+  57 | [D:2] |         val canvas = GraphCanvasView(context).apply {
+  58 | [D:3] |             setGraphScenario(graph)
+  59 | [D:3] |             onNodeSelected = { showNodeInspector(it) }
+  60 | [D:3] |             onScenarioModified = { this.scenario?.let { currentScenario = it } }
+  61 | [D:2] |         }
+  62 | [D:2] |         canvasView = canvas
+  63 | [D:2] |         root.addView(canvas, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+  64 | [D:2] | 
+  65 | [D:2] |         val topBar = LinearLayout(context).apply {
+  66 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+  67 | [D:3] |             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf("#F8161B22".toColorInt(), "#00000000".toColorInt()))
+  68 | [D:3] |             setPadding(dp(16), dp(32), dp(16), dp(16))
+  69 | [D:2] |         }
+  70 | [D:2] |         
+  71 | [D:2] |         val tvTitle = TextView(context).apply {
+  72 | [D:3] |             text = "ГРАФ: ${graph.name}"
+  73 | [D:3] |             setTextColor("#00F5D4".toColorInt())
+  74 | [D:3] |             textSize = 12f
+  75 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+  76 | [D:3] |             layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+  77 | [D:2] |         }
+  78 | [D:2] |         topBar.addView(tvTitle)
+  79 | [D:2] | 
+  80 | [D:2] |         val btnAddNode = Button(context).apply {
+  81 | [D:3] |             text = "+ ФАЗА"
+  82 | [D:3] |             setTextColor(Color.WHITE)
+  83 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+  84 | [D:3] |             background = GradientDrawable().apply { setColor("#1F6FEB".toColorInt()); cornerRadius = dpF(8f) }
+  85 | [D:3] |             setPadding(dp(10), 0, dp(10), 0)
+  86 | [D:3] |             setOnClickListener { addNewNode() }
+  87 | [D:2] |         }
+  88 | [D:2] |         topBar.addView(btnAddNode, LinearLayout.LayoutParams(WRAP_CONTENT, dp(36)).apply { marginEnd = dp(6) })
+  89 | [D:2] | 
+  90 | [D:2] |         val btnPlay = Button(context).apply {
+  91 | [D:3] |             text = "▶ ПУСК"
+  92 | [D:3] |             setTextColor(Color.WHITE)
+  93 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+  94 | [D:3] |             background = GradientDrawable().apply { setColor("#10B981".toColorInt()); cornerRadius = dpF(8f) }
+  95 | [D:3] |             setPadding(dp(10), 0, dp(10), 0)
+  96 | [D:3] |             setOnClickListener { 
+  97 | [D:4] |                 currentScenario?.let { onStartGraphRequested?.invoke(it) }
+  98 | [D:4] |                 dismiss() 
+  99 | [D:3] |             }
+ 100 | [D:2] |         }
+ 101 | [D:2] |         topBar.addView(btnPlay, LinearLayout.LayoutParams(WRAP_CONTENT, dp(36)).apply { marginEnd = dp(6) })
+ 102 | [D:2] | 
+ 103 | [D:2] |         val btnSave = Button(context).apply {
+ 104 | [D:3] |             text = "СОХРАНИТЬ"
+ 105 | [D:3] |             setTextColor("#00F5D4".toColorInt())
+ 106 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 107 | [D:3] |             background = GradientDrawable().apply { setColor("#21262D".toColorInt()); cornerRadius = dpF(8f); setStroke(dp(1), "#30363D".toColorInt()) }
+ 108 | [D:3] |             setPadding(dp(10), 0, dp(10), 0)
+ 109 | [D:3] |             setOnClickListener { 
+ 110 | [D:4] |                 currentScenario?.let { scenarioRepository.saveGraphScenario(it) }
+ 111 | [D:4] |                 Toast.makeText(context, "Граф сохранен", Toast.LENGTH_SHORT).show()
+ 112 | [D:3] |             }
+ 113 | [D:2] |         }
+ 114 | [D:2] |         topBar.addView(btnSave, LinearLayout.LayoutParams(WRAP_CONTENT, dp(36)).apply { marginEnd = dp(6) })
+ 115 | [D:2] | 
+ 116 | [D:2] |         val btnClose = Button(context).apply {
+ 117 | [D:3] |             text = "ЗАКРЫТЬ"
+ 118 | [D:3] |             setTextColor("#F04438".toColorInt())
+ 119 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 120 | [D:3] |             background = GradientDrawable().apply { setColor("#21262D".toColorInt()); cornerRadius = dpF(8f) }
+ 121 | [D:3] |             setPadding(dp(10), 0, dp(10), 0)
+ 122 | [D:3] |             setOnClickListener { dismiss() }
+ 123 | [D:2] |         }
+ 124 | [D:2] |         topBar.addView(btnClose, LinearLayout.LayoutParams(WRAP_CONTENT, dp(36)))
+ 125 | [D:2] | 
+ 126 | [D:2] |         root.addView(topBar, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP))
+ 127 | [D:2] |         overlayWindowManager.addViewSafe(root, overlayWindowManager.createLayoutParams(width = MATCH_PARENT, height = MATCH_PARENT))
+ 128 | [D:1] |     }
+ 129 | [D:1] | 
+ 130 | [D:1] |     private fun addNewNode() {
+ 131 | [D:2] |         val sc = currentScenario ?: return
+ 132 | [D:2] |         var nextNum = sc.nodes.size + 1
+ 133 | [D:2] |         while (sc.nodes.containsKey("node_$nextNum")) {
+ 134 | [D:3] |             nextNum++
+ 135 | [D:2] |         }
+ 136 | [D:2] |         val newNodeId = "node_$nextNum"
+ 137 | [D:2] |         val newNode = ScenarioNode(
+ 138 | [D:2] |             id = newNodeId,
+ 139 | [D:2] |             title = "Фаза #$nextNum",
+ 140 | [D:2] |             canvasX = 140f + ((nextNum % 5) * 40f),
+ 141 | [D:2] |             canvasY = 220f + ((nextNum % 5) * 30f),
+ 142 | [D:2] |             entryActions = listOf(NodeActionSpec("act_$nextNum", ActionType.CLICK, 500f, 1000f)),
+ 143 | [D:2] |             standardPorts = listOf("out_default")
+ 144 | [D:2] |         )
+ 145 | [D:2] |         val updatedNodes = sc.nodes.toMutableMap()
+ 146 | [D:2] |         updatedNodes[newNodeId] = newNode
+ 147 | [D:2] |         val updatedGraph = sc.copy(nodes = updatedNodes)
+ 148 | [D:2] |         currentScenario = updatedGraph
+ 149 | [D:2] |         canvasView?.setGraphScenario(updatedGraph)
+ 150 | [D:2] |         Toast.makeText(context, "Добавлена $newNodeId", Toast.LENGTH_SHORT).show()
+ 151 | [D:1] |     }
+ 152 | [D:1] | 
+ 153 | [D:1] |     private fun showNodeInspector(node: ScenarioNode) {
+ 154 | [D:2] |         inspectorCard?.let { overlayContainerView?.removeView(it) }
+ 155 | [D:2] |         
+ 156 | [D:2] |         val card = LinearLayout(context).apply {
+ 157 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 158 | [D:3] |             val p = dp(12)
+ 159 | [D:3] |             setPadding(p, p, p, p)
+ 160 | [D:3] |             background = GradientDrawable().apply { 
+ 161 | [D:4] |                 setColor("#F8161B22".toColorInt())
+ 162 | [D:4] |                 setStroke(dp(1), "#00F5D4".toColorInt())
+ 163 | [D:4] |                 cornerRadius = dpF(16f)
+ 164 | [D:3] |             }
+ 165 | [D:3] |             elevation = dpF(24f)
+ 166 | [D:2] |         }
+ 167 | [D:2] |         inspectorCard = card
+ 168 | [D:2] | 
+ 169 | [D:2] |         val title = TextView(context).apply {
+ 170 | [D:3] |             text = "ФАЗА: ${node.title}"
+ 171 | [D:3] |             setTextColor("#00F5D4".toColorInt())
+ 172 | [D:3] |             textSize = 10.5f
+ 173 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 174 | [D:3] |             setPadding(0, 0, 0, dp(8))
+ 175 | [D:2] |         }
+ 176 | [D:2] |         card.addView(title)
+ 177 | [D:2] | 
+ 178 | [D:2] |         val desc = TextView(context).apply {
+ 179 | [D:3] |             text = "ID: ${node.id}\nТриггеров: ${node.triggers.size}\nДействий: ${node.entryActions.size}\nТаймаут: ${node.timeoutSeconds}с"
+ 180 | [D:3] |             setTextColor(Color.WHITE)
+ 181 | [D:3] |             textSize = 9f
+ 182 | [D:3] |             typeface = Typeface.MONOSPACE
+ 183 | [D:3] |             setPadding(0, 0, 0, dp(12))
+ 184 | [D:2] |         }
+ 185 | [D:2] |         card.addView(desc)
+ 186 | [D:2] | 
+ 187 | [D:2] |         val btnRow1 = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+ 188 | [D:2] | 
+ 189 | [D:2] |         val btnEntry = Button(context).apply {
+ 190 | [D:3] |             text = "В СТАРТ"
+ 191 | [D:3] |             textSize = 7.5f
+ 192 | [D:3] |             setTextColor(Color.BLACK)
+ 193 | [D:3] |             background = GradientDrawable().apply { setColor("#00F5D4".toColorInt()); cornerRadius = dpF(4f) }
+ 194 | [D:3] |             setOnClickListener { 
+ 195 | [D:4] |                 currentScenario = currentScenario?.copy(entryNodeId = node.id)
+ 196 | [D:4] |                 currentScenario?.let { canvasView?.setGraphScenario(it) }
+ 197 | [D:4] |                 overlayContainerView?.removeView(card)
+ 198 | [D:4] |                 Toast.makeText(context, "Сделана стартовой", Toast.LENGTH_SHORT).show()
+ 199 | [D:3] |             }
+ 200 | [D:2] |         }
+ 201 | [D:2] |         btnRow1.addView(btnEntry, LinearLayout.LayoutParams(0, dp(30), 1f).apply { marginEnd = dp(4) })
+ 202 | [D:2] | 
+ 203 | [D:2] |         val btnClearEdges = Button(context).apply {
+ 204 | [D:3] |             text = "ОЧИСТИТЬ СВЯЗИ"
+ 205 | [D:3] |             textSize = 7.5f
+ 206 | [D:3] |             setTextColor(Color.WHITE)
+ 207 | [D:3] |             background = GradientDrawable().apply { setColor("#21262D".toColorInt()); cornerRadius = dpF(4f); setStroke(dp(1), "#30363D".toColorInt()) }
+ 208 | [D:3] |             setOnClickListener {
+ 209 | [D:4] |                 val sc = currentScenario ?: return@setOnClickListener
+ 210 | [D:4] |                 val edges = sc.edges.filterNot { it.fromNodeId == node.id || it.toNodeId == node.id }
+ 211 | [D:4] |                 val updated = sc.copy(edges = edges)
+ 212 | [D:4] |                 currentScenario = updated
+ 213 | [D:4] |                 canvasView?.setGraphScenario(updated)
+ 214 | [D:4] |                 overlayContainerView?.removeView(card)
+ 215 | [D:4] |                 Toast.makeText(context, "Связи удалены", Toast.LENGTH_SHORT).show()
+ 216 | [D:3] |             }
+ 217 | [D:2] |         }
+ 218 | [D:2] |         btnRow1.addView(btnClearEdges, LinearLayout.LayoutParams(0, dp(30), 1.4f))
+ 219 | [D:2] |         card.addView(btnRow1)
+ 220 | [D:2] | 
+ 221 | [D:2] |         val btnRow2 = LinearLayout(context).apply {
+ 222 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 223 | [D:3] |             setPadding(0, dp(4), 0, 0)
+ 224 | [D:2] |         }
+ 225 | [D:2] | 
+ 226 | [D:2] |         val btnDeleteNode = Button(context).apply {
+ 227 | [D:3] |             text = "УДАЛИТЬ ФАЗУ"
+ 228 | [D:3] |             textSize = 7.5f
+ 229 | [D:3] |             setTextColor(Color.WHITE)
+ 230 | [D:3] |             background = GradientDrawable().apply { setColor("#F04438".toColorInt()); cornerRadius = dpF(4f) }
+ 231 | [D:3] |             setOnClickListener {
+ 232 | [D:4] |                 val sc = currentScenario ?: return@setOnClickListener
+ 233 | [D:4] |                 if (sc.nodes.size <= 1) {
+ 234 | [D:5] |                     Toast.makeText(context, "Нельзя удалить единственную ноду", Toast.LENGTH_SHORT).show()
+ 235 | [D:5] |                     return@setOnClickListener
+ 236 | [D:4] |                 }
+ 237 | [D:4] |                 val nodes = sc.nodes.toMutableMap()
+ 238 | [D:4] |                 nodes.remove(node.id)
+ 239 | [D:4] |                 val edges = sc.edges.filterNot { it.fromNodeId == node.id || it.toNodeId == node.id }
+ 240 | [D:4] |                 val newEntry = if (sc.entryNodeId == node.id) nodes.keys.first() else sc.entryNodeId
+ 241 | [D:4] |                 val updated = sc.copy(nodes = nodes, edges = edges, entryNodeId = newEntry)
+ 242 | [D:4] |                 currentScenario = updated
+ 243 | [D:4] |                 canvasView?.setGraphScenario(updated)
+ 244 | [D:4] |                 overlayContainerView?.removeView(card)
+ 245 | [D:4] |                 Toast.makeText(context, "Фаза удалена", Toast.LENGTH_SHORT).show()
+ 246 | [D:3] |             }
+ 247 | [D:2] |         }
+ 248 | [D:2] |         btnRow2.addView(btnDeleteNode, LinearLayout.LayoutParams(0, dp(30), 1.2f).apply { marginEnd = dp(4) })
+ 249 | [D:2] | 
+ 250 | [D:2] |         val btnCloseInspector = Button(context).apply { 
+ 251 | [D:3] |             text = "ЗАКРЫТЬ"
+ 252 | [D:3] |             textSize = 7.5f
+ 253 | [D:3] |             setTextColor(Color.WHITE)
+ 254 | [D:3] |             background = GradientDrawable().apply { setColor("#21262D".toColorInt()); cornerRadius = dpF(4f) }
+ 255 | [D:3] |             setOnClickListener { overlayContainerView?.removeView(card) } 
+ 256 | [D:2] |         }
+ 257 | [D:2] |         btnRow2.addView(btnCloseInspector, LinearLayout.LayoutParams(0, dp(30), 1f))
+ 258 | [D:2] |         card.addView(btnRow2)
+ 259 | [D:2] | 
+ 260 | [D:2] |         val lp = FrameLayout.LayoutParams(dp(220), WRAP_CONTENT, Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(24) }
+ 261 | [D:2] |         overlayContainerView?.addView(card, lp)
+ 262 | [D:1] |     }
+ 263 | [D:1] | 
+ 264 | [D:1] |     fun dismiss() {
+ 265 | [D:2] |         overlayContainerView?.let { overlayWindowManager.removeViewSafe(it) }
+ 266 | [D:2] |         overlayContainerView = null
+ 267 | [D:1] |     }
+ 268 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_graph_GraphEditorOverlay.kt_part_01_lines_0001_to_0268.txt
+================================================================================

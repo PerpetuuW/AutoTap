@@ -1,0 +1,22 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\vision\RefinedMaskResult.kt
+ PART: 1/1 | LINES: 1..12
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.vision
+   2 | [D:0] | 
+   3 | [D:0] | import android.graphics.Bitmap
+   4 | [D:0] | 
+   5 | [D:0] | data class RefinedMaskResult(
+   6 | [D:0] |     val trimmedBitmap: Bitmap,
+   7 | [D:0] |     val tightX: Int,
+   8 | [D:0] |     val tightY: Int,
+   9 | [D:0] |     val tightW: Int,
+  10 | [D:0] |     val tightH: Int,
+  11 | [D:0] |     val keptPixels: Int = 0
+  12 | [D:0] | )
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_vision_RefinedMaskResult.kt_part_01_lines_0001_to_0012.txt
+================================================================================

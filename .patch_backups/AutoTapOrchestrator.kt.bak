@@ -1,0 +1,699 @@
+package com.example.autotap.infrastructure.orchestrator
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
+import com.example.autotap.core.logger.AppLogger
+import com.example.autotap.core.math.LinearToGraphMigrator
+import com.example.autotap.core.safety.SafetyGovernor
+import com.example.autotap.domain.gateway.IGestureGateway
+import com.example.autotap.domain.model.ActionType
+import com.example.autotap.domain.model.DeviceDisplaySpecs
+import com.example.autotap.domain.model.ExecutionState
+import com.example.autotap.domain.model.MacroAction
+import com.example.autotap.domain.model.MacroScenario
+import com.example.autotap.domain.model.MatchCandidate
+import com.example.autotap.domain.model.Point2D
+import com.example.autotap.domain.model.graph.GraphMacroScenario
+import com.example.autotap.domain.repository.IScenarioRepository
+import com.example.autotap.domain.repository.ITemplateRepository
+import com.example.autotap.infrastructure.accessibility.AutoTapAccessibilityService
+import com.example.autotap.infrastructure.engine.MacroExecutionEngine
+import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+import com.example.autotap.infrastructure.overlay.badge.RunningBadgeOverlay
+import com.example.autotap.infrastructure.overlay.capture.CalibrationOverlay
+import com.example.autotap.infrastructure.overlay.capture.CaptureFrameOverlay
+import com.example.autotap.infrastructure.overlay.capture.EyedropperOverlay
+import com.example.autotap.infrastructure.overlay.capture.RoiSelectorOverlay
+import com.example.autotap.infrastructure.overlay.debug.DebuggerToolbarOverlay
+import com.example.autotap.infrastructure.overlay.dialog.EditActionDialog
+import com.example.autotap.infrastructure.overlay.dialog.GlobalSettingsDialog
+import com.example.autotap.infrastructure.overlay.dialog.LogViewerDialog
+import com.example.autotap.infrastructure.overlay.dialog.MultiTemplateGraphPromptOverlay
+import com.example.autotap.infrastructure.overlay.dialog.ScriptsDialog
+import com.example.autotap.infrastructure.overlay.graph.GraphEditorOverlay
+import com.example.autotap.infrastructure.overlay.graph.GraphOverlayView
+import com.example.autotap.infrastructure.overlay.joystick.JoystickOverlay
+import com.example.autotap.infrastructure.overlay.lock.ScreenLockOverlay
+import com.example.autotap.infrastructure.overlay.panel.ControlPanelListener
+import com.example.autotap.infrastructure.overlay.panel.ControlPanelOverlay
+import com.example.autotap.infrastructure.overlay.record.GestureRecorderOverlay
+import com.example.autotap.infrastructure.overlay.ring.TargetQuickRingOverlay
+import com.example.autotap.infrastructure.overlay.target.TargetOverlayManager
+import com.example.autotap.infrastructure.storage.AppProfileDetector
+import com.example.autotap.infrastructure.storage.PackageBackupManager
+import com.example.autotap.infrastructure.storage.ScenarioRepositoryImpl
+import com.example.autotap.infrastructure.storage.TemplateRepositoryImpl
+import com.example.autotap.infrastructure.vision.PixelBufferPool
+import com.example.autotap.infrastructure.vision.TemplateMatchingEngine
+import com.example.autotap.infrastructure.vision.VisionGatewayImpl
+import com.example.autotap.infrastructure.visualizer.LaserScanVisualizer
+import com.example.autotap.infrastructure.visualizer.TargetHighlightVisualizer
+import java.io.File
+import java.util.LinkedHashMap
+import kotlin.math.hypot
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class AutoTapOrchestrator private constructor(context: Context) : ControlPanelListener {
+
+    private val appContext: Context = context.applicationContext
+
+    companion object {
+        @SuppressLint("StaticFieldLeak")
+        @Volatile
+        private var INSTANCE: AutoTapOrchestrator? = null
+
+        fun getInstance(context: Context): AutoTapOrchestrator {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: AutoTapOrchestrator(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+    }
+
+    val overlayWindowManager by lazy { OverlayWindowManager(appContext) }
+    val scenarioRepository: IScenarioRepository by lazy { ScenarioRepositoryImpl(appContext) }
+    val templateRepository: ITemplateRepository by lazy { TemplateRepositoryImpl(appContext) }
+    val backupManager by lazy { PackageBackupManager(appContext) }
+    val profileDetector by lazy { AppProfileDetector(appContext) }
+    val safetyGovernor by lazy { SafetyGovernor(appContext) }
+    val visionGateway by lazy { VisionGatewayImpl() }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val appScope = CoroutineScope(Dispatchers.Main)
+
+    val quickRingOverlay by lazy { TargetQuickRingOverlay(appContext, overlayWindowManager) }
+    val graphOverlayView by lazy { GraphOverlayView(appContext) }
+    val targetManager by lazy { TargetOverlayManager(appContext, overlayWindowManager, quickRingOverlay, graphOverlayView) }
+    val controlPanelOverlay by lazy { ControlPanelOverlay(appContext, overlayWindowManager, this) }
+
+    val screenLockOverlay by lazy { ScreenLockOverlay(appContext, overlayWindowManager) }
+    val runningBadgeOverlay by lazy { RunningBadgeOverlay(appContext, overlayWindowManager) }
+    val debuggerToolbarOverlay by lazy { DebuggerToolbarOverlay(appContext, overlayWindowManager) }
+    
+    val graphEditorOverlay by lazy {
+        GraphEditorOverlay(appContext, overlayWindowManager, scenarioRepository).apply {
+            onStartGraphRequested = { graphScenario -> startGraphScenarioExecution(graphScenario) }
+        }
+    }
+
+    var globalClickDurationMs: Long = 120L
+    var globalSwipeDurationMs: Long = 300L
+
+    private val fallbackGestureGateway = object : IGestureGateway {
+        override fun performClick(x: Float, y: Float, durationMs: Long) = AutoTapAccessibilityService.instance?.gestureDispatcher?.performClick(x, y, durationMs) ?: false
+        override fun performSwipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long) = AutoTapAccessibilityService.instance?.gestureDispatcher?.performSwipe(startX, startY, endX, endY, durationMs) ?: false
+        override fun performPath(points: List<Point2D>, durationMs: Long) = AutoTapAccessibilityService.instance?.gestureDispatcher?.performPath(points, durationMs) ?: false
+        override fun performPinch(centerX: Float, centerY: Float, startDistance: Float, endDistance: Float, durationMs: Long) = AutoTapAccessibilityService.instance?.gestureDispatcher?.performPinch(centerX, centerY, startDistance, endDistance, durationMs) ?: false
+        override fun vibrateFeedback(durationMs: Long) { AutoTapAccessibilityService.instance?.gestureDispatcher?.vibrateFeedback(durationMs) }
+    }
+
+    val macroEngine by lazy {
+        MacroExecutionEngine(fallbackGestureGateway, visionGateway, safetyGovernor, scenarioRepository, templateRepository) { AutoTapAccessibilityService.instance }
+    }
+
+    private var activeEditDialog: EditActionDialog? = null
+
+    init {
+        AppLogger.init(appContext)
+        targetManager.onActionEditRequested = { showEditDialog(it) }
+        targetManager.onActionTestRequested = { testSingleAction(it) }
+        targetManager.onActionAddTemplateRequested = { act -> startCaptureForStep(act) }
+        targetManager.onActionCalibrateRequested = { act ->
+            if (act.type == ActionType.COLOR_CHECK) {
+                startEyedropper { hex -> targetManager.updateAction(act.copy(targetColorHex = hex)) }
+            } else {
+                startCalibration(act)
+            }
+        }
+
+        appScope.launch { macroEngine.executionState.collect { handleExecutionState(it) } }
+        AutoTapAccessibilityService.instance?.gestureDispatcher?.onGesturePassthroughToggle = { screenLockOverlay.setPassthroughEnabled(it) }
+    }
+
+    fun showOverlays() {
+        AutoTapAccessibilityService.instance?.gestureDispatcher?.onGesturePassthroughToggle = { screenLockOverlay.setPassthroughEnabled(it) }
+        controlPanelOverlay.show()
+        targetManager.attachOverlaysIfNeeded()
+        targetManager.setOverlaysVisible(true)
+    }
+
+    fun hideOverlays() {
+        activeEditDialog?.dismiss()
+        activeEditDialog = null
+        controlPanelOverlay.hide()
+        screenLockOverlay.dismiss()
+        runningBadgeOverlay.dismiss()
+        debuggerToolbarOverlay.dismiss()
+        quickRingOverlay.dismiss()
+        targetManager.setOverlaysVisible(false)
+        macroEngine.stop()
+    }
+
+    override fun onGraphClicked() {
+        val actions = targetManager.getActions()
+        val dm = appContext.resources.displayMetrics
+        val specs = DeviceDisplaySpecs(dm.widthPixels, dm.heightPixels, dm.densityDpi, dm.density, dm.widthPixels > dm.heightPixels)
+        val scenario = MacroScenario("ActiveSession", 1, specs, actions, globalClickDurationMs, globalSwipeDurationMs)
+        val graph = LinearToGraphMigrator.linearToGraph(scenario)
+        scenarioRepository.saveGraphScenario(graph)
+        openGraphEditor(graph.name)
+    }
+
+    fun openGraphEditor(name: String) {
+        controlPanelOverlay.hide()
+        targetManager.setOverlaysVisible(false)
+        graphEditorOverlay.show(name)
+    }
+
+    fun startGraphScenarioExecution(graph: GraphMacroScenario) {
+        templateRepository.clearCache()
+        val templatesMap = LinkedHashMap<String, Bitmap>()
+        templateRepository.loadAllTemplates().forEach { (path, bmp) -> templatesMap[path] = bmp }
+        macroEngine.startGraph(graph, templatesMap, isDebug = false)
+    }
+
+    private fun checkAndPromptGraphGeneration(action: MacroAction, onCompleted: () -> Unit) {
+        val allTemplates = templateRepository.loadAllTemplates()
+        val resolvedPaths = ArrayList<String>()
+
+        if (action.multiTemplatePaths.isNotEmpty()) resolvedPaths.addAll(action.multiTemplatePaths)
+        else if (action.multiTemplateIndices.isNotEmpty()) {
+            for (idx in action.multiTemplateIndices) allTemplates.getOrNull(idx)?.first?.let { resolvedPaths.add(it) }
+        } else if (action.templatePath.isNotEmpty()) resolvedPaths.add(action.templatePath)
+
+        val distinctPaths = resolvedPaths.filter { it.isNotBlank() }.distinct()
+        if (distinctPaths.size > 1) {
+            controlPanelOverlay.hide()
+            targetManager.setOverlaysVisible(false)
+            MultiTemplateGraphPromptOverlay(
+                context = appContext,
+                overlayWindowManager = overlayWindowManager,
+                action = action,
+                templatePaths = distinctPaths,
+                onGenerateGraphConfirmed = { targetAct, paths ->
+                    val dm = appContext.resources.displayMetrics
+                    val specs = DeviceDisplaySpecs(dm.widthPixels, dm.heightPixels, dm.densityDpi, dm.density, dm.widthPixels > dm.heightPixels)
+                    val currentScenario = MacroScenario("ActiveSession", 1, specs, targetManager.getActions(), globalClickDurationMs, globalSwipeDurationMs)
+                    val generatedGraph = LinearToGraphMigrator.generateMultiTemplateBranchingGraph(currentScenario, targetAct, paths)
+                    scenarioRepository.saveGraphScenario(generatedGraph)
+                    openGraphEditor(generatedGraph.name)
+                },
+                onKeepLinear = {
+                    controlPanelOverlay.show()
+                    targetManager.setOverlaysVisible(true)
+                    onCompleted()
+                }
+            ).show()
+        } else onCompleted()
+    }
+
+    fun startCaptureForStep(targetAction: MacroAction) {
+        targetManager.setOverlaysVisible(false)
+        controlPanelOverlay.hide()
+
+        CaptureFrameOverlay(
+            context = appContext,
+            overlayWindowManager = overlayWindowManager,
+            onCaptureTriggered = { cropX, cropY, cropW, cropH, _ ->
+                mainHandler.postDelayed({
+                    val service = AutoTapAccessibilityService.instance
+                    val screenshot = service?.captureScreenshotSync(2000L)
+                    if (screenshot != null) {
+                        val safeW = cropW.coerceIn(8, screenshot.width)
+                        val safeH = cropH.coerceIn(8, screenshot.height)
+                        val safeX = cropX.coerceIn(0, screenshot.width - safeW)
+                        val safeY = cropY.coerceIn(0, screenshot.height - safeH)
+                        val cropped = Bitmap.createBitmap(screenshot, safeX, safeY, safeW, safeH)
+
+                        val initialAnchorCandidate = MatchCandidate(safeX + safeW / 2, safeY + safeH / 2, safeX, safeY, safeX + safeW, safeY + safeH, 1.0f)
+
+                        LaserScanVisualizer.showSweepLaser(appContext, overlayWindowManager) {
+                            CalibrationOverlay(
+                                context = appContext,
+                                overlayWindowManager = overlayWindowManager,
+                                screenshot = screenshot,
+                                rawTemplateBitmap = cropped,
+                                initialCandidates = listOf(initialAnchorCandidate),
+                                existingAction = targetAction,
+                                existingTemplatePath = null,
+                                allActions = targetManager.getActions(),
+                                targetStepId = targetAction.id,
+                                anchorCropX = safeX,
+                                anchorCropY = safeY,
+                                onFinished = { updatedAction, path ->
+                                    controlPanelOverlay.show()
+                                    targetManager.setOverlaysVisible(true)
+                                    TemplateMatchingEngine.lastMatchedPositions[path] = Pair(updatedAction.posX.toInt(), updatedAction.posY.toInt())
+                                    targetManager.updateAction(updatedAction)
+                                    checkAndPromptGraphGeneration(updatedAction) {}
+                                },
+                                onCancelled = {
+                                    controlPanelOverlay.show()
+                                    targetManager.setOverlaysVisible(true)
+                                }
+                            ).show()
+                        }
+                    } else {
+                        controlPanelOverlay.show()
+                        targetManager.setOverlaysVisible(true)
+                    }
+                }, 80L)
+            },
+            onCancelled = {
+                controlPanelOverlay.show()
+                targetManager.setOverlaysVisible(true)
+            }
+        ).show()
+    }
+
+    private fun startCalibration(action: MacroAction) {
+        val service = AutoTapAccessibilityService.instance ?: run {
+            Toast.makeText(appContext, "Включите службу кликера в Спец. возможностях", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val screenshot = service.captureScreenshotSync(2000L) ?: run {
+            Toast.makeText(appContext, "Не удалось получить снимок экрана", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val rawSourceBitmap: Bitmap? = if (action.templatePath.isNotEmpty()) {
+            val maskFile = File(action.templatePath)
+            val rawFile = File(maskFile.parentFile, "raw_" + maskFile.name.removePrefix("mask_"))
+            if (rawFile.exists()) BitmapFactory.decodeFile(rawFile.absolutePath) else templateRepository.getTemplate(action.templatePath)
+        } else null
+
+        val template = rawSourceBitmap ?: run {
+            Toast.makeText(appContext, "Шаблон не найден. Вырежьте область для шага #${action.id}", Toast.LENGTH_SHORT).show()
+            startCaptureForStep(action)
+            return
+        }
+
+        targetManager.setOverlaysVisible(false)
+        controlPanelOverlay.hide()
+
+        var foundX = action.posX.toInt()
+        var foundY = action.posY.toInt()
+        
+        if (action.templatePath.isNotEmpty()) {
+            val sPixels = PixelBufferPool.obtain(screenshot.width * screenshot.height)
+            try {
+                screenshot.getPixels(sPixels, 0, screenshot.width, 0, 0, screenshot.width, screenshot.height)
+                val matches = TemplateMatchingEngine.findTemplateFastCascade(
+                    sPixels, screenshot.width, screenshot.height, template, 
+                    minSimilarityPercent = action.similarityPercent.coerceAtLeast(60),
+                    templatePath = action.templatePath,
+                    enableL0Cache = false
+                )
+                val topMatch = matches.maxByOrNull { it.score }
+                if (topMatch != null && topMatch.score >= 0.60f) {
+                    foundX = topMatch.clickX
+                    foundY = topMatch.clickY
+                    
+                    val dist = hypot((foundX - action.posX).toDouble(), (foundY - action.posY).toDouble())
+                    if (dist > 30.0) {
+                        val newAnchors = action.primaryAnchorPoints.toMutableList()
+                        newAnchors.add(Point2D(foundX.toFloat(), foundY.toFloat()))
+                        targetManager.updateAction(action.copy(primaryAnchorPoints = newAnchors.takeLast(3)))
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                PixelBufferPool.release(sPixels)
+            }
+        }
+
+        val anchorCandidate = MatchCandidate(
+            clickX = foundX, clickY = foundY,
+            rectLeft = (foundX - template.width / 2f).toInt().coerceAtLeast(0),
+            rectTop = (foundY - template.height / 2f).toInt().coerceAtLeast(0),
+            rectRight = (foundX + template.width / 2f).toInt().coerceAtMost(screenshot.width),
+            rectBottom = (foundY + template.height / 2f).toInt().coerceAtMost(screenshot.height),
+            score = 1.0f, templatePath = action.templatePath
+        )
+
+        LaserScanVisualizer.showSweepLaser(appContext, overlayWindowManager) {
+            CalibrationOverlay(
+                context = appContext,
+                overlayWindowManager = overlayWindowManager,
+                screenshot = screenshot,
+                rawTemplateBitmap = template,
+                initialCandidates = listOf(anchorCandidate),
+                existingAction = action,
+                existingTemplatePath = action.templatePath,
+                allActions = targetManager.getActions(),
+                targetStepId = action.id,
+                anchorCropX = anchorCandidate.rectLeft,
+                anchorCropY = anchorCandidate.rectTop,
+                onFinished = { updatedAction, path ->
+                    controlPanelOverlay.show()
+                    targetManager.setOverlaysVisible(true)
+                    TemplateMatchingEngine.lastMatchedPositions[path] = Pair(updatedAction.posX.toInt(), updatedAction.posY.toInt())
+                    targetManager.updateAction(updatedAction)
+                    checkAndPromptGraphGeneration(updatedAction) {}
+                },
+                onCancelled = {
+                    controlPanelOverlay.show()
+                    targetManager.setOverlaysVisible(true)
+                }
+            ).show()
+        }
+    }
+
+    fun testSingleAction(action: MacroAction) {
+        appScope.launch(Dispatchers.Default) {
+            when (action.type) {
+                ActionType.CLICK -> {
+                    val (gx, gy) = safetyGovernor.computeGaussianOffset(action.randomRadiusPx)
+                    val tx = action.posX + gx
+                    val ty = action.posY + gy
+                    withContext(Dispatchers.IO) {
+                        fallbackGestureGateway.performClick(tx, ty, action.holdDurationMs.coerceAtLeast(30L))
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appContext, "Тест клика: (${tx.toInt()}, ${ty.toInt()})", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                ActionType.LONG_PRESS -> {
+                    val (gx, gy) = safetyGovernor.computeGaussianOffset(action.randomRadiusPx)
+                    val tx = action.posX + gx
+                    val ty = action.posY + gy
+                    withContext(Dispatchers.IO) {
+                        fallbackGestureGateway.performClick(tx, ty, action.holdDurationMs.coerceAtLeast(400L))
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appContext, "Тест удержания: (${tx.toInt()}, ${ty.toInt()})", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                ActionType.SWIPE -> {
+                    val sx = action.posX
+                    val sy = action.posY
+                    val ex = action.endX ?: (sx + 100f)
+                    val ey = action.endY ?: (sy + 100f)
+                    withContext(Dispatchers.IO) {
+                        fallbackGestureGateway.performSwipe(sx, sy, ex, ey, action.holdDurationMs.coerceAtLeast(100L))
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appContext, "Тест свайпа: (${sx.toInt()}, ${sy.toInt()}) -> (${ex.toInt()}, ${ey.toInt()})", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                ActionType.PATH -> {
+                    if (action.pathPoints.isNotEmpty()) {
+                        withContext(Dispatchers.IO) {
+                            fallbackGestureGateway.performPath(action.pathPoints, action.holdDurationMs.coerceAtLeast(50L))
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(appContext, "Тест пути (${action.pathPoints.size} точек)", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                ActionType.PINCH -> {
+                    val startDist = if (action.pinchStartDistance > 0f) action.pinchStartDistance else 300f
+                    val endDist = if (action.pinchEndDistance > 0f) action.pinchEndDistance else 600f
+                    withContext(Dispatchers.IO) {
+                        fallbackGestureGateway.performPinch(action.posX, action.posY, startDist, endDist, action.holdDurationMs.coerceAtLeast(150L))
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appContext, "Тест пинча ($startDist -> $endDist px)", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                ActionType.TRIGGER -> {
+                    val service = AutoTapAccessibilityService.instance
+                    val screenshot = service?.captureScreenshotSync(1500L)
+                    if (screenshot != null) {
+                        try {
+                            val templates = templateRepository.loadAllTemplates()
+                            val targetPair = templates.firstOrNull { it.first == action.templatePath }
+                                ?: templates.getOrNull(action.selectedTemplateIndex)
+                                ?: templates.firstOrNull()
+                            if (targetPair != null) {
+                                val matches = visionGateway.findTemplateMatches(screenshot, targetPair.second, action.similarityPercent, action)
+                                withContext(Dispatchers.Main) {
+                                    if (matches.isNotEmpty()) {
+                                        val best = matches.first()
+                                        TargetHighlightVisualizer.showSpringHighlight(appContext, overlayWindowManager, Rect(best.rectLeft, best.rectTop, best.rectRight, best.rectBottom), 1500L)
+                                        if (action.clickAiTarget) {
+                                            val finalClickX = best.clickX + (if (action.useCustomClickOffset) action.clickOffsetX else 0f)
+                                            val finalClickY = best.clickY + (if (action.useCustomClickOffset) action.clickOffsetY else 0f)
+                                            fallbackGestureGateway.performClick(finalClickX, finalClickY, 50L)
+                                        }
+                                        Toast.makeText(appContext, "Найдено: ${(best.score * 100).toInt()}% в (${best.clickX}, ${best.clickY})", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(appContext, "Цель не найдена на экране", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        } finally {
+                            screenshot.recycle()
+                        }
+                    }
+                }
+                ActionType.OCR -> {
+                    val service = AutoTapAccessibilityService.instance
+                    val screenshot = service?.captureScreenshotSync(1500L)
+                    if (screenshot != null) {
+                        try {
+                            val roi = if (action.roiLeft != null && action.roiTop != null && action.roiRight != null && action.roiBottom != null) {
+                                Rect(action.roiLeft, action.roiTop, action.roiRight, action.roiBottom)
+                            } else null
+                            val results = visionGateway.findText(screenshot, action.targetScriptOrQuery, 1500L, roi)
+                            withContext(Dispatchers.Main) {
+                                if (results.isNotEmpty()) {
+                                    val best = results.first()
+                                    TargetHighlightVisualizer.showSpringHighlight(appContext, overlayWindowManager, Rect(best.rectLeft, best.rectTop, best.rectRight, best.rectBottom), 1500L)
+                                    if (action.clickAiTarget) {
+                                        fallbackGestureGateway.performClick(best.clickX.toFloat(), best.clickY.toFloat(), 50L)
+                                    }
+                                    Toast.makeText(appContext, "OCR найдено: '${best.matchedText}'", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(appContext, "Текст '${action.targetScriptOrQuery}' не найден", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } finally {
+                            screenshot.recycle()
+                        }
+                    }
+                }
+                ActionType.COLOR_CHECK -> {
+                    val service = AutoTapAccessibilityService.instance
+                    val screenshot = service?.captureScreenshotSync(1000L)
+                    if (screenshot != null) {
+                        try {
+                            val matched = visionGateway.checkColor(screenshot, action.posX.toInt(), action.posY.toInt(), action.targetColorHex, action.colorTolerance, action.colorDeltaEMode)
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(appContext, if (matched) "Цвет ${action.targetColorHex} СОВПАЛ!" else "Цвет не совпал", Toast.LENGTH_SHORT).show()
+                            }
+                        } finally {
+                            screenshot.recycle()
+                        }
+                    }
+                }
+                ActionType.SUBROUTINE -> {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appContext, "Подпрограмма: ${action.targetScriptOrQuery.ifEmpty { action.subroutineTag }}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                ActionType.RETURN -> {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appContext, "Точка возврата", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onPlayClicked() {
+        if (macroEngine.executionState.value is ExecutionState.Running) {
+            macroEngine.stop()
+            return
+        }
+
+        val actions = targetManager.getActions()
+        if (actions.isEmpty()) {
+            Toast.makeText(appContext, "Добавьте действие (+) или запишите жест", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dm = appContext.resources.displayMetrics
+        val specs = DeviceDisplaySpecs(dm.widthPixels, dm.heightPixels, dm.densityDpi, dm.density, dm.widthPixels > dm.heightPixels)
+        val scenario = MacroScenario("ActiveSession", 1, specs, actions, globalClickDurationMs, globalSwipeDurationMs)
+
+        templateRepository.clearCache()
+        val templatesMap = LinkedHashMap<String, Bitmap>()
+        templateRepository.loadAllTemplates().forEach { (path, bmp) -> templatesMap[path] = bmp }
+        macroEngine.start(scenario, templatesMap, isDebug = false)
+    }
+
+    override fun onPlayLongClicked() {
+        if (macroEngine.executionState.value is ExecutionState.Running) {
+            macroEngine.stop()
+        }
+
+        val actions = targetManager.getActions()
+        if (actions.isEmpty()) return
+        val dm = appContext.resources.displayMetrics
+        val specs = DeviceDisplaySpecs(dm.widthPixels, dm.heightPixels, dm.densityDpi, dm.density, dm.widthPixels > dm.heightPixels)
+        val scenario = MacroScenario("DebugSession", 1, specs, actions, globalClickDurationMs, globalSwipeDurationMs)
+
+        templateRepository.clearCache()
+        val templatesMap = LinkedHashMap<String, Bitmap>()
+        templateRepository.loadAllTemplates().forEach { (path, bmp) -> templatesMap[path] = bmp }
+        macroEngine.start(scenario, templatesMap, isDebug = true)
+        debuggerToolbarOverlay.show(onStepNext = { macroEngine.stepDebugNext() }, onStop = { macroEngine.stop() })
+    }
+
+    override fun onAddClicked() { targetManager.addActionAt(appContext.resources.displayMetrics.widthPixels / 2f, appContext.resources.displayMetrics.heightPixels / 2f) }
+
+    override fun onRecordClicked() {
+        targetManager.setOverlaysVisible(false)
+        controlPanelOverlay.hide()
+        GestureRecorderOverlay(
+            context = appContext, overlayWindowManager = overlayWindowManager,
+            onRecordedActions = {
+                controlPanelOverlay.show()
+                targetManager.setOverlaysVisible(true)
+                it.forEach { act -> targetManager.addAction(act) }
+            },
+            onCancelled = { controlPanelOverlay.show(); targetManager.setOverlaysVisible(true) }
+        ).show()
+    }
+
+    override fun onCaptureClicked() {
+        targetManager.setOverlaysVisible(false)
+        controlPanelOverlay.hide()
+        CaptureFrameOverlay(
+            context = appContext, overlayWindowManager = overlayWindowManager,
+            onCaptureTriggered = { cropX, cropY, cropW, cropH, _ ->
+                mainHandler.postDelayed({
+                    val service = AutoTapAccessibilityService.instance
+                    val screenshot = service?.captureScreenshotSync(2000L)
+                    if (screenshot != null) {
+                        val safeW = cropW.coerceIn(8, screenshot.width); val safeH = cropH.coerceIn(8, screenshot.height)
+                        val safeX = cropX.coerceIn(0, screenshot.width - safeW); val safeY = cropY.coerceIn(0, screenshot.height - safeH)
+                        val cropped = Bitmap.createBitmap(screenshot, safeX, safeY, safeW, safeH)
+                        val anchor = MatchCandidate(safeX + safeW / 2, safeY + safeH / 2, safeX, safeY, safeX + safeW, safeY + safeH, 1.0f)
+
+                        LaserScanVisualizer.showSweepLaser(appContext, overlayWindowManager) {
+                            CalibrationOverlay(
+                                context = appContext, overlayWindowManager = overlayWindowManager, screenshot = screenshot,
+                                rawTemplateBitmap = cropped, initialCandidates = listOf(anchor),
+                                existingAction = null, existingTemplatePath = null,
+                                allActions = targetManager.getActions(), targetStepId = null,
+                                anchorCropX = safeX,
+                                anchorCropY = safeY,
+                                onFinished = { updatedAction, path ->
+                                    controlPanelOverlay.show(); targetManager.setOverlaysVisible(true)
+                                    val currentActions = targetManager.getActions()
+                                    if (currentActions.size == 1 && currentActions[0].type == ActionType.TRIGGER) {
+                                        val firstAct = currentActions[0]
+                                        val merged = updatedAction.copy(id = firstAct.id)
+                                        TemplateMatchingEngine.lastMatchedPositions[path] = Pair(merged.posX.toInt(), merged.posY.toInt())
+                                        targetManager.updateAction(merged)
+                                    } else {
+                                        TemplateMatchingEngine.lastMatchedPositions[path] = Pair(updatedAction.posX.toInt(), updatedAction.posY.toInt())
+                                        targetManager.addAction(updatedAction)
+                                    }
+                                },
+                                onCancelled = { controlPanelOverlay.show(); targetManager.setOverlaysVisible(true) }
+                            ).show()
+                        }
+                    } else {
+                        controlPanelOverlay.show(); targetManager.setOverlaysVisible(true)
+                    }
+                }, 80L)
+            },
+            onCancelled = { controlPanelOverlay.show(); targetManager.setOverlaysVisible(true) }
+        ).show()
+    }
+
+    override fun onScriptsClicked() {
+        ScriptsDialog(
+            context = appContext, overlayWindowManager = overlayWindowManager, scenarioRepository = scenarioRepository,
+            onSaveCurrentRequested = {
+                val dm = appContext.resources.displayMetrics
+                val specs = DeviceDisplaySpecs(dm.widthPixels, dm.heightPixels, dm.densityDpi, dm.density, dm.widthPixels > dm.heightPixels)
+                scenarioRepository.saveScenario(MacroScenario(it, 1, specs, targetManager.getActions(), globalClickDurationMs, globalSwipeDurationMs))
+            },
+            onLoadRequested = { scenarioRepository.loadScenario(it)?.let { s -> targetManager.loadActions(s.actions) } },
+            onExportRequested = { backupManager.exportSingleScriptZip(it)?.let { z -> backupManager.shareZipFile(z, "Export") } },
+            onOpenGraphRequested = { openGraphEditor(it) }
+        ).show()
+    }
+
+    override fun onSettingsClicked() {
+        GlobalSettingsDialog(appContext, overlayWindowManager, globalClickDurationMs, globalSwipeDurationMs) { c, s -> globalClickDurationMs = c; globalSwipeDurationMs = s }.show()
+    }
+
+    override fun onJoystickClicked() {
+        targetManager.setOverlaysVisible(false); controlPanelOverlay.hide()
+        JoystickOverlay(appContext, overlayWindowManager) { pts, dur ->
+            controlPanelOverlay.show(); targetManager.setOverlaysVisible(true)
+            if (pts.isNotEmpty()) targetManager.addAction(MacroAction(id = targetManager.getActions().size + 1, type = ActionType.PATH, posX = pts[0].x, posY = pts[0].y, holdDurationMs = dur, pathPoints = pts))
+        }.show()
+    }
+
+    override fun onScreenLockClicked() { screenLockOverlay.show() }
+    override fun onClearAllClicked() { 
+        targetManager.clearAll()
+        Toast.makeText(appContext, "Все мишени удалены", Toast.LENGTH_SHORT).show()
+    }
+    override fun onToggleNumbersClicked() {
+        targetManager.isNumbersHidden = !targetManager.isNumbersHidden
+        targetManager.setOverlaysVisible(true)
+        controlPanelOverlay.updateNumbersHiddenState(targetManager.isNumbersHidden)
+        Toast.makeText(appContext, if (targetManager.isNumbersHidden) "Номера шагов скрыты" else "Номера шагов показаны", Toast.LENGTH_SHORT).show()
+    }
+    override fun onHelpClicked() { LogViewerDialog(appContext, overlayWindowManager).show() }
+    override fun onCloseClicked() { hideOverlays() }
+
+    fun startEyedropper(onColorPicked: (String) -> Unit) {
+        val service = AutoTapAccessibilityService.instance ?: return
+        val screenshot = service.captureScreenshotSync(2000L) ?: return
+        targetManager.setOverlaysVisible(false); controlPanelOverlay.hide()
+        EyedropperOverlay(appContext, overlayWindowManager, screenshot, onColorPicked = { controlPanelOverlay.show(); targetManager.setOverlaysVisible(true); onColorPicked(it) }, onCancelled = { controlPanelOverlay.show(); targetManager.setOverlaysVisible(true) }).show()
+    }
+
+    fun startRoiSelector(currentRoi: Rect?, onRoiConfirmed: (Rect?) -> Unit) {
+        targetManager.setOverlaysVisible(false); controlPanelOverlay.hide()
+        RoiSelectorOverlay(appContext, overlayWindowManager, currentRoi, onRoiConfirmed = { controlPanelOverlay.show(); targetManager.setOverlaysVisible(true); onRoiConfirmed(it) }, onCancelled = { controlPanelOverlay.show(); targetManager.setOverlaysVisible(true) }).show()
+    }
+
+    private fun showEditDialog(action: MacroAction) {
+        activeEditDialog?.dismiss()
+        activeEditDialog = EditActionDialog(
+            context = appContext, overlayWindowManager = overlayWindowManager, templateRepository = templateRepository, scenarioRepository = scenarioRepository,
+            action = action, totalActionsCount = targetManager.getActions().size,
+            onSave = { updated -> targetManager.updateAction(updated); checkAndPromptGraphGeneration(updated) {} },
+            onClone = { targetManager.addAction(it.copy(posX = it.posX + 30f, posY = it.posY + 30f)) },
+            onDelete = { targetManager.removeAction(it.id) },
+            onCalibrate = { act -> if (act.type == ActionType.COLOR_CHECK) startEyedropper { targetManager.updateAction(act.copy(targetColorHex = it)) } else startCalibration(act) },
+            onSelectRoi = { act -> startRoiSelector(if (act.roiLeft != null && act.roiRight != null) Rect(act.roiLeft, act.roiTop ?: 0, act.roiRight, act.roiBottom ?: 0) else null) { r -> targetManager.updateAction(if (r != null) act.copy(roiLeft = r.left, roiTop = r.top, roiRight = r.right, roiBottom = r.bottom) else act.copy(roiLeft = null, roiTop = null, roiRight = null, roiBottom = null)) } },
+            onNavigateStep = { stepId -> targetManager.getActions().find { it.id == stepId }?.let { showEditDialog(it) } },
+            onTest = { testSingleAction(it) }
+        )
+        activeEditDialog?.show()
+    }
+
+    private fun handleExecutionState(state: ExecutionState) {
+        mainHandler.post {
+            when (state) {
+                is ExecutionState.Running -> {
+                    controlPanelOverlay.hide(); targetManager.setTargetsTouchable(false); targetManager.setOverlaysVisible(false)
+                    runningBadgeOverlay.show(onLockClick = { screenLockOverlay.show() }, onStopClick = { macroEngine.stop() })
+                    runningBadgeOverlay.updateState(state)
+                }
+                is ExecutionState.Completed, ExecutionState.Idle, is ExecutionState.Error -> {
+                    runningBadgeOverlay.dismiss(); debuggerToolbarOverlay.dismiss(); screenLockOverlay.dismiss()
+                    controlPanelOverlay.show(); controlPanelOverlay.setPlayState(false); targetManager.setOverlaysVisible(true); targetManager.setTargetsTouchable(true)
+                }
+                is ExecutionState.Paused -> controlPanelOverlay.setPlayState(false)
+            }
+        }
+    }
+}

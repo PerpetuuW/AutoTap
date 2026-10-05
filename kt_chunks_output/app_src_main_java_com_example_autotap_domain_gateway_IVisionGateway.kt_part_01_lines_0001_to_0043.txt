@@ -1,0 +1,53 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\domain\gateway\IVisionGateway.kt
+ PART: 1/1 | LINES: 1..43
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.domain.gateway
+   2 | [D:0] | 
+   3 | [D:0] | import android.graphics.Bitmap
+   4 | [D:0] | import android.graphics.Rect
+   5 | [D:0] | import com.example.autotap.domain.model.MacroAction
+   6 | [D:0] | import com.example.autotap.domain.model.MatchCandidate
+   7 | [D:0] | import com.example.autotap.domain.model.OcrMatchResult
+   8 | [D:0] | 
+   9 | [D:0] | interface IVisionGateway {
+  10 | [D:1] |     fun findTemplateMatches(
+  11 | [D:1] |         screenshot: Bitmap,
+  12 | [D:1] |         template: Bitmap,
+  13 | [D:1] |         minSimilarityPercent: Int = 80,
+  14 | [D:1] |         actionOverride: MacroAction? = null,
+  15 | [D:1] |         isCancelled: () -> Boolean = { false }
+  16 | [D:1] |     ): List<MatchCandidate>
+  17 | [D:1] | 
+  18 | [D:1] |     fun findMultiTemplateMatches(
+  19 | [D:1] |         screenshot: Bitmap,
+  20 | [D:1] |         templates: List<Pair<String, Bitmap>>,
+  21 | [D:1] |         minSimilarityPercent: Int = 80,
+  22 | [D:1] |         actionOverride: MacroAction? = null,
+  23 | [D:1] |         isCancelled: () -> Boolean = { false }
+  24 | [D:1] |     ): List<MatchCandidate>
+  25 | [D:1] | 
+  26 | [D:1] |     fun findText(
+  27 | [D:1] |         screenshot: Bitmap,
+  28 | [D:1] |         targetQuery: String,
+  29 | [D:1] |         timeoutMs: Long = 2000L,
+  30 | [D:1] |         roi: Rect? = null
+  31 | [D:1] |     ): List<OcrMatchResult>
+  32 | [D:1] | 
+  33 | [D:1] |     fun checkColor(
+  34 | [D:1] |         screenshot: Bitmap,
+  35 | [D:1] |         targetX: Int,
+  36 | [D:1] |         targetY: Int,
+  37 | [D:1] |         expectedHex: String,
+  38 | [D:1] |         tolerance: Int,
+  39 | [D:1] |         useDeltaE: Boolean = false
+  40 | [D:1] |     ): Boolean
+  41 | [D:1] | 
+  42 | [D:1] |     fun computeScreenHash(screenshot: Bitmap): Long
+  43 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_domain_gateway_IVisionGateway.kt_part_01_lines_0001_to_0043.txt
+================================================================================

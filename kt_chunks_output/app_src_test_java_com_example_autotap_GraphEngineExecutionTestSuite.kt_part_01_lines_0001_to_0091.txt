@@ -1,0 +1,101 @@
+================================================================================
+ FILE: app\src\test\java\com\example\autotap\GraphEngineExecutionTestSuite.kt
+ PART: 1/1 | LINES: 1..91
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.domain.model.ActionType
+   4 | [D:0] | import com.example.autotap.domain.model.DeviceDisplaySpecs
+   5 | [D:0] | import com.example.autotap.domain.model.graph.EvaluationPolicy
+   6 | [D:0] | import com.example.autotap.domain.model.graph.GraphMacroScenario
+   7 | [D:0] | import com.example.autotap.domain.model.graph.NodeActionSpec
+   8 | [D:0] | import com.example.autotap.domain.model.graph.NodeTriggerSpec
+   9 | [D:0] | import com.example.autotap.domain.model.graph.ScenarioEdge
+  10 | [D:0] | import com.example.autotap.domain.model.graph.ScenarioNode
+  11 | [D:0] | import org.junit.Assert.assertEquals
+  12 | [D:0] | import org.junit.Assert.assertNotNull
+  13 | [D:0] | import org.junit.Assert.assertTrue
+  14 | [D:0] | import org.junit.Test
+  15 | [D:0] | 
+  16 | [D:0] | class GraphEngineExecutionTestSuite {
+  17 | [D:1] | 
+  18 | [D:1] |     @Test
+  19 | [D:1] |     fun testGraphTopology_ValidatesLoopingBackEdges() {
+  20 | [D:2] |         val specs = DeviceDisplaySpecs(1080, 2400, 480, 2.75f, false)
+  21 | [D:2] |         val node1 = ScenarioNode(
+  22 | [D:2] |             id = "node_start",
+  23 | [D:2] |             title = "Старт",
+  24 | [D:2] |             entryActions = listOf(NodeActionSpec("act_click", ActionType.CLICK, 500f, 1000f)),
+  25 | [D:2] |             standardPorts = listOf("out_default")
+  26 | [D:2] |         )
+  27 | [D:2] |         val node2 = ScenarioNode(
+  28 | [D:2] |             id = "node_combat",
+  29 | [D:2] |             title = "Бой",
+  30 | [D:2] |             triggers = listOf(NodeTriggerSpec("trig_win", "Победа", ActionType.TRIGGER, similarityThreshold = 85)),
+  31 | [D:2] |             standardPorts = listOf("out_timeout")
+  32 | [D:2] |         )
+  33 | [D:2] | 
+  34 | [D:2] |         // Цикл: node_start -> node_combat -> обратная петля на node_start
+  35 | [D:2] |         val edge1 = ScenarioEdge("edge_1", "node_start", "out_default", "node_combat")
+  36 | [D:2] |         val backEdge = ScenarioEdge("edge_loop", "node_combat", "out_match_trig_win", "node_start")
+  37 | [D:2] | 
+  38 | [D:2] |         val graph = GraphMacroScenario(
+  39 | [D:2] |             id = "test_graph",
+  40 | [D:2] |             name = "TestLoopGraph",
+  41 | [D:2] |             version = 2,
+  42 | [D:2] |             deviceSpecs = specs,
+  43 | [D:2] |             entryNodeId = "node_start",
+  44 | [D:2] |             nodes = mapOf(node1.id to node1, node2.id to node2),
+  45 | [D:2] |             edges = listOf(edge1, backEdge)
+  46 | [D:2] |         )
+  47 | [D:2] | 
+  48 | [D:2] |         assertEquals("node_start", graph.entryNodeId)
+  49 | [D:2] |         assertEquals(2, graph.nodes.size)
+  50 | [D:2] |         assertEquals(2, graph.edges.size)
+  51 | [D:2] | 
+  52 | [D:2] |         // Проверка наличия обратного ребра без жесткого разыменования !!
+  53 | [D:2] |         val loop = graph.edges.firstOrNull { it.toNodeId == "node_start" && it.fromNodeId == "node_combat" }
+  54 | [D:2] |         assertNotNull(loop)
+  55 | [D:2] |         assertEquals("out_match_trig_win", loop?.fromPortId)
+  56 | [D:1] |     }
+  57 | [D:1] | 
+  58 | [D:1] |     @Test
+  59 | [D:1] |     fun testGraphTopology_TimeoutFallbackEdgeIntegrity() {
+  60 | [D:2] |         val specs = DeviceDisplaySpecs(1080, 2400, 480, 2.75f, false)
+  61 | [D:2] |         val nodeWait = ScenarioNode(
+  62 | [D:2] |             id = "node_wait",
+  63 | [D:2] |             title = "Ожидание диалога",
+  64 | [D:2] |             triggers = listOf(NodeTriggerSpec("trig_dialog", "Диалог", ActionType.TRIGGER)),
+  65 | [D:2] |             timeoutSeconds = 5,
+  66 | [D:2] |             standardPorts = listOf("out_timeout")
+  67 | [D:2] |         )
+  68 | [D:2] |         val nodeRecover = ScenarioNode(
+  69 | [D:2] |             id = "node_recover",
+  70 | [D:2] |             title = "Свайп восстановления",
+  71 | [D:2] |             entryActions = listOf(NodeActionSpec("act_swipe", ActionType.SWIPE, 500f, 1500f, 500f, 500f)),
+  72 | [D:2] |             standardPorts = listOf("out_default")
+  73 | [D:2] |         )
+  74 | [D:2] | 
+  75 | [D:2] |         val timeoutEdge = ScenarioEdge("edge_timeout", "node_wait", "out_timeout", "node_recover")
+  76 | [D:2] | 
+  77 | [D:2] |         val graph = GraphMacroScenario(
+  78 | [D:2] |             id = "test_fallback",
+  79 | [D:2] |             name = "FallbackGraph",
+  80 | [D:2] |             version = 2,
+  81 | [D:2] |             deviceSpecs = specs,
+  82 | [D:2] |             entryNodeId = "node_wait",
+  83 | [D:2] |             nodes = mapOf(nodeWait.id to nodeWait, nodeRecover.id to nodeRecover),
+  84 | [D:2] |             edges = listOf(timeoutEdge)
+  85 | [D:2] |         )
+  86 | [D:2] | 
+  87 | [D:2] |         val outEdge = graph.edges.firstOrNull { it.fromNodeId == "node_wait" && it.fromPortId == "out_timeout" }
+  88 | [D:2] |         assertNotNull(outEdge)
+  89 | [D:2] |         assertEquals("node_recover", outEdge?.toNodeId)
+  90 | [D:1] |     }
+  91 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_test_java_com_example_autotap_GraphEngineExecutionTestSuite.kt_part_01_lines_0001_to_0091.txt
+================================================================================

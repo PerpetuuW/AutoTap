@@ -1,0 +1,58 @@
+================================================================================
+ FILE: app\src\test\java\com\example\autotap\ZeroDefectVerificationTestSuite.kt
+ PART: 1/1 | LINES: 1..48
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.domain.model.Point2D
+   4 | [D:0] | import org.junit.Assert.assertEquals
+   5 | [D:0] | import org.junit.Assert.assertTrue
+   6 | [D:0] | import org.junit.Test
+   7 | [D:0] | 
+   8 | [D:0] | class ZeroDefectVerificationTestSuite {
+   9 | [D:1] | 
+  10 | [D:1] |     @Test
+  11 | [D:1] |     fun testGesturePath_NonEmptySegmentInvariant() {
+  12 | [D:2] |         val clickX = 250f
+  13 | [D:2] |         val clickY = 500f
+  14 | [D:2] | 
+  15 | [D:2] |         val points = listOf(Point2D(clickX, clickY), Point2D(clickX, clickY))
+  16 | [D:2] | 
+  17 | [D:2] |         assertTrue(
+  18 | [D:2] |             "Path для чистого точечного клика обязан использовать moveTo(x, y) и lineTo(x, y) в те же координаты без паразитного смещения",
+  19 | [D:2] |             points.size == 2 && points[0].x == points[1].x && points[0].y == points[1].y
+  20 | [D:2] |         )
+  21 | [D:1] |     }
+  22 | [D:1] | 
+  23 | [D:1] |     @Test
+  24 | [D:1] |     fun testReindexOnDelete_Consistency() {
+  25 | [D:2] |         val actions = mutableListOf(
+  26 | [D:2] |             Triple(1, 2, 3),
+  27 | [D:2] |             Triple(2, 3, -1),
+  28 | [D:2] |             Triple(3, -1, 1)
+  29 | [D:2] |         )
+  30 | [D:2] | 
+  31 | [D:2] |         val deletedIdx = 1
+  32 | [D:2] |         val deletedId = actions[deletedIdx].first
+  33 | [D:2] |         actions.removeAt(deletedIdx)
+  34 | [D:2] | 
+  35 | [D:2] |         for (i in actions.indices) {
+  36 | [D:3] |             val (_, m, t) = actions[i]
+  37 | [D:3] |             val remM = if (m == deletedId) -1 else if (m > deletedId) m - 1 else m
+  38 | [D:3] |             val remT = if (t == deletedId) -1 else if (t > deletedId) t - 1 else t
+  39 | [D:3] |             actions[i] = Triple(i + 1, remM, remT)
+  40 | [D:2] |         }
+  41 | [D:2] | 
+  42 | [D:2] |         assertEquals(2, actions.size)
+  43 | [D:2] |         assertEquals(1, actions[0].first)
+  44 | [D:2] |         assertEquals(-1, actions[0].second)
+  45 | [D:2] |         assertEquals(2, actions[1].first)
+  46 | [D:2] |         assertEquals(1, actions[1].third)
+  47 | [D:1] |     }
+  48 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_test_java_com_example_autotap_ZeroDefectVerificationTestSuite.kt_part_01_lines_0001_to_0048.txt
+================================================================================

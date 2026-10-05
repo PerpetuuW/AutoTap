@@ -1,0 +1,98 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\ocr\ExpressionEvaluator.kt
+ PART: 1/1 | LINES: 1..88
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.ocr
+   2 | [D:0] | 
+   3 | [D:0] | import kotlin.math.abs
+   4 | [D:0] | 
+   5 | [D:0] | object ExpressionEvaluator {
+   6 | [D:1] | 
+   7 | [D:1] |     private val OPERATORS = listOf("<=", ">=", "!=", "==", "<", ">")
+   8 | [D:1] |     private val NUMBER_REGEX = Regex("[-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?[kmbKMBкКмМбБ]?")
+   9 | [D:1] | 
+  10 | [D:1] |     fun cleanToken(raw: String): String {
+  11 | [D:2] |         var s = raw.trim()
+  12 | [D:2] |         var prev = ""
+  13 | [D:2] |         while (s != prev) {
+  14 | [D:3] |             prev = s
+  15 | [D:3] |             s = s.removePrefix("\"").removeSuffix("\"")
+  16 | [D:3] |                 .removePrefix("'").removeSuffix("'")
+  17 | [D:3] |                 .removePrefix("{").removeSuffix("}")
+  18 | [D:3] |                 .trim()
+  19 | [D:2] |         }
+  20 | [D:2] |         return s
+  21 | [D:1] |     }
+  22 | [D:1] | 
+  23 | [D:1] |     fun parseGameNumber(raw: String): Double? {
+  24 | [D:2] |         val clean = cleanToken(raw).replace(" ", "").replace(",", "").lowercase()
+  25 | [D:2] |         val match = NUMBER_REGEX.find(clean)?.value ?: return clean.toDoubleOrNull()
+  26 | [D:2] |         return when {
+  27 | [D:3] |             match.endsWith("k") || match.endsWith("к") -> {
+  28 | [D:4] |                 val numPart = match.removeSuffix("k").removeSuffix("к")
+  29 | [D:4] |                 numPart.toDoubleOrNull()?.let { it * 1_000.0 }
+  30 | [D:3] |             }
+  31 | [D:3] |             match.endsWith("m") || match.endsWith("м") -> {
+  32 | [D:4] |                 val numPart = match.removeSuffix("m").removeSuffix("м")
+  33 | [D:4] |                 numPart.toDoubleOrNull()?.let { it * 1_000_000.0 }
+  34 | [D:3] |             }
+  35 | [D:3] |             match.endsWith("b") || match.endsWith("б") -> {
+  36 | [D:4] |                 val numPart = match.removeSuffix("b").removeSuffix("б")
+  37 | [D:4] |                 numPart.toDoubleOrNull()?.let { it * 1_000_000_000.0 }
+  38 | [D:3] |             }
+  39 | [D:3] |             else -> match.toDoubleOrNull()
+  40 | [D:2] |         }
+  41 | [D:1] |     }
+  42 | [D:1] | 
+  43 | [D:1] |     fun evaluate(expression: String, variables: Map<String, String>): Boolean {
+  44 | [D:2] |         try {
+  45 | [D:3] |             val exp = expression.trim()
+  46 | [D:3] |             if (exp.isEmpty()) return false
+  47 | [D:3] |             val op = OPERATORS.firstOrNull { exp.contains(it) } ?: return false
+  48 | [D:3] | 
+  49 | [D:3] |             val parts = exp.split(op, limit = 2)
+  50 | [D:3] |             if (parts.size < 2) return false
+  51 | [D:3] | 
+  52 | [D:3] |             val leftKey = cleanToken(parts[0])
+  53 | [D:3] |             val rightKey = cleanToken(parts[1])
+  54 | [D:3] | 
+  55 | [D:3] |             val leftVal = variables[leftKey] ?: parts[0]
+  56 | [D:3] |             val rightVal = variables[rightKey] ?: parts[1]
+  57 | [D:3] | 
+  58 | [D:3] |             val leftNum = parseGameNumber(leftVal)
+  59 | [D:3] |             val rightNum = parseGameNumber(rightVal)
+  60 | [D:3] | 
+  61 | [D:3] |             return if (leftNum != null && rightNum != null) {
+  62 | [D:4] |                 when (op) {
+  63 | [D:5] |                     "==" -> abs(leftNum - rightNum) < 1e-6
+  64 | [D:5] |                     "!=" -> abs(leftNum - rightNum) >= 1e-6
+  65 | [D:5] |                     "<" -> leftNum < rightNum - 1e-6
+  66 | [D:5] |                     ">" -> leftNum > rightNum + 1e-6
+  67 | [D:5] |                     "<=" -> leftNum <= rightNum + 1e-6
+  68 | [D:5] |                     ">=" -> leftNum >= rightNum - 1e-6
+  69 | [D:5] |                     else -> false
+  70 | [D:4] |                 }
+  71 | [D:3] |             } else {
+  72 | [D:4] |                 val cleanLeft = cleanToken(leftVal)
+  73 | [D:4] |                 val cleanRight = cleanToken(rightVal)
+  74 | [D:4] |                 when (op) {
+  75 | [D:5] |                     "==" -> cleanLeft.equals(cleanRight, ignoreCase = true)
+  76 | [D:5] |                     "!=" -> !cleanLeft.equals(cleanRight, ignoreCase = true)
+  77 | [D:5] |                     "<=" -> cleanLeft.compareTo(cleanRight, ignoreCase = true) <= 0
+  78 | [D:5] |                     ">=" -> cleanLeft.compareTo(cleanRight, ignoreCase = true) >= 0
+  79 | [D:5] |                     "<" -> cleanLeft.compareTo(cleanRight, ignoreCase = true) < 0
+  80 | [D:5] |                     ">" -> cleanLeft.compareTo(cleanRight, ignoreCase = true) > 0
+  81 | [D:5] |                     else -> false
+  82 | [D:4] |                 }
+  83 | [D:3] |             }
+  84 | [D:2] |         } catch (_: Exception) {
+  85 | [D:3] |             return false
+  86 | [D:2] |         }
+  87 | [D:1] |     }
+  88 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_ocr_ExpressionEvaluator.kt_part_01_lines_0001_to_0088.txt
+================================================================================

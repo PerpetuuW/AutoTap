@@ -1,0 +1,104 @@
+================================================================================
+ FILE: app\src\test\java\com\example\autotap\CascadeVerificationTestSuite.kt
+ PART: 1/1 | LINES: 1..94
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap
+   2 | [D:0] | 
+   3 | [D:0] | import org.junit.Assert.assertEquals
+   4 | [D:0] | import org.junit.Assert.assertFalse
+   5 | [D:0] | import org.junit.Assert.assertTrue
+   6 | [D:0] | import org.junit.Test
+   7 | [D:0] | import kotlin.math.abs
+   8 | [D:0] | import kotlin.math.sqrt
+   9 | [D:0] | 
+  10 | [D:0] | class CascadeVerificationTestSuite {
+  11 | [D:1] | 
+  12 | [D:1] |     @Test
+  13 | [D:1] |     fun testL0_KinematicCacheHitsStationaryTarget() {
+  14 | [D:2] |         val lastMatchedX = 540
+  15 | [D:2] |         val lastMatchedY = 1200
+  16 | [D:2] |         val centroidX = 20
+  17 | [D:2] |         val centroidY = 20
+  18 | [D:2] | 
+  19 | [D:2] |         val cachedLeft = lastMatchedX - centroidX
+  20 | [D:2] |         val cachedTop = lastMatchedY - centroidY
+  21 | [D:2] | 
+  22 | [D:2] |         assertEquals(520, cachedLeft)
+  23 | [D:2] |         assertEquals(1180, cachedTop)
+  24 | [D:1] |     }
+  25 | [D:1] | 
+  26 | [D:1] |     @Test
+  27 | [D:1] |     fun testL1_SpatialGridBinning_PreventsHotspotStarvation() {
+  28 | [D:2] |         val spatialSectors = HashMap<Long, Triple<Int, Int, Float>>()
+  29 | [D:2] |         val sectorBinSize = 48
+  30 | [D:2] | 
+  31 | [D:2] |         // Симуляция: 100 ярких точек на баннере в секторе (0, 0)
+  32 | [D:2] |         for (i in 0 until 100) {
+  33 | [D:3] |             val x = (i % 20)
+  34 | [D:3] |             val y = (i / 20)
+  35 | [D:3] |             val score = 0.95f
+  36 | [D:3] |             val sectorKey = ((y / sectorBinSize).toLong() shl 32) or ((x / sectorBinSize).toLong() and 0xFFFFFFFFL)
+  37 | [D:3] |             val prev = spatialSectors[sectorKey]
+  38 | [D:3] |             if (prev == null || score > prev.third) {
+  39 | [D:4] |                 spatialSectors[sectorKey] = Triple(x, y, score)
+  40 | [D:3] |             }
+  41 | [D:2] |         }
+  42 | [D:2] | 
+  43 | [D:2] |         // Симуляция: 1 целевая иконка в другом секторе (10, 20)
+  44 | [D:2] |         val targetX = 500
+  45 | [D:2] |         val targetY = 1000
+  46 | [D:2] |         val targetScore = 0.92f
+  47 | [D:2] |         val targetSectorKey = ((targetY / sectorBinSize).toLong() shl 32) or ((targetX / sectorBinSize).toLong() and 0xFFFFFFFFL)
+  48 | [D:2] |         spatialSectors[targetSectorKey] = Triple(targetX, targetY, targetScore)
+  49 | [D:2] | 
+  50 | [D:2] |         // Проверка: баннер занял ровно 1 слот, а целевой объект гарантированно попал в выборку
+  51 | [D:2] |         assertEquals(2, spatialSectors.size)
+  52 | [D:2] |         assertTrue(spatialSectors.containsKey(targetSectorKey))
+  53 | [D:1] |     }
+  54 | [D:1] | 
+  55 | [D:1] |     @Test
+  56 | [D:1] |     fun testL2_BipolarSobelGradientCosine() {
+  57 | [D:2] |         val spGx = 0.6f
+  58 | [D:2] |         val spGy = 0.8f
+  59 | [D:2] | 
+  60 | [D:2] |         val sgx = -6.0f
+  61 | [D:2] |         val sgy = -8.0f
+  62 | [D:2] |         val smag = sqrt((sgx * sgx + sgy * sgy).toDouble()).toFloat()
+  63 | [D:2] | 
+  64 | [D:2] |         // Биполярный косинус: abs(dot) / smag
+  65 | [D:2] |         val dot = abs(sgx * spGx + sgy * spGy)
+  66 | [D:2] |         val cosTheta = dot / smag
+  67 | [D:2] |         assertEquals(1.0f, cosTheta, 1e-4f)
+  68 | [D:1] |     }
+  69 | [D:1] | 
+  70 | [D:1] |     @Test
+  71 | [D:1] |     fun testL3_NMS_SuppressesOverlappingBoundingBoxes() {
+  72 | [D:2] |         data class Box(val l: Int, val t: Int, val r: Int, val b: Int, val score: Float)
+  73 | [D:2] |         val boxes = listOf(
+  74 | [D:2] |             Box(100, 100, 140, 140, 0.98f),
+  75 | [D:2] |             Box(102, 101, 142, 141, 0.94f),
+  76 | [D:2] |             Box(500, 500, 540, 540, 0.91f)
+  77 | [D:2] |         )
+  78 | [D:2] | 
+  79 | [D:2] |         fun intersects(a: Box, b: Box): Boolean {
+  80 | [D:3] |             return a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t
+  81 | [D:2] |         }
+  82 | [D:2] | 
+  83 | [D:2] |         val nms = mutableListOf<Box>()
+  84 | [D:2] |         for (b in boxes.sortedByDescending { it.score }) {
+  85 | [D:3] |             if (nms.none { intersects(it, b) }) {
+  86 | [D:4] |                 nms.add(b)
+  87 | [D:3] |             }
+  88 | [D:2] |         }
+  89 | [D:2] | 
+  90 | [D:2] |         assertEquals(2, nms.size)
+  91 | [D:2] |         assertEquals(0.98f, nms[0].score, 1e-4f)
+  92 | [D:2] |         assertEquals(0.91f, nms[1].score, 1e-4f)
+  93 | [D:1] |     }
+  94 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_test_java_com_example_autotap_CascadeVerificationTestSuite.kt_part_01_lines_0001_to_0094.txt
+================================================================================

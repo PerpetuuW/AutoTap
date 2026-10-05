@@ -1,0 +1,66 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\domain\model\MacroAction.kt
+ PART: 1/1 | LINES: 1..56
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.domain.model
+   2 | [D:0] | 
+   3 | [D:0] | data class MacroAction(
+   4 | [D:0] |     val id: Int,
+   5 | [D:0] |     val type: ActionType = ActionType.CLICK,
+   6 | [D:0] |     val posX: Float = 0f,
+   7 | [D:0] |     val posY: Float = 0f,
+   8 | [D:0] |     val endX: Float? = null,
+   9 | [D:0] |     val endY: Float? = null,
+  10 | [D:0] |     val delayMs: Long = 1000L,
+  11 | [D:0] |     val holdDurationMs: Long = 120L,
+  12 | [D:0] |     val checkIntervalMs: Long = 300L,
+  13 | [D:0] |     val repeatCount: Int = 1,
+  14 | [D:0] |     val randomRadiusPx: Int = 0,
+  15 | [D:0] | 
+  16 | [D:0] |     val pinchStartDistance: Float = 300f,
+  17 | [D:0] |     val pinchEndDistance: Float = 600f,
+  18 | [D:0] | 
+  19 | [D:0] |     val selectedTemplateIndex: Int = -1,
+  20 | [D:0] |     val multiTemplateIndices: List<Int> = emptyList(),
+  21 | [D:0] |     val multiTemplatePaths: List<String> = emptyList(),
+  22 | [D:0] |     val templatePath: String = "",
+  23 | [D:0] |     val similarityPercent: Int = 88,
+  24 | [D:0] |     val aiTimeoutSeconds: Int = 5,
+  25 | [D:0] |     val clickAiTarget: Boolean = true,
+  26 | [D:0] |     val isWaitUntilMode: Boolean = false,
+  27 | [D:0] |     val scanStepPreset: Int = 2,
+  28 | [D:0] |     val isContourMode: Boolean = true,
+  29 | [D:0] |     val isFastMode: Boolean = true,
+  30 | [D:0] |     val isMultiScaleMode: Boolean = false,
+  31 | [D:0] |     val isShapeOnlyMode: Boolean = false,
+  32 | [D:0] | 
+  33 | [D:0] |     val useCustomClickOffset: Boolean = false,
+  34 | [D:0] |     val clickOffsetX: Float = 0f,
+  35 | [D:0] |     val clickOffsetY: Float = 0f,
+  36 | [D:0] | 
+  37 | [D:0] |     val primaryAnchorPoints: List<Point2D> = emptyList(),
+  38 | [D:0] | 
+  39 | [D:0] |     val shapeExpansion: Int = 45,
+  40 | [D:0] |     val paddingOffsetPx: Int = 2,
+  41 | [D:0] |     val isCircleShape: Boolean = false,
+  42 | [D:0] |     val roiLeft: Int? = null,
+  43 | [D:0] |     val roiTop: Int? = null,
+  44 | [D:0] |     val roiRight: Int? = null,
+  45 | [D:0] |     val roiBottom: Int? = null,
+  46 | [D:0] | 
+  47 | [D:0] |     val jumpToStepOnMatch: Int? = null,
+  48 | [D:0] |     val jumpToStepOnTimeout: Int? = null,
+  49 | [D:0] |     val pathPoints: List<Point2D> = emptyList(),
+  50 | [D:0] |     val targetScriptOrQuery: String = "",
+  51 | [D:0] |     val subroutineTag: String = "",
+  52 | [D:0] |     val subroutineTarget: String = "",
+  53 | [D:0] |     val targetColorHex: String = "#00F5D4",
+  54 | [D:0] |     val colorTolerance: Int = 15,
+  55 | [D:0] |     val colorDeltaEMode: Boolean = false
+  56 | [D:0] | )
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_domain_model_MacroAction.kt_part_01_lines_0001_to_0056.txt
+================================================================================

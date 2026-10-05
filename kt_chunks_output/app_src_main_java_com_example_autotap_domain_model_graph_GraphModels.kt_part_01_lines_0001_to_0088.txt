@@ -1,0 +1,98 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\domain\model\graph\GraphModels.kt
+ PART: 1/1 | LINES: 1..88
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.domain.model.graph
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.domain.model.ActionType
+   4 | [D:0] | import com.example.autotap.domain.model.DeviceDisplaySpecs
+   5 | [D:0] | import com.example.autotap.domain.model.Point2D
+   6 | [D:0] | 
+   7 | [D:0] | enum class EvaluationPolicy {
+   8 | [D:1] |     FIRST_MATCH_WINS, ALL_MUST_MATCH, SEQUENCE_MATCH
+   9 | [D:0] | }
+  10 | [D:0] | 
+  11 | [D:0] | data class NodeTriggerSpec(
+  12 | [D:0] |     val id: String,
+  13 | [D:0] |     val name: String,
+  14 | [D:0] |     val type: ActionType = ActionType.TRIGGER,
+  15 | [D:0] |     val templatePath: String = "",
+  16 | [D:0] |     val multiTemplatePaths: List<String> = emptyList(),
+  17 | [D:0] |     val similarityThreshold: Int = 88,
+  18 | [D:0] |     val targetQueryOrColor: String = "",
+  19 | [D:0] |     val colorTolerance: Int = 15,
+  20 | [D:0] |     val isContourMode: Boolean = true,
+  21 | [D:0] |     val isShapeOnlyMode: Boolean = false,
+  22 | [D:0] |     val isMultiScaleMode: Boolean = false,
+  23 | [D:0] |     val colorDeltaEMode: Boolean = false,
+  24 | [D:0] |     val shapeExpansion: Int = 45,
+  25 | [D:0] |     val paddingOffsetPx: Int = 2,
+  26 | [D:0] |     val isCircleShape: Boolean = false,
+  27 | [D:0] |     val roiLeft: Int? = null,
+  28 | [D:0] |     val roiTop: Int? = null,
+  29 | [D:0] |     val roiRight: Int? = null,
+  30 | [D:0] |     val roiBottom: Int? = null,
+  31 | [D:0] |     val autoClickTarget: Boolean = true,
+  32 | [D:0] |     val useCustomClick: Boolean = false,
+  33 | [D:0] |     val clickOffset: Point2D = Point2D(0f, 0f),
+  34 | [D:0] |     val targetPortId: String = "out_match_${id}"
+  35 | [D:0] | )
+  36 | [D:0] | 
+  37 | [D:0] | data class NodeActionSpec(
+  38 | [D:0] |     val id: String,
+  39 | [D:0] |     val type: ActionType = ActionType.CLICK,
+  40 | [D:0] |     val x: Float = 0f,
+  41 | [D:0] |     val y: Float = 0f,
+  42 | [D:0] |     val endX: Float? = null,
+  43 | [D:0] |     val endY: Float? = null,
+  44 | [D:0] |     val holdDurationMs: Long = 120L,
+  45 | [D:0] |     val delayAfterMs: Long = 200L,
+  46 | [D:0] |     val repeatCount: Int = 1,
+  47 | [D:0] |     val randomRadiusPx: Int = 0,
+  48 | [D:0] |     val pinchStartDistance: Float = 300f,
+  49 | [D:0] |     val pinchEndDistance: Float = 600f,
+  50 | [D:0] |     val pathPoints: List<Point2D> = emptyList(),
+  51 | [D:0] |     val subroutineTarget: String = ""
+  52 | [D:0] | )
+  53 | [D:0] | 
+  54 | [D:0] | data class ScenarioEdge(
+  55 | [D:0] |     val id: String,
+  56 | [D:0] |     val fromNodeId: String,
+  57 | [D:0] |     val fromPortId: String,
+  58 | [D:0] |     val toNodeId: String,
+  59 | [D:0] |     val toPortId: String = "in_entry"
+  60 | [D:0] | )
+  61 | [D:0] | 
+  62 | [D:0] | data class ScenarioNode(
+  63 | [D:0] |     val id: String,
+  64 | [D:0] |     val title: String,
+  65 | [D:0] |     val canvasX: Float = 0f,
+  66 | [D:0] |     val canvasY: Float = 0f,
+  67 | [D:0] |     val evaluationPolicy: EvaluationPolicy = EvaluationPolicy.FIRST_MATCH_WINS,
+  68 | [D:0] |     val triggers: List<NodeTriggerSpec> = emptyList(),
+  69 | [D:0] |     val timeoutSeconds: Int = 5,
+  70 | [D:0] |     val isInfiniteWait: Boolean = false,
+  71 | [D:0] |     val pollIntervalMs: Long = 250L,
+  72 | [D:0] |     val entryActions: List<NodeActionSpec> = emptyList(),
+  73 | [D:0] |     val standardPorts: List<String> = listOf("out_default", "out_timeout")
+  74 | [D:0] | )
+  75 | [D:0] | 
+  76 | [D:0] | data class GraphMacroScenario(
+  77 | [D:0] |     val id: String,
+  78 | [D:0] |     val name: String,
+  79 | [D:0] |     val version: Int = 2,
+  80 | [D:0] |     val deviceSpecs: DeviceDisplaySpecs,
+  81 | [D:0] |     val entryNodeId: String,
+  82 | [D:0] |     val nodes: Map<String, ScenarioNode> = emptyMap(),
+  83 | [D:0] |     val edges: List<ScenarioEdge> = emptyList(),
+  84 | [D:0] |     val globalClickDurationMs: Long = 120L,
+  85 | [D:0] |     val globalSwipeDurationMs: Long = 300L,
+  86 | [D:0] |     val createdAt: Long = System.currentTimeMillis(),
+  87 | [D:0] |     val modifiedAt: Long = System.currentTimeMillis()
+  88 | [D:0] | )
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_domain_model_graph_GraphModels.kt_part_01_lines_0001_to_0088.txt
+================================================================================

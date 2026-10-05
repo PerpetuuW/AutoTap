@@ -1,0 +1,31 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\domain\model\MatchCandidate.kt
+ PART: 1/1 | LINES: 1..21
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.domain.model
+   2 | [D:0] | 
+   3 | [D:0] | import java.io.File
+   4 | [D:0] | 
+   5 | [D:0] | data class MatchCandidate(
+   6 | [D:0] |     val clickX: Int,
+   7 | [D:0] |     val clickY: Int,
+   8 | [D:0] |     val rectLeft: Int,
+   9 | [D:0] |     val rectTop: Int,
+  10 | [D:0] |     val rectRight: Int,
+  11 | [D:0] |     val rectBottom: Int,
+  12 | [D:0] |     val score: Float,
+  13 | [D:0] |     val templatePath: String = "",
+  14 | [D:0] |     val clickOffsetX: Float = 0f,
+  15 | [D:0] |     val clickOffsetY: Float = 0f,
+  16 | [D:0] |     val isShapeOnly: Boolean = false
+  17 | [D:0] | ) {
+  18 | [D:1] |     val templateName: String get() = if (templatePath.isNotEmpty()) File(templatePath).nameWithoutExtension else ""
+  19 | [D:1] |     val width: Int get() = (rectRight - rectLeft).coerceAtLeast(1)
+  20 | [D:1] |     val height: Int get() = (rectBottom - rectTop).coerceAtLeast(1)
+  21 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_domain_model_MatchCandidate.kt_part_01_lines_0001_to_0021.txt
+================================================================================

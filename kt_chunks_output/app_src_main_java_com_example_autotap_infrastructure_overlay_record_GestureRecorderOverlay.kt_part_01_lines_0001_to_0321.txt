@@ -1,0 +1,331 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\record\GestureRecorderOverlay.kt
+ PART: 1/1 | LINES: 1..321
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.record
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.graphics.Canvas
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.Paint
+   8 | [D:0] | import android.graphics.Path
+   9 | [D:0] | import android.graphics.RectF
+  10 | [D:0] | import android.graphics.Typeface
+  11 | [D:0] | import android.graphics.drawable.GradientDrawable
+  12 | [D:0] | import android.os.Handler
+  13 | [D:0] | import android.os.Looper
+  14 | [D:0] | import android.view.Gravity
+  15 | [D:0] | import android.view.MotionEvent
+  16 | [D:0] | import android.view.View
+  17 | [D:0] | import android.view.ViewOutlineProvider
+  18 | [D:0] | import android.view.WindowManager
+  19 | [D:0] | import android.widget.FrameLayout
+  20 | [D:0] | import android.widget.LinearLayout
+  21 | [D:0] | import android.widget.TextView
+  22 | [D:0] | import android.widget.Toast
+  23 | [D:0] | import com.example.autotap.core.logger.AppLogger
+  24 | [D:0] | import com.example.autotap.core.math.PathCompressionEngine
+  25 | [D:0] | import com.example.autotap.domain.model.ActionType
+  26 | [D:0] | import com.example.autotap.domain.model.MacroAction
+  27 | [D:0] | import com.example.autotap.domain.model.Point2D
+  28 | [D:0] | import com.example.autotap.infrastructure.accessibility.AutoTapAccessibilityService
+  29 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  30 | [D:0] | import com.example.autotap.infrastructure.overlay.ui.VectorIconDrawer
+  31 | [D:0] | import kotlin.math.abs
+  32 | [D:0] | import kotlin.math.hypot
+  33 | [D:0] | 
+  34 | [D:0] | @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
+  35 | [D:0] | class GestureRecorderOverlay(
+  36 | [D:0] |     private val context: Context,
+  37 | [D:0] |     private val overlayWindowManager: OverlayWindowManager,
+  38 | [D:0] |     private val onRecordedActions: (List<MacroAction>) -> Unit,
+  39 | [D:0] |     private val onCancelled: () -> Unit
+  40 | [D:0] | ) {
+  41 | [D:1] | 
+  42 | [D:1] |     private var canvasLayer: View? = null
+  43 | [D:1] |     private var badgeLayer: View? = null
+  44 | [D:1] |     private val recordedActions = ArrayList<MacroAction>()
+  45 | [D:1] |     private val currentTouchPoints = ArrayList<Point2D>()
+  46 | [D:1] |     private var touchStartTime = 0L
+  47 | [D:1] |     private var tvRecordCount: TextView? = null
+  48 | [D:1] | 
+  49 | [D:1] |     private val mainHandler = Handler(Looper.getMainLooper())
+  50 | [D:1] |     private var restoreTouchRunnable: Runnable? = null
+  51 | [D:1] | 
+  52 | [D:1] |     private val dm = context.resources.displayMetrics
+  53 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  54 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  55 | [D:1] | 
+  56 | [D:1] |     fun show() {
+  57 | [D:2] |         AppLogger.log(context, "RECORDER", "Открыт режим записи жестов с RDP-оптимизацией")
+  58 | [D:2] | 
+  59 | [D:2] |         val canvasParams = overlayWindowManager.createLayoutParams(
+  60 | [D:2] |             width = WindowManager.LayoutParams.MATCH_PARENT,
+  61 | [D:2] |             height = WindowManager.LayoutParams.MATCH_PARENT,
+  62 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+  63 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+  64 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+  65 | [D:2] |         )
+  66 | [D:2] | 
+  67 | [D:2] |         val canvas = object : View(context) {
+  68 | [D:3] |             private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  69 | [D:4] |                 style = Paint.Style.STROKE
+  70 | [D:4] |                 strokeWidth = dpF(4f)
+  71 | [D:4] |                 strokeCap = Paint.Cap.ROUND
+  72 | [D:4] |                 strokeJoin = Paint.Join.ROUND
+  73 | [D:4] |                 color = Color.parseColor("#00F5D4")
+  74 | [D:3] |             }
+  75 | [D:3] |             private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+  76 | [D:4] |                 style = Paint.Style.FILL
+  77 | [D:4] |                 color = Color.parseColor("#FFB703")
+  78 | [D:3] |             }
+  79 | [D:3] |             private val drawPath = Path()
+  80 | [D:3] | 
+  81 | [D:3] |             override fun onDraw(canvas: Canvas) {
+  82 | [D:4] |                 super.onDraw(canvas)
+  83 | [D:4] |                 if (currentTouchPoints.size >= 2) {
+  84 | [D:5] |                     drawPath.rewind()
+  85 | [D:5] |                     drawPath.moveTo(currentTouchPoints[0].x, currentTouchPoints[0].y)
+  86 | [D:5] |                     for (i in 1 until currentTouchPoints.size) {
+  87 | [D:6] |                         drawPath.lineTo(currentTouchPoints[i].x, currentTouchPoints[i].y)
+  88 | [D:5] |                     }
+  89 | [D:5] |                     canvas.drawPath(drawPath, trailPaint)
+  90 | [D:4] |                 } else if (currentTouchPoints.size == 1) {
+  91 | [D:5] |                     canvas.drawCircle(currentTouchPoints[0].x, currentTouchPoints[0].y, dpF(12f), dotPaint)
+  92 | [D:4] |                 }
+  93 | [D:3] |             }
+  94 | [D:2] |         }
+  95 | [D:2] |         canvasLayer = canvas
+  96 | [D:2] | 
+  97 | [D:2] |         canvas.setOnTouchListener { _, event ->
+  98 | [D:3] |             val curX = event.rawX
+  99 | [D:3] |             val curY = event.rawY
+ 100 | [D:3] | 
+ 101 | [D:3] |             when (event.actionMasked) {
+ 102 | [D:4] |                 MotionEvent.ACTION_DOWN -> {
+ 103 | [D:5] |                     touchStartTime = System.currentTimeMillis()
+ 104 | [D:5] |                     currentTouchPoints.clear()
+ 105 | [D:5] |                     currentTouchPoints.add(Point2D(curX, curY))
+ 106 | [D:5] |                     canvas.invalidate()
+ 107 | [D:5] |                     true
+ 108 | [D:4] |                 }
+ 109 | [D:4] |                 MotionEvent.ACTION_MOVE -> {
+ 110 | [D:5] |                     val lastPt = currentTouchPoints.lastOrNull()
+ 111 | [D:5] |                     if (lastPt == null || hypot((curX - lastPt.x).toDouble(), (curY - lastPt.y).toDouble()) > 4.0) {
+ 112 | [D:6] |                         currentTouchPoints.add(Point2D(curX, curY))
+ 113 | [D:6] |                         canvas.invalidate()
+ 114 | [D:5] |                     }
+ 115 | [D:5] |                     true
+ 116 | [D:4] |                 }
+ 117 | [D:4] |                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+ 118 | [D:5] |                     val duration = (System.currentTimeMillis() - touchStartTime).coerceAtLeast(30L)
+ 119 | [D:5] |                     val startPt = currentTouchPoints.firstOrNull() ?: Point2D(curX, curY)
+ 120 | [D:5] |                     val endPt = Point2D(curX, curY)
+ 121 | [D:5] |                     val totalDistance = hypot((endPt.x - startPt.x).toDouble(), (endPt.y - startPt.y).toDouble()).toFloat()
+ 122 | [D:5] | 
+ 123 | [D:5] |                     val nextId = recordedActions.size + 1
+ 124 | [D:5] |                     val dispatcher = AutoTapAccessibilityService.instance?.gestureDispatcher
+ 125 | [D:5] | 
+ 126 | [D:5] |                     canvasParams.flags = canvasParams.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+ 127 | [D:5] |                     overlayWindowManager.updateViewSafe(canvasLayer, canvasParams)
+ 128 | [D:5] | 
+ 129 | [D:5] |                     val gestureDuration: Long
+ 130 | [D:5] | 
+ 131 | [D:5] |                     if (totalDistance < dpF(12f) && duration < 350L) {
+ 132 | [D:6] |                         gestureDuration = duration.coerceIn(40L, 120L)
+ 133 | [D:6] |                         dispatcher?.performClick(startPt.x, startPt.y, gestureDuration)
+ 134 | [D:6] |                         recordedActions.add(MacroAction(id = nextId, type = ActionType.CLICK, posX = startPt.x, posY = startPt.y, holdDurationMs = gestureDuration, delayMs = 400L))
+ 135 | [D:5] |                     } else if (totalDistance < dpF(12f) && duration >= 350L) {
+ 136 | [D:6] |                         gestureDuration = duration.coerceAtLeast(400L)
+ 137 | [D:6] |                         dispatcher?.performClick(startPt.x, startPt.y, gestureDuration)
+ 138 | [D:6] |                         recordedActions.add(MacroAction(id = nextId, type = ActionType.LONG_PRESS, posX = startPt.x, posY = startPt.y, holdDurationMs = gestureDuration, delayMs = 400L))
+ 139 | [D:5] |                     } else if (totalDistance >= dpF(12f) && currentTouchPoints.size <= 6) {
+ 140 | [D:6] |                         gestureDuration = duration.coerceIn(100L, 600L)
+ 141 | [D:6] |                         dispatcher?.performSwipe(startPt.x, startPt.y, endPt.x, endPt.y, gestureDuration)
+ 142 | [D:6] |                         recordedActions.add(MacroAction(id = nextId, type = ActionType.SWIPE, posX = startPt.x, posY = startPt.y, endX = endPt.x, endY = endPt.y, holdDurationMs = gestureDuration, delayMs = 400L))
+ 143 | [D:5] |                     } else {
+ 144 | [D:6] |                         gestureDuration = duration.coerceAtLeast(100L)
+ 145 | [D:6] |                         val compressedPoints = PathCompressionEngine.compressPath(currentTouchPoints.toList(), maxPoints = 80)
+ 146 | [D:6] |                         dispatcher?.performPath(compressedPoints, gestureDuration)
+ 147 | [D:6] |                         recordedActions.add(MacroAction(id = nextId, type = ActionType.PATH, posX = startPt.x, posY = startPt.y, holdDurationMs = gestureDuration, delayMs = 400L, pathPoints = compressedPoints))
+ 148 | [D:5] |                     }
+ 149 | [D:5] | 
+ 150 | [D:5] |                     restoreTouchRunnable?.let { mainHandler.removeCallbacks(it) }
+ 151 | [D:5] |                     val restoreTask = Runnable {
+ 152 | [D:6] |                         if (canvasLayer != null) {
+ 153 | [D:7] |                             canvasParams.flags = canvasParams.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+ 154 | [D:7] |                             overlayWindowManager.updateViewSafe(canvasLayer, canvasParams)
+ 155 | [D:6] |                         }
+ 156 | [D:5] |                     }
+ 157 | [D:5] |                     restoreTouchRunnable = restoreTask
+ 158 | [D:5] |                     mainHandler.postDelayed(restoreTask, gestureDuration + 50L)
+ 159 | [D:5] | 
+ 160 | [D:5] |                     currentTouchPoints.clear()
+ 161 | [D:5] |                     tvRecordCount?.text = "REC: ${recordedActions.size}"
+ 162 | [D:5] |                     canvas.invalidate()
+ 163 | [D:5] |                     true
+ 164 | [D:4] |                 }
+ 165 | [D:4] |                 else -> false
+ 166 | [D:3] |             }
+ 167 | [D:2] |         }
+ 168 | [D:2] | 
+ 169 | [D:2] |         overlayWindowManager.addViewSafe(canvas, canvasParams)
+ 170 | [D:2] | 
+ 171 | [D:2] |         val cardW = dp(96)
+ 172 | [D:2] |         val badgeParams = overlayWindowManager.createLayoutParams(
+ 173 | [D:2] |             width = WindowManager.LayoutParams.WRAP_CONTENT,
+ 174 | [D:2] |             height = WindowManager.LayoutParams.WRAP_CONTENT,
+ 175 | [D:2] |             gravity = Gravity.TOP or Gravity.START
+ 176 | [D:2] |         ).apply {
+ 177 | [D:3] |             x = (dm.widthPixels - cardW - dp(12)).coerceAtLeast(dp(8))
+ 178 | [D:3] |             y = dp(110)
+ 179 | [D:2] |         }
+ 180 | [D:2] | 
+ 181 | [D:2] |         val rootBadge = LinearLayout(context).apply {
+ 182 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 183 | [D:3] |             gravity = Gravity.CENTER_HORIZONTAL
+ 184 | [D:3] |             clipChildren = false
+ 185 | [D:3] |             clipToPadding = false
+ 186 | [D:3] |             background = GradientDrawable(
+ 187 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 188 | [D:3] |                 intArrayOf(Color.parseColor("#F8161B22"), Color.parseColor("#F80D1117"))
+ 189 | [D:3] |             ).apply {
+ 190 | [D:4] |                 cornerRadius = dpF(18f)
+ 191 | [D:4] |                 setStroke(dp(1), Color.parseColor("#F04438"))
+ 192 | [D:3] |             }
+ 193 | [D:3] |             val p = dp(6)
+ 194 | [D:3] |             setPadding(p, p, p, p)
+ 195 | [D:3] |             elevation = dpF(24f)
+ 196 | [D:2] |         }
+ 197 | [D:2] |         badgeLayer = rootBadge
+ 198 | [D:2] | 
+ 199 | [D:2] |         val tvStatus = TextView(context).apply {
+ 200 | [D:3] |             text = "REC: 0"
+ 201 | [D:3] |             setTextColor(Color.parseColor("#F04438"))
+ 202 | [D:3] |             textSize = 7.5f
+ 203 | [D:3] |             typeface = Typeface.MONOSPACE
+ 204 | [D:3] |             includeFontPadding = false
+ 205 | [D:3] |             setPadding(0, 0, 0, dp(2))
+ 206 | [D:2] |         }
+ 207 | [D:2] |         tvRecordCount = tvStatus
+ 208 | [D:2] |         rootBadge.addView(tvStatus)
+ 209 | [D:2] | 
+ 210 | [D:2] |         val buttonsRow = LinearLayout(context).apply {
+ 211 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 212 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 213 | [D:3] |             clipChildren = false
+ 214 | [D:3] |             clipToPadding = false
+ 215 | [D:2] |         }
+ 216 | [D:2] | 
+ 217 | [D:2] |         val btnSave = object : View(context) {
+ 218 | [D:3] |             private val bounds = RectF()
+ 219 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 220 | [D:4] |                 super.onDraw(canvas)
+ 221 | [D:4] |                 bounds.set(dpF(8.5f), dpF(8.5f), width - dpF(8.5f), height - dpF(8.5f))
+ 222 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, VectorIconDrawer.IconType.CHECK, bounds, Color.WHITE, dpF(2.2f))
+ 223 | [D:3] |             }
+ 224 | [D:2] |         }.apply {
+ 225 | [D:3] |             outlineProvider = ViewOutlineProvider.BACKGROUND
+ 226 | [D:3] |             background = GradientDrawable(
+ 227 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 228 | [D:3] |                 intArrayOf(Color.parseColor("#10B981"), Color.parseColor("#059669"))
+ 229 | [D:3] |             ).apply {
+ 230 | [D:4] |                 shape = GradientDrawable.OVAL
+ 231 | [D:4] |                 setStroke(dp(1), Color.parseColor("#00F5D4"))
+ 232 | [D:3] |             }
+ 233 | [D:3] |             layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+ 234 | [D:4] |                 marginEnd = dp(6)
+ 235 | [D:3] |             }
+ 236 | [D:3] |             setOnClickListener {
+ 237 | [D:4] |                 if (recordedActions.isEmpty()) {
+ 238 | [D:5] |                     Toast.makeText(context, "Коснитесь экрана для записи действий", Toast.LENGTH_SHORT).show()
+ 239 | [D:5] |                     return@setOnClickListener
+ 240 | [D:4] |                 }
+ 241 | [D:4] |                 dismiss()
+ 242 | [D:4] |                 onRecordedActions(recordedActions)
+ 243 | [D:3] |             }
+ 244 | [D:2] |         }
+ 245 | [D:2] |         buttonsRow.addView(btnSave)
+ 246 | [D:2] | 
+ 247 | [D:2] |         val btnCancel = object : View(context) {
+ 248 | [D:3] |             private val bounds = RectF()
+ 249 | [D:3] |             override fun onDraw(canvas: Canvas) {
+ 250 | [D:4] |                 super.onDraw(canvas)
+ 251 | [D:4] |                 bounds.set(dpF(8.5f), dpF(8.5f), width - dpF(8.5f), height - dpF(8.5f))
+ 252 | [D:4] |                 VectorIconDrawer.drawIcon(canvas, VectorIconDrawer.IconType.CLOSE, bounds, Color.WHITE, dpF(2.2f))
+ 253 | [D:3] |             }
+ 254 | [D:2] |         }.apply {
+ 255 | [D:3] |             outlineProvider = ViewOutlineProvider.BACKGROUND
+ 256 | [D:3] |             background = GradientDrawable(
+ 257 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 258 | [D:3] |                 intArrayOf(Color.parseColor("#21262D"), Color.parseColor("#161B22"))
+ 259 | [D:3] |             ).apply {
+ 260 | [D:4] |                 shape = GradientDrawable.OVAL
+ 261 | [D:4] |                 setStroke(dp(1), Color.parseColor("#F04438"))
+ 262 | [D:3] |             }
+ 263 | [D:3] |             layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
+ 264 | [D:3] |             setOnClickListener {
+ 265 | [D:4] |                 dismiss()
+ 266 | [D:4] |                 onCancelled()
+ 267 | [D:3] |             }
+ 268 | [D:2] |         }
+ 269 | [D:2] |         buttonsRow.addView(btnCancel)
+ 270 | [D:2] |         rootBadge.addView(buttonsRow)
+ 271 | [D:2] | 
+ 272 | [D:2] |         rootBadge.setOnTouchListener(object : View.OnTouchListener {
+ 273 | [D:3] |             private var initX = 0
+ 274 | [D:3] |             private var initY = 0
+ 275 | [D:3] |             private var touchX = 0f
+ 276 | [D:3] |             private var touchY = 0f
+ 277 | [D:3] | 
+ 278 | [D:3] |             override fun onTouch(v: View, event: MotionEvent): Boolean {
+ 279 | [D:4] |                 when (event.action) {
+ 280 | [D:5] |                     MotionEvent.ACTION_DOWN -> {
+ 281 | [D:6] |                         initX = badgeParams.x
+ 282 | [D:6] |                         initY = badgeParams.y
+ 283 | [D:6] |                         touchX = event.rawX
+ 284 | [D:6] |                         touchY = event.rawY
+ 285 | [D:6] |                         return true
+ 286 | [D:5] |                     }
+ 287 | [D:5] |                     MotionEvent.ACTION_MOVE -> {
+ 288 | [D:6] |                         val dx = abs(event.rawX - touchX)
+ 289 | [D:6] |                         val dy = abs(event.rawY - touchY)
+ 290 | [D:6] |                         if (dx > dp(6) || dy > dp(6)) {
+ 291 | [D:7] |                             val maxPosX = (dm.widthPixels - cardW - dp(8)).coerceAtLeast(0)
+ 292 | [D:7] |                             badgeParams.x = (initX + (event.rawX - touchX).toInt()).coerceIn(dp(6), maxPosX)
+ 293 | [D:7] |                             badgeParams.y = (initY + (event.rawY - touchY).toInt()).coerceIn(dp(20), dm.heightPixels - dp(80))
+ 294 | [D:7] |                             overlayWindowManager.updateViewSafe(badgeLayer, badgeParams)
+ 295 | [D:7] |                             return true
+ 296 | [D:6] |                         }
+ 297 | [D:5] |                     }
+ 298 | [D:4] |                 }
+ 299 | [D:4] |                 return false
+ 300 | [D:3] |             }
+ 301 | [D:2] |         })
+ 302 | [D:2] | 
+ 303 | [D:2] |         overlayWindowManager.addViewSafe(rootBadge, badgeParams)
+ 304 | [D:1] |     }
+ 305 | [D:1] | 
+ 306 | [D:1] |     fun dismiss() {
+ 307 | [D:2] |         restoreTouchRunnable?.let {
+ 308 | [D:3] |             mainHandler.removeCallbacks(it)
+ 309 | [D:3] |             restoreTouchRunnable = null
+ 310 | [D:2] |         }
+ 311 | [D:2] |         canvasLayer?.let {
+ 312 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 313 | [D:3] |             canvasLayer = null
+ 314 | [D:2] |         }
+ 315 | [D:2] |         badgeLayer?.let {
+ 316 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 317 | [D:3] |             badgeLayer = null
+ 318 | [D:3] |             tvRecordCount = null
+ 319 | [D:2] |         }
+ 320 | [D:1] |     }
+ 321 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_record_GestureRecorderOverlay.kt_part_01_lines_0001_to_0321.txt
+================================================================================

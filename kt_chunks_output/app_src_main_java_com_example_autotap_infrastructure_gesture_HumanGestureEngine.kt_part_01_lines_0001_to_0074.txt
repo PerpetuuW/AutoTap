@@ -1,0 +1,84 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\gesture\HumanGestureEngine.kt
+ PART: 1/1 | LINES: 1..74
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.gesture
+   2 | [D:0] | 
+   3 | [D:0] | import android.accessibilityservice.GestureDescription
+   4 | [D:0] | import android.graphics.Path
+   5 | [D:0] | import kotlin.math.atan2
+   6 | [D:0] | import kotlin.math.cos
+   7 | [D:0] | import kotlin.math.hypot
+   8 | [D:0] | import kotlin.math.pow
+   9 | [D:0] | import kotlin.math.sin
+  10 | [D:0] | import kotlin.random.Random
+  11 | [D:0] | 
+  12 | [D:0] | object HumanGestureEngine {
+  13 | [D:1] |     fun buildHumanSwipeGesture(
+  14 | [D:1] |         startX: Float, startY: Float, endX: Float, endY: Float,
+  15 | [D:1] |         durationMs: Long, screenW: Int, screenH: Int
+  16 | [D:1] |     ): GestureDescription {
+  17 | [D:2] |         val maxW = (screenW - 1).toFloat().coerceAtLeast(0f)
+  18 | [D:2] |         val maxH = (screenH - 1).toFloat().coerceAtLeast(0f)
+  19 | [D:2] |         val safeStartX = startX.coerceIn(0f, maxW)
+  20 | [D:2] |         val safeStartY = startY.coerceIn(0f, maxH)
+  21 | [D:2] |         val safeEndX = endX.coerceIn(0f, maxW)
+  22 | [D:2] |         val safeEndY = endY.coerceIn(0f, maxH)
+  23 | [D:2] | 
+  24 | [D:2] |         val distance = hypot((safeEndX - safeStartX).toDouble(), (safeEndY - safeStartY).toDouble()).toFloat()
+  25 | [D:2] |         if (distance < 5f) {
+  26 | [D:3] |             val fallbackPath = Path().apply {
+  27 | [D:4] |                 moveTo(safeStartX, safeStartY)
+  28 | [D:4] |                 lineTo(safeStartX, safeStartY)
+  29 | [D:3] |             }
+  30 | [D:3] |             val stroke = GestureDescription.StrokeDescription(fallbackPath, 0L, durationMs.coerceAtLeast(60L))
+  31 | [D:3] |             return GestureDescription.Builder().addStroke(stroke).build()
+  32 | [D:2] |         }
+  33 | [D:2] | 
+  34 | [D:2] |         val curvature = (distance * 0.12f).coerceIn(10f, 60f)
+  35 | [D:2] |         val angle = atan2((safeEndY - safeStartY).toDouble(), (safeEndX - safeStartX).toDouble())
+  36 | [D:2] |         val normalAngle = angle + (if (Random.nextBoolean()) Math.PI / 2 else -Math.PI / 2)
+  37 | [D:2] | 
+  38 | [D:2] |         val mid1X = safeStartX + (safeEndX - safeStartX) * 0.33f + (curvature * cos(normalAngle)).toFloat() * Random.nextFloat()
+  39 | [D:2] |         val mid1Y = safeStartY + (safeEndY - safeStartY) * 0.33f + (curvature * sin(normalAngle)).toFloat() * Random.nextFloat()
+  40 | [D:2] |         val mid2X = safeStartX + (safeEndX - safeStartX) * 0.66f + (curvature * cos(normalAngle)).toFloat() * (Random.nextFloat() * 0.7f)
+  41 | [D:2] |         val mid2Y = safeStartY + (safeEndY - safeStartY) * 0.66f + (curvature * sin(normalAngle)).toFloat() * (Random.nextFloat() * 0.7f)
+  42 | [D:2] | 
+  43 | [D:2] |         val path = Path()
+  44 | [D:2] |         path.moveTo(safeStartX, safeStartY)
+  45 | [D:2] | 
+  46 | [D:2] |         val steps = (durationMs / 14).toInt().coerceIn(16, 75)
+  47 | [D:2] |         for (i in 1..steps) {
+  48 | [D:3] |             val t = i.toFloat() / steps.toFloat()
+  49 | [D:3] |             val easedT = when {
+  50 | [D:4] |                 t < 0.35f -> (t / 0.35f).pow(2) * 0.45f
+  51 | [D:4] |                 t < 0.80f -> 0.45f + ((t - 0.35f) / 0.45f) * 0.45f
+  52 | [D:4] |                 else -> 0.90f + (1f - (1f - (t - 0.80f) / 0.20f).pow(2)) * 0.10f
+  53 | [D:3] |             }
+  54 | [D:3] | 
+  55 | [D:3] |             val jitterX = if (i < steps) (Random.nextFloat() - 0.5f) * 1.5f else 0f
+  56 | [D:3] |             val jitterY = if (i < steps) (Random.nextFloat() - 0.5f) * 1.5f else 0f
+  57 | [D:3] | 
+  58 | [D:3] |             val x = (1 - easedT).pow(3) * safeStartX +
+  59 | [D:3] |                     3 * (1 - easedT).pow(2) * easedT * mid1X +
+  60 | [D:3] |                     3 * (1 - easedT) * easedT.pow(2) * mid2X +
+  61 | [D:3] |                     easedT.pow(3) * safeEndX + jitterX
+  62 | [D:3] | 
+  63 | [D:3] |             val y = (1 - easedT).pow(3) * safeStartY +
+  64 | [D:3] |                     3 * (1 - easedT).pow(2) * easedT * mid1Y +
+  65 | [D:3] |                     3 * (1 - easedT) * easedT.pow(2) * mid2Y +
+  66 | [D:3] |                     easedT.pow(3) * safeEndY + jitterY
+  67 | [D:3] | 
+  68 | [D:3] |             path.lineTo(x.coerceIn(0f, maxW), y.coerceIn(0f, maxH))
+  69 | [D:2] |         }
+  70 | [D:2] | 
+  71 | [D:2] |         val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs.coerceAtLeast(60L))
+  72 | [D:2] |         return GestureDescription.Builder().addStroke(stroke).build()
+  73 | [D:1] |     }
+  74 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_gesture_HumanGestureEngine.kt_part_01_lines_0001_to_0074.txt
+================================================================================

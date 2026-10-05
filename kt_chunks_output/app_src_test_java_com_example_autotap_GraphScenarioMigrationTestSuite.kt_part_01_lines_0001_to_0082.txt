@@ -1,0 +1,92 @@
+================================================================================
+ FILE: app\src\test\java\com\example\autotap\GraphScenarioMigrationTestSuite.kt
+ PART: 1/1 | LINES: 1..82
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.core.math.LinearToGraphMigrator
+   4 | [D:0] | import com.example.autotap.domain.model.ActionType
+   5 | [D:0] | import com.example.autotap.domain.model.DeviceDisplaySpecs
+   6 | [D:0] | import com.example.autotap.domain.model.MacroAction
+   7 | [D:0] | import com.example.autotap.domain.model.MacroScenario
+   8 | [D:0] | import com.example.autotap.domain.model.graph.EvaluationPolicy
+   9 | [D:0] | import org.junit.Assert.assertEquals
+  10 | [D:0] | import org.junit.Assert.assertNotNull
+  11 | [D:0] | import org.junit.Assert.assertTrue
+  12 | [D:0] | import org.junit.Test
+  13 | [D:0] | 
+  14 | [D:0] | class GraphScenarioMigrationTestSuite {
+  15 | [D:1] | 
+  16 | [D:1] |     @Test
+  17 | [D:1] |     fun testLinearToGraph_PreservesSequenceAndParameters() {
+  18 | [D:2] |         val specs = DeviceDisplaySpecs(1080, 2400, 480, 2.75f, false)
+  19 | [D:2] |         val actions = listOf(
+  20 | [D:2] |             MacroAction(id = 1, type = ActionType.CLICK, posX = 150f, posY = 250f, delayMs = 500L),
+  21 | [D:2] |             MacroAction(
+  22 | [D:2] |                 id = 2,
+  23 | [D:2] |                 type = ActionType.TRIGGER,
+  24 | [D:2] |                 posX = 500f,
+  25 | [D:2] |                 posY = 800f,
+  26 | [D:2] |                 similarityPercent = 88,
+  27 | [D:2] |                 jumpToStepOnMatch = 1,
+  28 | [D:2] |                 jumpToStepOnTimeout = 3
+  29 | [D:2] |             ),
+  30 | [D:2] |             MacroAction(id = 3, type = ActionType.SWIPE, posX = 200f, posY = 400f, endX = 200f, endY = 800f)
+  31 | [D:2] |         )
+  32 | [D:2] |         val linear = MacroScenario("CombatScenario", 1, specs, actions)
+  33 | [D:2] | 
+  34 | [D:2] |         val graph = LinearToGraphMigrator.linearToGraph(linear)
+  35 | [D:2] | 
+  36 | [D:2] |         assertEquals("CombatScenario", graph.name)
+  37 | [D:2] |         assertEquals(3, graph.nodes.size)
+  38 | [D:2] |         assertEquals("node_1", graph.entryNodeId)
+  39 | [D:2] | 
+  40 | [D:2] |         val node2 = graph.nodes["node_2"]
+  41 | [D:2] |         assertNotNull(node2)
+  42 | [D:2] |         assertEquals(1, node2?.triggers?.size ?: 0)
+  43 | [D:2] |         assertEquals(88, node2?.triggers?.getOrNull(0)?.similarityThreshold)
+  44 | [D:2] |         assertEquals(EvaluationPolicy.FIRST_MATCH_WINS, node2?.evaluationPolicy)
+  45 | [D:2] | 
+  46 | [D:2] |         val trigId = node2?.triggers?.getOrNull(0)?.targetPortId ?: ""
+  47 | [D:2] |         val matchEdge = graph.edges.firstOrNull { it.fromNodeId == "node_2" && it.fromPortId == trigId }
+  48 | [D:2] |         assertNotNull(matchEdge)
+  49 | [D:2] |         assertEquals("node_1", matchEdge?.toNodeId)
+  50 | [D:2] | 
+  51 | [D:2] |         val timeoutEdge = graph.edges.firstOrNull { it.fromNodeId == "node_2" && it.fromPortId == "out_timeout" }
+  52 | [D:2] |         assertNotNull(timeoutEdge)
+  53 | [D:2] |         assertEquals("node_3", timeoutEdge?.toNodeId)
+  54 | [D:1] |     }
+  55 | [D:1] | 
+  56 | [D:1] |     @Test
+  57 | [D:1] |     fun testGraphToLinear_RoundTripFidelity() {
+  58 | [D:2] |         val specs = DeviceDisplaySpecs(1080, 2400, 480, 2.75f, false)
+  59 | [D:2] |         val actions = listOf(
+  60 | [D:2] |             MacroAction(id = 1, type = ActionType.CLICK, posX = 100f, posY = 150f, delayMs = 300L),
+  61 | [D:2] |             MacroAction(
+  62 | [D:2] |                 id = 2,
+  63 | [D:2] |                 type = ActionType.TRIGGER,
+  64 | [D:2] |                 similarityPercent = 85,
+  65 | [D:2] |                 jumpToStepOnMatch = 1,
+  66 | [D:2] |                 jumpToStepOnTimeout = 2
+  67 | [D:2] |             )
+  68 | [D:2] |         )
+  69 | [D:2] |         val original = MacroScenario("LoopScenario", 1, specs, actions)
+  70 | [D:2] | 
+  71 | [D:2] |         val graph = LinearToGraphMigrator.linearToGraph(original)
+  72 | [D:2] |         val roundTrip = LinearToGraphMigrator.graphToLinear(graph)
+  73 | [D:2] | 
+  74 | [D:2] |         assertEquals(original.actions.size, roundTrip.actions.size)
+  75 | [D:2] |         assertEquals(original.actions[0].type, roundTrip.actions[0].type)
+  76 | [D:2] |         assertEquals(original.actions[0].posX, roundTrip.actions[0].posX, 1e-3f)
+  77 | [D:2] |         assertEquals(original.actions[1].type, roundTrip.actions[1].type)
+  78 | [D:2] |         assertEquals(original.actions[1].similarityPercent, roundTrip.actions[1].similarityPercent)
+  79 | [D:2] |         assertEquals(1, roundTrip.actions[1].jumpToStepOnMatch)
+  80 | [D:2] |         assertEquals(2, roundTrip.actions[1].jumpToStepOnTimeout)
+  81 | [D:1] |     }
+  82 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_test_java_com_example_autotap_GraphScenarioMigrationTestSuite.kt_part_01_lines_0001_to_0082.txt
+================================================================================

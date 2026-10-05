@@ -1,0 +1,13 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\joystick\JoystickOverlay.kt
+ PART: 2/2 | LINES: 801..803
+ START DEPTH: [D:3] | END DEPTH: [D:0]
+================================================================================
+
+ 801 | [D:2] |         }
+ 802 | [D:1] |     }
+ 803 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_joystick_JoystickOverlay.kt_part_02_lines_0801_to_0803.txt
+================================================================================

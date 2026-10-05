@@ -1,0 +1,63 @@
+================================================================================
+ FILE: app\src\test\java\com\example\autotap\ShapeDifferentiationTestSuite.kt
+ PART: 1/1 | LINES: 1..53
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.infrastructure.vision.TemplateMatchingEngine
+   4 | [D:0] | import org.junit.Assert.assertNotNull
+   5 | [D:0] | import org.junit.Assert.assertTrue
+   6 | [D:0] | import org.junit.Test
+   7 | [D:0] | 
+   8 | [D:0] | class ShapeDifferentiationTestSuite {
+   9 | [D:1] | 
+  10 | [D:1] |     @Test
+  11 | [D:1] |     fun testShapeOnlyMode_DifferentiatesFromHybridScore() {
+  12 | [D:2] |         val tw = 32
+  13 | [D:2] |         val th = 32
+  14 | [D:2] |         val tplPixels = IntArray(tw * th)
+  15 | [D:2] | 
+  16 | [D:2] |         for (y in 0 until th) {
+  17 | [D:3] |             for (x in 0 until tw) {
+  18 | [D:4] |                 val idx = y * tw + x
+  19 | [D:4] |                 if (x in 8..24 && y in 8..24 && (x <= y && (th - y) >= (x - 8))) {
+  20 | [D:5] |                     tplPixels[idx] = 0xFFFFFFFF.toInt()
+  21 | [D:4] |                 } else {
+  22 | [D:5] |                     tplPixels[idx] = 0xFF000000.toInt()
+  23 | [D:4] |                 }
+  24 | [D:3] |             }
+  25 | [D:2] |         }
+  26 | [D:2] | 
+  27 | [D:2] |         val features = TemplateMatchingEngine.extractFeatures(tplPixels, tw, th, "diff_pure_test", 80)
+  28 | [D:2] |         assertNotNull("Дескрипторы формы обязаны быть успешно извлечены", features)
+  29 | [D:2] |         val feat = features ?: return
+  30 | [D:2] | 
+  31 | [D:2] |         val sw = 64
+  32 | [D:2] |         val sh = 64
+  33 | [D:2] |         val screenPixels = IntArray(sw * sh)
+  34 | [D:2] | 
+  35 | [D:2] |         for (y in 0 until sh) {
+  36 | [D:3] |             for (x in 0 until sw) {
+  37 | [D:4] |                 val tx = x - 16
+  38 | [D:4] |                 val ty = y - 16
+  39 | [D:4] |                 if (tx in 8..24 && ty in 8..24 && (tx <= ty && (th - ty) >= (tx - 8))) {
+  40 | [D:5] |                     screenPixels[y * sw + x] = 0xFFFFFFFF.toInt()
+  41 | [D:4] |                 } else {
+  42 | [D:5] |                     screenPixels[y * sw + x] = 0xFFFF0000.toInt()
+  43 | [D:4] |                 }
+  44 | [D:3] |             }
+  45 | [D:2] |         }
+  46 | [D:2] | 
+  47 | [D:2] |         val hybridScore = TemplateMatchingEngine.evaluateCandidateScore(screenPixels, sw, sh, 16, 16, feat, isShapeOnly = false)
+  48 | [D:2] |         val shapeScore = TemplateMatchingEngine.evaluateCandidateScore(screenPixels, sw, sh, 16, 16, feat, isShapeOnly = true)
+  49 | [D:2] | 
+  50 | [D:2] |         assertTrue("Балл формы ($shapeScore) обязан быть выше гибридного ($hybridScore) при изменении фона", shapeScore > hybridScore)
+  51 | [D:2] |         assertTrue("Балл формы обязан превышать 80% на идентичном контуре", shapeScore >= 0.80f)
+  52 | [D:1] |     }
+  53 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_test_java_com_example_autotap_ShapeDifferentiationTestSuite.kt_part_01_lines_0001_to_0053.txt
+================================================================================

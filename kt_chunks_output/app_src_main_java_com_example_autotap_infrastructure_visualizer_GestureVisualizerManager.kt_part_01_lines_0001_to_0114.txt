@@ -1,0 +1,124 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\visualizer\GestureVisualizerManager.kt
+ PART: 1/1 | LINES: 1..114
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.visualizer
+   2 | [D:0] | 
+   3 | [D:0] | import android.content.Context
+   4 | [D:0] | import android.graphics.PixelFormat
+   5 | [D:0] | import android.os.Build
+   6 | [D:0] | import android.os.Handler
+   7 | [D:0] | import android.os.Looper
+   8 | [D:0] | import android.view.Gravity
+   9 | [D:0] | import android.view.View
+  10 | [D:0] | import android.view.WindowManager
+  11 | [D:0] | import com.example.autotap.core.logger.AppLogger
+  12 | [D:0] | import java.util.concurrent.CopyOnWriteArraySet
+  13 | [D:0] | 
+  14 | [D:0] | class GestureVisualizerManager(private val context: Context) {
+  15 | [D:1] | 
+  16 | [D:1] |     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+  17 | [D:1] |     private val mainHandler = Handler(Looper.getMainLooper())
+  18 | [D:1] |     private val activeVisualizers = CopyOnWriteArraySet<View>()
+  19 | [D:1] | 
+  20 | [D:1] |     @Suppress("DEPRECATION")
+  21 | [D:1] |     private fun getOverlayType(): Int =
+  22 | [D:1] |         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+  23 | [D:2] |             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+  24 | [D:1] |         } else {
+  25 | [D:2] |             WindowManager.LayoutParams.TYPE_PHONE
+  26 | [D:1] |         }
+  27 | [D:1] | 
+  28 | [D:1] |     fun showClickVisualizer(x: Float, y: Float) {
+  29 | [D:2] |         mainHandler.post {
+  30 | [D:3] |             try {
+  31 | [D:4] |                 val sizePx = (84 * context.resources.displayMetrics.density).toInt()
+  32 | [D:4] |                 val pulseView = ClickPulseView(context)
+  33 | [D:4] |                 val params = WindowManager.LayoutParams(
+  34 | [D:4] |                     sizePx, sizePx, getOverlayType(),
+  35 | [D:4] |                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+  36 | [D:4] |                             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+  37 | [D:4] |                             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+  38 | [D:4] |                             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+  39 | [D:4] |                     PixelFormat.TRANSLUCENT
+  40 | [D:4] |                 ).apply {
+  41 | [D:5] |                     gravity = Gravity.TOP or Gravity.START
+  42 | [D:5] |                     this.x = (x - sizePx / 2f).toInt()
+  43 | [D:5] |                     this.y = (y - sizePx / 2f).toInt()
+  44 | [D:5] |                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+  45 | [D:6] |                         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+  46 | [D:5] |                     }
+  47 | [D:4] |                 }
+  48 | [D:4] |                 pulseView.onFinishedCallback = {
+  49 | [D:5] |                     removeVisualizerSafe(pulseView)
+  50 | [D:4] |                 }
+  51 | [D:4] |                 activeVisualizers.add(pulseView)
+  52 | [D:4] |                 windowManager.addView(pulseView, params)
+  53 | [D:3] |             } catch (e: Exception) {
+  54 | [D:4] |                 AppLogger.logError(context, "VISUALIZER", e)
+  55 | [D:3] |             }
+  56 | [D:2] |         }
+  57 | [D:1] |     }
+  58 | [D:1] | 
+  59 | [D:1] |     fun showSwipeVisualizer(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long) {
+  60 | [D:2] |         mainHandler.post {
+  61 | [D:3] |             try {
+  62 | [D:4] |                 val trailView = SwipeTrailView(context).apply {
+  63 | [D:5] |                     this.startX = startX
+  64 | [D:5] |                     this.startY = startY
+  65 | [D:5] |                     this.endX = endX
+  66 | [D:5] |                     this.endY = endY
+  67 | [D:5] |                     this.durationMs = durationMs
+  68 | [D:4] |                 }
+  69 | [D:4] |                 val params = WindowManager.LayoutParams(
+  70 | [D:4] |                     WindowManager.LayoutParams.MATCH_PARENT,
+  71 | [D:4] |                     WindowManager.LayoutParams.MATCH_PARENT,
+  72 | [D:4] |                     getOverlayType(),
+  73 | [D:4] |                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+  74 | [D:4] |                             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+  75 | [D:4] |                             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+  76 | [D:4] |                             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+  77 | [D:4] |                     PixelFormat.TRANSLUCENT
+  78 | [D:4] |                 ).apply {
+  79 | [D:5] |                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+  80 | [D:6] |                         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+  81 | [D:5] |                     }
+  82 | [D:4] |                 }
+  83 | [D:4] |                 trailView.onFinishedCallback = {
+  84 | [D:5] |                     removeVisualizerSafe(trailView)
+  85 | [D:4] |                 }
+  86 | [D:4] |                 activeVisualizers.add(trailView)
+  87 | [D:4] |                 windowManager.addView(trailView, params)
+  88 | [D:3] |             } catch (e: Exception) {
+  89 | [D:4] |                 AppLogger.logError(context, "VISUALIZER", e)
+  90 | [D:3] |             }
+  91 | [D:2] |         }
+  92 | [D:1] |     }
+  93 | [D:1] | 
+  94 | [D:1] |     private fun removeVisualizerSafe(view: View) {
+  95 | [D:2] |         try {
+  96 | [D:3] |             if (activeVisualizers.remove(view) && view.isAttachedToWindow) {
+  97 | [D:4] |                 windowManager.removeView(view)
+  98 | [D:3] |             }
+  99 | [D:2] |         } catch (_: Exception) {}
+ 100 | [D:1] |     }
+ 101 | [D:1] | 
+ 102 | [D:1] |     fun removeAll() {
+ 103 | [D:2] |         mainHandler.post {
+ 104 | [D:3] |             for (view in activeVisualizers) {
+ 105 | [D:4] |                 try {
+ 106 | [D:5] |                     if (view.isAttachedToWindow) {
+ 107 | [D:6] |                         windowManager.removeView(view)
+ 108 | [D:5] |                     }
+ 109 | [D:4] |                 } catch (_: Exception) {}
+ 110 | [D:3] |             }
+ 111 | [D:3] |             activeVisualizers.clear()
+ 112 | [D:2] |         }
+ 113 | [D:1] |     }
+ 114 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_visualizer_GestureVisualizerManager.kt_part_01_lines_0001_to_0114.txt
+================================================================================

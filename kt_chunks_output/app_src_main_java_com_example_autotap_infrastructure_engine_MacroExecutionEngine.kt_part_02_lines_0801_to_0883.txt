@@ -1,0 +1,93 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\engine\MacroExecutionEngine.kt
+ PART: 2/2 | LINES: 801..883
+ START DEPTH: [D:7] | END DEPTH: [D:1]
+================================================================================
+
+ 801 | [D:7] |                         return true
+ 802 | [D:6] |                     }
+ 803 | [D:6] |                     return false
+ 804 | [D:5] |                 } finally {
+ 805 | [D:6] |                     if (bmp != screenshot && !bmp.isRecycled) bmp.recycle()
+ 806 | [D:5] |                 }
+ 807 | [D:4] |             }
+ 808 | [D:4] |                 ActionType.COLOR_CHECK -> {
+ 809 | [D:5] |                     val bmp = screenshot ?: (if (sPixels != null) {
+ 810 | [D:6] |                         Bitmap.createBitmap(sPixels, sw, sh, Bitmap.Config.ARGB_8888)
+ 811 | [D:5] |                     } else null) ?: return false
+ 812 | [D:5] | 
+ 813 | [D:5] |                     try {
+ 814 | [D:6] |                         return visionGateway.checkColor(
+ 815 | [D:6] |                             screenshot = bmp,
+ 816 | [D:6] |                             targetX = trig.clickOffset.x.toInt(),
+ 817 | [D:6] |                             targetY = trig.clickOffset.y.toInt(),
+ 818 | [D:6] |                             expectedHex = trig.targetQueryOrColor,
+ 819 | [D:6] |                             tolerance = trig.colorTolerance,
+ 820 | [D:6] |                             useDeltaE = trig.colorDeltaEMode
+ 821 | [D:6] |                         )
+ 822 | [D:5] |                     } finally {
+ 823 | [D:6] |                         if (bmp != screenshot && !bmp.isRecycled) bmp.recycle()
+ 824 | [D:5] |                     }
+ 825 | [D:4] |                 }
+ 826 | [D:4] |                 ActionType.CLICK, ActionType.LONG_PRESS, ActionType.SWIPE,
+ 827 | [D:4] |                 ActionType.PATH, ActionType.PINCH, ActionType.SUBROUTINE,
+ 828 | [D:4] |                 ActionType.RETURN -> return false
+ 829 | [D:3] |             }
+ 830 | [D:2] |     }
+ 831 | [D:2] | 
+ 832 | [D:2] |     private fun resolveActiveTemplatesRobust(
+ 833 | [D:2] |         action: MacroAction,
+ 834 | [D:2] |         cachedTemplates: Map<String, Bitmap>
+ 835 | [D:2] |     ): List<Pair<String, Bitmap>> {
+ 836 | [D:3] |         val result = mutableListOf<Pair<String, Bitmap>>()
+ 837 | [D:3] |         val allFromDisk = templateRepository.loadAllTemplates()
+ 838 | [D:3] | 
+ 839 | [D:3] |         if (action.multiTemplatePaths.isNotEmpty()) {
+ 840 | [D:4] |             for (path in action.multiTemplatePaths) {
+ 841 | [D:5] |                 if (path.isNotBlank()) {
+ 842 | [D:6] |                     val matched = allFromDisk.firstOrNull { File(it.first).name == File(path).name }
+ 843 | [D:6] |                     val bmp = matched?.second ?: cachedTemplates[path] ?: templateRepository.getTemplate(path)
+ 844 | [D:6] |                     if (bmp != null && !bmp.isRecycled && result.none { it.first == path }) {
+ 845 | [D:7] |                         result.add(Pair(path, bmp))
+ 846 | [D:6] |                     }
+ 847 | [D:5] |                 }
+ 848 | [D:4] |             }
+ 849 | [D:3] |         }
+ 850 | [D:3] | 
+ 851 | [D:3] |         if (action.templatePath.isNotBlank() && result.none { it.first == action.templatePath }) {
+ 852 | [D:4] |             val directFile = File(action.templatePath)
+ 853 | [D:4] |             val matched = allFromDisk.firstOrNull { File(it.first).name == directFile.name }
+ 854 | [D:4] |             val bmp = matched?.second ?: cachedTemplates[action.templatePath] ?: templateRepository.getTemplate(action.templatePath)
+ 855 | [D:4] |             if (bmp != null && !bmp.isRecycled) {
+ 856 | [D:5] |                 result.add(Pair(action.templatePath, bmp))
+ 857 | [D:4] |             }
+ 858 | [D:3] |         }
+ 859 | [D:3] | 
+ 860 | [D:3] |         return result.ifEmpty { allFromDisk.take(1) }
+ 861 | [D:2] |     }
+ 862 | [D:2] | 
+ 863 | [D:2] |     override fun stop() {
+ 864 | [D:3] |         executionJob?.cancel()
+ 865 | [D:3] |         executionJob = null
+ 866 | [D:3] |         debugStepDeferred?.cancel()
+ 867 | [D:3] |         debugStepDeferred = null
+ 868 | [D:3] |         _executionState.value = ExecutionState.Idle
+ 869 | [D:2] |     }
+ 870 | [D:2] | 
+ 871 | [D:2] |     override fun pause() {
+ 872 | [D:3] |         isPaused = true
+ 873 | [D:3] |         _executionState.value = ExecutionState.Paused(PauseReason.USER_MANUAL)
+ 874 | [D:2] |     }
+ 875 | [D:2] | 
+ 876 | [D:2] |     override fun resume() {
+ 877 | [D:3] |         isPaused = false
+ 878 | [D:2] |     }
+ 879 | [D:2] | 
+ 880 | [D:2] |     override fun stepDebugNext() {
+ 881 | [D:3] |         debugStepDeferred?.complete(Unit)
+ 882 | [D:2] |     }
+ 883 | [D:1] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_engine_MacroExecutionEngine.kt_part_02_lines_0801_to_0883.txt
+================================================================================

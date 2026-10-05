@@ -1,0 +1,26 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\domain\engine\ISubroutineManager.kt
+ PART: 1/1 | LINES: 1..16
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.domain.engine
+   2 | [D:0] | 
+   3 | [D:0] | import com.example.autotap.domain.model.MacroAction
+   4 | [D:0] | 
+   5 | [D:0] | data class SubroutineFrame(
+   6 | [D:0] |     val scenarioName: String,
+   7 | [D:0] |     val actions: List<MacroAction>,
+   8 | [D:0] |     val returnIndex: Int
+   9 | [D:0] | )
+  10 | [D:0] | 
+  11 | [D:0] | interface ISubroutineManager {
+  12 | [D:1] |     fun pushFrame(scenarioName: String, actions: List<MacroAction>, returnIndex: Int): Boolean
+  13 | [D:1] |     fun popFrame(): SubroutineFrame?
+  14 | [D:1] |     fun clear()
+  15 | [D:1] |     val currentDepth: Int
+  16 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_domain_engine_ISubroutineManager.kt_part_01_lines_0001_to_0016.txt
+================================================================================

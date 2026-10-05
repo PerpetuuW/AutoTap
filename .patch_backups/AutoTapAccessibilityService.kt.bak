@@ -1,0 +1,242 @@
+package com.example.autotap.infrastructure.accessibility
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.os.Build
+import android.view.Display
+import android.view.KeyEvent
+import android.view.accessibility.AccessibilityEvent
+import com.example.autotap.core.logger.AppLogger
+import com.example.autotap.domain.model.ExecutionState
+import com.example.autotap.infrastructure.gesture.GestureDispatcher
+import com.example.autotap.infrastructure.orchestrator.AutoTapOrchestrator
+import com.example.autotap.infrastructure.visualizer.GestureVisualizerManager
+import java.lang.ref.WeakReference
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+class AutoTapAccessibilityService : AccessibilityService() {
+
+    companion object {
+        @Volatile
+        private var serviceRef: WeakReference<AutoTapAccessibilityService>? = null
+
+        val instance: AutoTapAccessibilityService?
+            get() = serviceRef?.get()
+
+        val isLiveRunning: Boolean
+            get() = instance != null && instance?.isServiceConnectedState == true
+    }
+
+    private val bgScreenshotExecutor = Executors.newSingleThreadExecutor()
+    val visualizerManager by lazy { GestureVisualizerManager(this) }
+    val gestureDispatcher by lazy { GestureDispatcher({ this }, visualizerManager) }
+
+    @Volatile
+    var isServiceConnectedState = false
+        private set
+
+    @Volatile
+    private var lastForegroundPackage: String = ""
+
+    val currentForegroundPackage: String
+        get() = lastForegroundPackage
+
+    private val isScreenshotInProgress = AtomicBoolean(false)
+    private var lastScreenshotCallTime = 0L
+
+    private val externalStoreAndBrowsers = setOf(
+        "com.android.vending", "com.android.chrome", "org.mozilla.firefox",
+        "com.opera.browser", "com.yandex.browser", "com.sec.android.app.sbrowser",
+        "com.google.android.packageinstaller"
+    )
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            val canStartDaemon = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                checkSelfPermission("android.permission.FOREGROUND_SERVICE_SPECIAL_USE") == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+
+            if (canStartDaemon) {
+                val daemonIntent = Intent(this, KeepAliveDaemonService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(daemonIntent)
+                } else {
+                    startService(daemonIntent)
+                }
+                AppLogger.log(this, "DAEMON", "KeepAliveDaemonService успешно запущен")
+            } else {
+                AppLogger.log(this, "DAEMON", "Запуск KeepAliveDaemonService пропущен: отсутствует FOREGROUND_SERVICE_SPECIAL_USE")
+            }
+        } catch (e: Throwable) {
+            AppLogger.logError(this, "DAEMON", e)
+        }
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        try {
+            serviceRef = WeakReference(this)
+            isServiceConnectedState = true
+            val info = serviceInfo ?: AccessibilityServiceInfo()
+            info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            serviceInfo = info
+            AppLogger.log(this, "ACCESSIBILITY", "Служба кликера успешно подключена и активна")
+        } catch (e: Throwable) {
+            AppLogger.logError(this, "ACCESSIBILITY", e)
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        AppLogger.log(this, "ACCESSIBILITY", "onTaskRemoved: Приложение смахнули из Recents. Экстренная зачистка WindowManager...")
+        try {
+            val orchestrator = AutoTapOrchestrator.getInstance(this)
+            orchestrator.hideOverlays()
+            orchestrator.overlayWindowManager.removeAll()
+        } catch (e: Throwable) {
+            AppLogger.logError(this, "ACCESSIBILITY", e)
+        }
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        isServiceConnectedState = false
+        serviceRef = null
+        try {
+            val orchestrator = AutoTapOrchestrator.getInstance(this)
+            orchestrator.hideOverlays()
+            orchestrator.overlayWindowManager.removeAll()
+        } catch (e: Throwable) {
+            AppLogger.logError(this, "ACCESSIBILITY", e)
+        }
+        return super.onUnbind(intent)
+    }
+
+    override fun onRebind(intent: Intent?) {
+        super.onRebind(intent)
+        serviceRef = WeakReference(this)
+        isServiceConnectedState = true
+    }
+
+    override fun onDestroy() {
+        isServiceConnectedState = false
+        serviceRef = null
+        try {
+            bgScreenshotExecutor.shutdownNow()
+            val orchestrator = AutoTapOrchestrator.getInstance(this)
+            orchestrator.hideOverlays()
+            orchestrator.overlayWindowManager.removeAll()
+        } catch (_: Throwable) {}
+        super.onDestroy()
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        try {
+            if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val pkg = event.packageName?.toString() ?: return
+                if (pkg != packageName && pkg != "com.android.systemui" && pkg != lastForegroundPackage) {
+                    lastForegroundPackage = pkg
+                    val orchestrator = AutoTapOrchestrator.getInstance(this)
+                    val isRunning = orchestrator.macroEngine.executionState.value is ExecutionState.Running
+                    if (isRunning && externalStoreAndBrowsers.contains(pkg)) {
+                        performGlobalAction(GLOBAL_ACTION_BACK)
+                        return
+                    }
+                    val boundScriptName = orchestrator.profileDetector.getScriptForPackage(pkg)
+                    if (boundScriptName != null) {
+                        val scenario = orchestrator.scenarioRepository.loadScenario(boundScriptName)
+                        if (scenario != null) orchestrator.targetManager.loadActions(scenario.actions)
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    override fun onInterrupt() {}
+
+    override fun onKeyEvent(event: KeyEvent?): Boolean {
+        try {
+            if (event?.action == KeyEvent.ACTION_DOWN) {
+                val orchestrator = AutoTapOrchestrator.getInstance(this)
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                        gestureDispatcher.vibrateFeedback(40L)
+                        orchestrator.macroEngine.stop()
+                        orchestrator.hideOverlays()
+                        orchestrator.showOverlays()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_VOLUME_UP -> {
+                        gestureDispatcher.vibrateFeedback(25L)
+                        val curState = orchestrator.macroEngine.executionState.value
+                        if (curState is ExecutionState.Running) orchestrator.macroEngine.pause()
+                        else if (curState is ExecutionState.Paused) orchestrator.macroEngine.resume()
+                        else orchestrator.onPlayClicked()
+                        return true
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+        return super.onKeyEvent(event)
+    }
+
+    fun captureScreenshotSync(timeoutMs: Long = 1500L): Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val now = System.currentTimeMillis()
+        if (now - lastScreenshotCallTime < 30L) return null
+        if (!isScreenshotInProgress.compareAndSet(false, true)) return null
+        lastScreenshotCallTime = now
+        val latch = CountDownLatch(1)
+        var capturedBitmap: Bitmap? = null
+
+        val orchestrator = AutoTapOrchestrator.getInstance(this)
+        val lockScreenShowing = orchestrator.screenLockOverlay.isShowing()
+        if (lockScreenShowing) {
+            orchestrator.screenLockOverlay.setTemporarilyTransparent(true)
+        }
+        val badgeShowing = orchestrator.runningBadgeOverlay.isShowing()
+        if (badgeShowing) {
+            orchestrator.runningBadgeOverlay.setTemporarilyTransparent(true)
+        }
+
+        try {
+            takeScreenshot(Display.DEFAULT_DISPLAY, bgScreenshotExecutor, object : AccessibilityService.TakeScreenshotCallback {
+                override fun onSuccess(screenshotResult: AccessibilityService.ScreenshotResult) {
+                    val hwBuffer = screenshotResult.hardwareBuffer
+                    var hwBitmap: Bitmap? = null
+                    try {
+                        val colorSpace = screenshotResult.colorSpace
+                        hwBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Bitmap.wrapHardwareBuffer(hwBuffer, colorSpace) else null
+                        capturedBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+                    } catch (_: Throwable) {
+                    } finally {
+                        hwBitmap?.let { if (!it.isRecycled) it.recycle() }
+                        try { hwBuffer.close() } catch (_: Throwable) {}
+                        latch.countDown()
+                    }
+                }
+                override fun onFailure(errorCode: Int) { latch.countDown() }
+            })
+            try { latch.await(timeoutMs, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) {}
+        } catch (_: Throwable) {
+        } finally {
+            if (lockScreenShowing) orchestrator.screenLockOverlay.setTemporarilyTransparent(false)
+            if (badgeShowing) orchestrator.runningBadgeOverlay.setTemporarilyTransparent(false)
+            isScreenshotInProgress.set(false)
+        }
+        return capturedBitmap
+    }
+}

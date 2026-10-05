@@ -1,0 +1,375 @@
+================================================================================
+ FILE: app\src\main\java\com\example\autotap\infrastructure\overlay\lock\ScreenLockOverlay.kt
+ PART: 1/1 | LINES: 1..365
+ START DEPTH: [D:0] | END DEPTH: [D:0]
+================================================================================
+
+   1 | [D:0] | package com.example.autotap.infrastructure.overlay.lock
+   2 | [D:0] | 
+   3 | [D:0] | import android.annotation.SuppressLint
+   4 | [D:0] | import android.content.Context
+   5 | [D:0] | import android.content.SharedPreferences
+   6 | [D:0] | import android.graphics.Color
+   7 | [D:0] | import android.graphics.Typeface
+   8 | [D:0] | import android.graphics.drawable.ClipDrawable
+   9 | [D:0] | import android.graphics.drawable.GradientDrawable
+  10 | [D:0] | import android.graphics.drawable.LayerDrawable
+  11 | [D:0] | import android.os.Build
+  12 | [D:0] | import android.os.Handler
+  13 | [D:0] | import android.os.Looper
+  14 | [D:0] | import android.os.VibrationEffect
+  15 | [D:0] | import android.os.Vibrator
+  16 | [D:0] | import android.view.Gravity
+  17 | [D:0] | import android.view.MotionEvent
+  18 | [D:0] | import android.view.View
+  19 | [D:0] | import android.view.WindowManager
+  20 | [D:0] | import android.widget.Button
+  21 | [D:0] | import android.widget.FrameLayout
+  22 | [D:0] | import android.widget.LinearLayout
+  23 | [D:0] | import android.widget.ProgressBar
+  24 | [D:0] | import android.widget.SeekBar
+  25 | [D:0] | import android.widget.TextView
+  26 | [D:0] | import androidx.core.graphics.toColorInt
+  27 | [D:0] | import com.example.autotap.core.logger.AppLogger
+  28 | [D:0] | import com.example.autotap.infrastructure.overlay.OverlayWindowManager
+  29 | [D:0] | import java.util.Locale
+  30 | [D:0] | import kotlin.math.hypot
+  31 | [D:0] | import kotlin.random.Random
+  32 | [D:0] | 
+  33 | [D:0] | @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
+  34 | [D:0] | class ScreenLockOverlay(
+  35 | [D:0] |     private val context: Context,
+  36 | [D:0] |     private val overlayWindowManager: OverlayWindowManager
+  37 | [D:0] | ) {
+  38 | [D:1] | 
+  39 | [D:1] |     private var bgLockContainer: FrameLayout? = null
+  40 | [D:1] |     private var uiLockContainer: LinearLayout? = null
+  41 | [D:1] |     private var bgWindowParams: WindowManager.LayoutParams? = null
+  42 | [D:1] |     private var uiWindowParams: WindowManager.LayoutParams? = null
+  43 | [D:1] | 
+  44 | [D:1] |     private val mainHandler = Handler(Looper.getMainLooper())
+  45 | [D:1] |     private val dm = context.resources.displayMetrics
+  46 | [D:1] |     private fun dp(v: Int): Int = (v * dm.density).toInt()
+  47 | [D:1] |     private fun dpF(v: Float): Float = v * dm.density
+  48 | [D:1] | 
+  49 | [D:1] |     private var countdownRunnable: Runnable? = null
+  50 | [D:1] |     private var pixelShiftRunnable: Runnable? = null
+  51 | [D:1] |     private var holdStartTime = 0L
+  52 | [D:1] |     private val totalHoldDurationMs = 3000L
+  53 | [D:1] |     private var sessionStartTime = 0L
+  54 | [D:1] | 
+  55 | [D:1] |     private val prefs: SharedPreferences = context.getSharedPreferences("autotap_lock_prefs", Context.MODE_PRIVATE)
+  56 | [D:1] |     private var isBlackScreenMode: Boolean
+  57 | [D:1] |         get() = prefs.getBoolean("is_black_screen", true)
+  58 | [D:1] |         set(value) = prefs.edit().putBoolean("is_black_screen", value).apply()
+  59 | [D:1] | 
+  60 | [D:1] |     private var lockBrightness: Float
+  61 | [D:1] |         get() = prefs.getFloat("lock_brightness", 0.01f)
+  62 | [D:1] |         set(value) = prefs.edit().putFloat("lock_brightness", value).apply()
+  63 | [D:1] | 
+  64 | [D:1] |     var onLockDismissedListener: (() -> Unit)? = null
+  65 | [D:1] | 
+  66 | [D:1] |     fun isShowing(): Boolean = bgLockContainer != null
+  67 | [D:1] | 
+  68 | [D:1] |     fun setTemporarilyTransparent(transparent: Boolean) {
+  69 | [D:2] |         mainHandler.post {
+  70 | [D:3] |             bgLockContainer?.alpha = if (transparent) 0f else 1f
+  71 | [D:3] |             uiLockContainer?.alpha = if (transparent) 0f else 1f
+  72 | [D:2] |         }
+  73 | [D:1] |     }
+  74 | [D:1] | 
+  75 | [D:1] |     fun setPassthroughEnabled(enabled: Boolean) {
+  76 | [D:2] |         val bg = bgLockContainer ?: return
+  77 | [D:2] |         val params = bgWindowParams ?: return
+  78 | [D:2] |         mainHandler.post {
+  79 | [D:3] |             if (enabled) {
+  80 | [D:4] |                 params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+  81 | [D:3] |             } else {
+  82 | [D:4] |                 params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+  83 | [D:3] |             }
+  84 | [D:3] |             overlayWindowManager.updateViewSafe(bg, params)
+  85 | [D:2] |         }
+  86 | [D:1] |     }
+  87 | [D:1] | 
+  88 | [D:1] |     fun show() {
+  89 | [D:2] |         if (isShowing()) return
+  90 | [D:2] |         AppLogger.log(context, "LOCK", "Активация AFK защиты экрана (AMOLED Burn-in Guard)")
+  91 | [D:2] |         sessionStartTime = System.currentTimeMillis()
+  92 | [D:2] | 
+  93 | [D:2] |         val bg = FrameLayout(context).apply {
+  94 | [D:3] |             setBackgroundColor(if (isBlackScreenMode) Color.BLACK else "#E6000000".toColorInt())
+  95 | [D:3] |             setOnTouchListener { _, _ -> true }
+  96 | [D:2] |         }
+  97 | [D:2] |         bgLockContainer = bg
+  98 | [D:2] | 
+  99 | [D:2] |         val bgParams = overlayWindowManager.createLayoutParams(
+ 100 | [D:2] |             width = WindowManager.LayoutParams.MATCH_PARENT,
+ 101 | [D:2] |             height = WindowManager.LayoutParams.MATCH_PARENT,
+ 102 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+ 103 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+ 104 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+ 105 | [D:2] |             gravity = Gravity.TOP or Gravity.START
+ 106 | [D:2] |         ).apply {
+ 107 | [D:3] |             screenBrightness = lockBrightness.coerceAtLeast(0.01f)
+ 108 | [D:2] |         }
+ 109 | [D:2] |         bgWindowParams = bgParams
+ 110 | [D:2] |         overlayWindowManager.addViewSafe(bg, bgParams)
+ 111 | [D:2] | 
+ 112 | [D:2] |         val anchorCard = LinearLayout(context).apply {
+ 113 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 114 | [D:3] |             gravity = Gravity.CENTER_HORIZONTAL
+ 115 | [D:3] |             background = GradientDrawable(
+ 116 | [D:3] |                 GradientDrawable.Orientation.TOP_BOTTOM,
+ 117 | [D:3] |                 intArrayOf("#F0161B22".toColorInt(), "#F00D1117".toColorInt())
+ 118 | [D:3] |             ).apply {
+ 119 | [D:4] |                 cornerRadius = dpF(20f)
+ 120 | [D:4] |                 setStroke(dp(1), "#00F5D4".toColorInt())
+ 121 | [D:3] |             }
+ 122 | [D:3] |             val px = dp(16)
+ 123 | [D:3] |             val py = dp(10)
+ 124 | [D:3] |             setPadding(px, py, px, py)
+ 125 | [D:3] |             elevation = dpF(24f)
+ 126 | [D:2] |         }
+ 127 | [D:2] |         uiLockContainer = anchorCard
+ 128 | [D:2] | 
+ 129 | [D:2] |         val unlockTouchArea = LinearLayout(context).apply {
+ 130 | [D:3] |             orientation = LinearLayout.VERTICAL
+ 131 | [D:3] |             gravity = Gravity.CENTER_HORIZONTAL
+ 132 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+ 133 | [D:2] |         }
+ 134 | [D:2] | 
+ 135 | [D:2] |         val tvStatus = TextView(context).apply {
+ 136 | [D:3] |             text = "🔒 УДЕРЖИВАЙТЕ ЗДЕСЬ 3 СЕК"
+ 137 | [D:3] |             setTextColor("#00F5D4".toColorInt())
+ 138 | [D:3] |             textSize = 10.5f
+ 139 | [D:3] |             typeface = Typeface.MONOSPACE
+ 140 | [D:3] |             includeFontPadding = false
+ 141 | [D:3] |             gravity = Gravity.CENTER
+ 142 | [D:3] |             setPadding(0, dp(4), 0, dp(4))
+ 143 | [D:2] |         }
+ 144 | [D:2] |         unlockTouchArea.addView(tvStatus)
+ 145 | [D:2] | 
+ 146 | [D:2] |         val tvUptime = TextView(context).apply {
+ 147 | [D:3] |             text = "СЕССИЯ: 00:00:00"
+ 148 | [D:3] |             setTextColor("#8B949E".toColorInt())
+ 149 | [D:3] |             textSize = 8.5f
+ 150 | [D:3] |             typeface = Typeface.MONOSPACE
+ 151 | [D:3] |             includeFontPadding = false
+ 152 | [D:3] |             gravity = Gravity.CENTER
+ 153 | [D:3] |             setPadding(0, 0, 0, dp(6))
+ 154 | [D:2] |         }
+ 155 | [D:2] |         unlockTouchArea.addView(tvUptime)
+ 156 | [D:2] | 
+ 157 | [D:2] |         val bgProgress = GradientDrawable().apply {
+ 158 | [D:3] |             setColor("#21262D".toColorInt())
+ 159 | [D:3] |             cornerRadius = dpF(3f)
+ 160 | [D:2] |         }
+ 161 | [D:2] |         val fillProgress = GradientDrawable().apply {
+ 162 | [D:3] |             setColor("#00F5D4".toColorInt())
+ 163 | [D:3] |             cornerRadius = dpF(3f)
+ 164 | [D:2] |         }
+ 165 | [D:2] |         val clipFill = ClipDrawable(fillProgress, Gravity.START, ClipDrawable.HORIZONTAL)
+ 166 | [D:2] |         val progressDrawable = LayerDrawable(arrayOf(bgProgress, clipFill)).apply {
+ 167 | [D:3] |             setId(0, android.R.id.background)
+ 168 | [D:3] |             setId(1, android.R.id.progress)
+ 169 | [D:2] |         }
+ 170 | [D:2] | 
+ 171 | [D:2] |         val pBar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+ 172 | [D:3] |             layoutParams = LinearLayout.LayoutParams(dp(210), dp(5)).apply {
+ 173 | [D:4] |                 bottomMargin = dp(8)
+ 174 | [D:3] |             }
+ 175 | [D:3] |             max = 100
+ 176 | [D:3] |             progress = 0
+ 177 | [D:3] |             this.progressDrawable = progressDrawable
+ 178 | [D:2] |         }
+ 179 | [D:2] |         unlockTouchArea.addView(pBar)
+ 180 | [D:2] |         anchorCard.addView(unlockTouchArea)
+ 181 | [D:2] | 
+ 182 | [D:2] |         val controlsRow = LinearLayout(context).apply {
+ 183 | [D:3] |             orientation = LinearLayout.HORIZONTAL
+ 184 | [D:3] |             gravity = Gravity.CENTER_VERTICAL
+ 185 | [D:3] |             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+ 186 | [D:2] |         }
+ 187 | [D:2] | 
+ 188 | [D:2] |         val btnMode = Button(context).apply {
+ 189 | [D:3] |             text = if (isBlackScreenMode) "AMOLED" else "ТЕМНЫЙ"
+ 190 | [D:3] |             textSize = 8f
+ 191 | [D:3] |             typeface = Typeface.DEFAULT_BOLD
+ 192 | [D:3] |             includeFontPadding = false
+ 193 | [D:3] |             setTextColor(Color.BLACK)
+ 194 | [D:3] |             background = GradientDrawable().apply {
+ 195 | [D:4] |                 setColor(if (isBlackScreenMode) "#00F5D4".toColorInt() else "#58A6FF".toColorInt())
+ 196 | [D:4] |                 cornerRadius = dpF(6f)
+ 197 | [D:3] |             }
+ 198 | [D:3] |             minHeight = 0; minimumHeight = 0
+ 199 | [D:3] |             setPadding(dp(8), dp(3), dp(8), dp(3))
+ 200 | [D:3] |             setOnClickListener {
+ 201 | [D:4] |                 isBlackScreenMode = !isBlackScreenMode
+ 202 | [D:4] |                 text = if (isBlackScreenMode) "AMOLED" else "ТЕМНЫЙ"
+ 203 | [D:4] |                 bgLockContainer?.setBackgroundColor(if (isBlackScreenMode) Color.BLACK else "#E6000000".toColorInt())
+ 204 | [D:4] |                 background = GradientDrawable().apply {
+ 205 | [D:5] |                     setColor(if (isBlackScreenMode) "#00F5D4".toColorInt() else "#58A6FF".toColorInt())
+ 206 | [D:5] |                     cornerRadius = dpF(6f)
+ 207 | [D:4] |                 }
+ 208 | [D:3] |             }
+ 209 | [D:2] |         }
+ 210 | [D:2] |         controlsRow.addView(btnMode, LinearLayout.LayoutParams(dp(70), dp(28)))
+ 211 | [D:2] | 
+ 212 | [D:2] |         val tvSun = TextView(context).apply {
+ 213 | [D:3] |             text = "☀️"
+ 214 | [D:3] |             textSize = 12f
+ 215 | [D:3] |             setPadding(dp(8), 0, dp(2), 0)
+ 216 | [D:2] |         }
+ 217 | [D:2] |         controlsRow.addView(tvSun)
+ 218 | [D:2] | 
+ 219 | [D:2] |         val sbBrightness = SeekBar(context).apply {
+ 220 | [D:3] |             max = 100
+ 221 | [D:3] |             progress = (lockBrightness * 100).toInt().coerceIn(1, 100)
+ 222 | [D:3] |             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+ 223 | [D:3] |             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+ 224 | [D:4] |                 override fun onProgressChanged(seekBar: SeekBar?, prog: Int, fromUser: Boolean) {
+ 225 | [D:5] |                     if (fromUser) {
+ 226 | [D:6] |                         val newBr = prog.coerceAtLeast(1) / 100f
+ 227 | [D:6] |                         lockBrightness = newBr
+ 228 | [D:6] |                         val p = bgWindowParams ?: return
+ 229 | [D:6] |                         p.screenBrightness = newBr
+ 230 | [D:6] |                         bgLockContainer?.let { overlayWindowManager.updateViewSafe(it, p) }
+ 231 | [D:5] |                     }
+ 232 | [D:4] |                 }
+ 233 | [D:4] |                 override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+ 234 | [D:4] |                 override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+ 235 | [D:3] |             })
+ 236 | [D:2] |         }
+ 237 | [D:2] |         controlsRow.addView(sbBrightness)
+ 238 | [D:2] |         anchorCard.addView(controlsRow)
+ 239 | [D:2] | 
+ 240 | [D:2] |         var touchDownX = 0f
+ 241 | [D:2] |         var touchDownY = 0f
+ 242 | [D:2] | 
+ 243 | [D:2] |         fun stopCountdown() {
+ 244 | [D:3] |             countdownRunnable?.let { mainHandler.removeCallbacks(it) }
+ 245 | [D:3] |             countdownRunnable = null
+ 246 | [D:3] |             pBar.progress = 0
+ 247 | [D:3] |             tvStatus.text = "🔒 УДЕРЖИВАЙТЕ ЗДЕСЬ 3 СЕК"
+ 248 | [D:3] |             tvStatus.setTextColor("#00F5D4".toColorInt())
+ 249 | [D:2] |         }
+ 250 | [D:2] | 
+ 251 | [D:2] |         fun vibrate(ms: Long) {
+ 252 | [D:3] |             try {
+ 253 | [D:4] |                 val vibrator = context.getSystemService(Vibrator::class.java)
+ 254 | [D:4] |                 if (vibrator != null && vibrator.hasVibrator()) {
+ 255 | [D:5] |                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+ 256 | [D:6] |                         vibrator.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
+ 257 | [D:5] |                     } else {
+ 258 | [D:6] |                         @Suppress("DEPRECATION")
+ 259 | [D:6] |                         vibrator.vibrate(ms)
+ 260 | [D:5] |                     }
+ 261 | [D:4] |                 }
+ 262 | [D:3] |             } catch (_: Exception) {}
+ 263 | [D:2] |         }
+ 264 | [D:2] | 
+ 265 | [D:2] |         fun startCountdown() {
+ 266 | [D:3] |             holdStartTime = System.currentTimeMillis()
+ 267 | [D:3] |             vibrate(25L)
+ 268 | [D:3] | 
+ 269 | [D:3] |             countdownRunnable = object : Runnable {
+ 270 | [D:4] |                 override fun run() {
+ 271 | [D:5] |                     val elapsed = System.currentTimeMillis() - holdStartTime
+ 272 | [D:5] |                     val remainingMs = (totalHoldDurationMs - elapsed).coerceAtLeast(0L)
+ 273 | [D:5] |                     val remainingSec = remainingMs / 1000.0
+ 274 | [D:5] |                     val pct = ((elapsed.toFloat() / totalHoldDurationMs.toFloat()) * 100).toInt().coerceIn(0, 100)
+ 275 | [D:5] | 
+ 276 | [D:5] |                     pBar.progress = pct
+ 277 | [D:5] | 
+ 278 | [D:5] |                     if (remainingMs <= 0) {
+ 279 | [D:6] |                         vibrate(60L)
+ 280 | [D:6] |                         dismiss()
+ 281 | [D:5] |                     } else {
+ 282 | [D:6] |                         tvStatus.text = String.format(Locale.US, "🔓 СНЯТИЕ: %.1f с", remainingSec)
+ 283 | [D:6] |                         tvStatus.setTextColor("#FFB703".toColorInt())
+ 284 | [D:6] |                         mainHandler.postDelayed(this, 40L)
+ 285 | [D:5] |                     }
+ 286 | [D:4] |                 }
+ 287 | [D:3] |             }
+ 288 | [D:3] |             mainHandler.post(countdownRunnable as Runnable)
+ 289 | [D:2] |         }
+ 290 | [D:2] | 
+ 291 | [D:2] |         unlockTouchArea.setOnTouchListener { _, event ->
+ 292 | [D:3] |             when (event.action) {
+ 293 | [D:4] |                 MotionEvent.ACTION_DOWN -> {
+ 294 | [D:5] |                     touchDownX = event.rawX
+ 295 | [D:5] |                     touchDownY = event.rawY
+ 296 | [D:5] |                     startCountdown()
+ 297 | [D:5] |                     true
+ 298 | [D:4] |                 }
+ 299 | [D:4] |                 MotionEvent.ACTION_MOVE -> {
+ 300 | [D:5] |                     if (hypot((event.rawX - touchDownX).toDouble(), (event.rawY - touchDownY).toDouble()) > dp(50)) {
+ 301 | [D:6] |                         stopCountdown()
+ 302 | [D:5] |                     }
+ 303 | [D:5] |                     true
+ 304 | [D:4] |                 }
+ 305 | [D:4] |                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+ 306 | [D:5] |                     stopCountdown()
+ 307 | [D:5] |                     true
+ 308 | [D:4] |                 }
+ 309 | [D:4] |                 else -> false
+ 310 | [D:3] |             }
+ 311 | [D:2] |         }
+ 312 | [D:2] | 
+ 313 | [D:2] |         val uiParams = overlayWindowManager.createLayoutParams(
+ 314 | [D:2] |             width = dp(260),
+ 315 | [D:2] |             height = WindowManager.LayoutParams.WRAP_CONTENT,
+ 316 | [D:2] |             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+ 317 | [D:2] |                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+ 318 | [D:2] |                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+ 319 | [D:2] |             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+ 320 | [D:2] |         ).apply {
+ 321 | [D:3] |             y = dp(60)
+ 322 | [D:2] |         }
+ 323 | [D:2] |         uiWindowParams = uiParams
+ 324 | [D:2] |         overlayWindowManager.addViewSafe(anchorCard, uiParams)
+ 325 | [D:2] | 
+ 326 | [D:2] |         pixelShiftRunnable = object : Runnable {
+ 327 | [D:3] |             override fun run() {
+ 328 | [D:4] |                 val card = uiLockContainer ?: return
+ 329 | [D:4] |                 val p = uiWindowParams ?: return
+ 330 | [D:4] | 
+ 331 | [D:4] |                 val uptimeSec = (System.currentTimeMillis() - sessionStartTime) / 1000L
+ 332 | [D:4] |                 val hours = uptimeSec / 3600
+ 333 | [D:4] |                 val mins = (uptimeSec % 3600) / 60
+ 334 | [D:4] |                 val secs = uptimeSec % 60
+ 335 | [D:4] |                 tvUptime.text = String.format(Locale.US, "СЕССИЯ: %02d:%02d:%02d", hours, mins, secs)
+ 336 | [D:4] | 
+ 337 | [D:4] |                 val shiftY = dp(60) + Random.nextInt(-8, 9)
+ 338 | [D:4] |                 p.y = shiftY
+ 339 | [D:4] |                 overlayWindowManager.updateViewSafe(card, p)
+ 340 | [D:4] | 
+ 341 | [D:4] |                 mainHandler.postDelayed(this, 45000L)
+ 342 | [D:3] |             }
+ 343 | [D:2] |         }
+ 344 | [D:2] |         mainHandler.postDelayed(pixelShiftRunnable as Runnable, 45000L)
+ 345 | [D:1] |     }
+ 346 | [D:1] | 
+ 347 | [D:1] |     fun dismiss() {
+ 348 | [D:2] |         countdownRunnable?.let { mainHandler.removeCallbacks(it) }
+ 349 | [D:2] |         countdownRunnable = null
+ 350 | [D:2] |         pixelShiftRunnable?.let { mainHandler.removeCallbacks(it) }
+ 351 | [D:2] |         pixelShiftRunnable = null
+ 352 | [D:2] | 
+ 353 | [D:2] |         bgLockContainer?.let {
+ 354 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 355 | [D:3] |             bgLockContainer = null
+ 356 | [D:2] |         }
+ 357 | [D:2] |         uiLockContainer?.let {
+ 358 | [D:3] |             overlayWindowManager.removeViewSafe(it)
+ 359 | [D:3] |             uiLockContainer = null
+ 360 | [D:2] |         }
+ 361 | [D:2] |         bgWindowParams = null
+ 362 | [D:2] |         uiWindowParams = null
+ 363 | [D:2] |         onLockDismissedListener?.invoke()
+ 364 | [D:1] |     }
+ 365 | [D:0] | }
+
+================================================================================
+ END OF FILE PART: app_src_main_java_com_example_autotap_infrastructure_overlay_lock_ScreenLockOverlay.kt_part_01_lines_0001_to_0365.txt
+================================================================================
