@@ -42,6 +42,8 @@ object OcrEngine {
     @Volatile
     private var cachedDictionary: List<String>? = null
 
+    val imagePreprocessor: ImagePreprocessing by lazy { ImagePreprocessing.instance }
+
     private fun getContext(): Context? {
         return explicitContext
             ?: AppLogger.appContext
@@ -162,6 +164,9 @@ object OcrEngine {
                 pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
             }
             padded.setPixels(pixels, 0, pw, 0, 0, pw, ph)
+        } else if (maxLum - minLum > 160) {
+            // При сильных бликах интерфейса используем адаптивную бинаризацию и морфологическую очистку
+            return imagePreprocessor.process(padded, windowSize = 11, cValue = 6)
         }
         return padded
     }
