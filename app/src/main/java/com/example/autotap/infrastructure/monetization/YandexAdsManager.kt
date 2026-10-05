@@ -29,8 +29,23 @@ object YandexAdsManager {
     // Тестовый официальный блок Yandex Mobile Ads
     const val DEMO_REWARDED_AD_UNIT_ID = "demo-rewarded-yandex"
 
+    private const val PREFS_NAME = "autotap_ads_prefs"
+    private const val KEY_TEST_DEVICE_MODE = "pref_test_device_mode"
+
     @Volatile
     private var isInitialized = false
+
+    fun isTestDeviceMode(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_TEST_DEVICE_MODE, false)
+    }
+
+    fun setTestDeviceMode(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_TEST_DEVICE_MODE, enabled)
+            .apply()
+    }
 
     fun initialize(context: Context) {
         if (isInitialized) return
@@ -58,15 +73,16 @@ object YandexAdsManager {
     ) {
         initialize(activity)
 
-        val primaryUnitId = if (forceTestMode) DEMO_REWARDED_AD_UNIT_ID else PROD_REWARDED_AD_UNIT_ID
-        AppLogger.log(null, "YANDEX_ADS", "Запрос показа рекламы: unitId=$primaryUnitId")
+        val effectiveTestMode = forceTestMode || isTestDeviceMode(activity)
+        val primaryUnitId = if (effectiveTestMode) DEMO_REWARDED_AD_UNIT_ID else PROD_REWARDED_AD_UNIT_ID
+        AppLogger.log(null, "YANDEX_ADS", "Запрос показа рекламы: unitId=$primaryUnitId (testMode=$effectiveTestMode)")
         onStatusMessage("Загрузка рекламного видеоролика Yandex...")
 
         loadAndShowInternal(
             activity = activity,
             adUnitId = primaryUnitId,
             isFallback = false,
-            forceTestMode = forceTestMode,
+            forceTestMode = effectiveTestMode,
             onRewarded = onRewarded,
             onStatusMessage = onStatusMessage
         )

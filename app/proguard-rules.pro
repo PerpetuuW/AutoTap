@@ -24,6 +24,10 @@
 -keep class com.google.mediapipe.components.** { *; }
 -dontwarn com.google.mediapipe.**
 
+# [V180.0] Защита Yandex Mobile Ads SDK для релизной сборки RuStore
+-keep class com.yandex.mobile.ads.** { *; }
+-dontwarn com.yandex.mobile.ads.**
+
 # Защита Kotlin Coroutines и StateFlow
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory { *; }
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler { *; }

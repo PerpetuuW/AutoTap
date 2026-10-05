@@ -569,22 +569,25 @@ class MainActivity : AppCompatActivity() {
             }
 
             val btnTestWatchAd = android.widget.Button(this).apply {
-                text = "ТЕСТОВЫЙ РОЛИК (YANDEX TEST)"
+                val isTestDev = com.example.autotap.infrastructure.monetization.YandexAdsManager.isTestDeviceMode(this@MainActivity)
+                text = if (isTestDev) "ТЕСТОВЫЙ РЕЖИМ (МОЙ ТЕЛЕФОН) [ВКЛ]" else "ТЕСТИРОВАТЬ РЕКЛАМУ НА МОЕМ ТЕЛЕФОНЕ"
                 textSize = 8.5f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 includeFontPadding = false
                 minHeight = 0; minimumHeight = 0
                 setPadding(0, 0, 0, 0)
-                setTextColor(android.graphics.Color.parseColor("#60A5FA"))
+                setTextColor(android.graphics.Color.parseColor(if (isTestDev) "#34D399" else "#60A5FA"))
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor("#1E293B"))
+                    setColor(android.graphics.Color.parseColor(if (isTestDev) "#064E3B" else "#1E293B"))
                     cornerRadius = dpF(8f)
-                    setStroke(dp(1), android.graphics.Color.parseColor("#3B82F6"))
+                    setStroke(dp(1), android.graphics.Color.parseColor(if (isTestDev) "#10B981" else "#3B82F6"))
                 }
                 layoutParams = android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.MATCH_PARENT, dp(32)).apply {
                     topMargin = dp(6)
                 }
                 setOnClickListener {
+                    val newTestMode = !com.example.autotap.infrastructure.monetization.YandexAdsManager.isTestDeviceMode(this@MainActivity)
+                    com.example.autotap.infrastructure.monetization.YandexAdsManager.setTestDeviceMode(this@MainActivity, newTestMode)
                     isEnabled = false
                     text = "ЗАГРУЗКА ТЕСТА..."
                     com.example.autotap.infrastructure.monetization.YandexAdsManager.showRewardedAd(
@@ -597,17 +600,17 @@ class MainActivity : AppCompatActivity() {
                                 dialog.dismiss()
                             } else {
                                 tvAdProgress.text = "Тестовый ролик засчитан: $newCount из 5"
-                                android.widget.Toast.makeText(this@MainActivity, "Тестовый ролик засчитан ($newCount/5)", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(this@MainActivity, "Тестовый ролик на вашем телефоне засчитан ($newCount/5)", android.widget.Toast.LENGTH_SHORT).show()
                             }
                             isEnabled = true
-                            text = "ТЕСТОВЫЙ РОЛИК (YANDEX TEST)"
+                            text = if (newTestMode) "ТЕСТОВЫЙ РЕЖИМ (МОЙ ТЕЛЕФОН) [ВКЛ]" else "ТЕСТИРОВАТЬ РЕКЛАМУ НА МОЕМ ТЕЛЕФОНЕ"
                             updateStatus()
                         },
                         onStatusMessage = { status ->
                             runOnUiThread {
                                 tvAdProgress.text = status
                                 isEnabled = true
-                                text = "ТЕСТОВЫЙ РОЛИК (YANDEX TEST)"
+                                text = if (newTestMode) "ТЕСТОВЫЙ РЕЖИМ (МОЙ ТЕЛЕФОН) [ВКЛ]" else "ТЕСТИРОВАТЬ РЕКЛАМУ НА МОЕМ ТЕЛЕФОНЕ"
                             }
                         }
                     )
