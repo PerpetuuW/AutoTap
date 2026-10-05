@@ -181,8 +181,9 @@ object OcrEngine {
         val origH = bmp.height
         if (origW < 8 || origH < 8) return listOf(Rect(0, 0, origW, origH))
 
-        val maxSide = 960
-        val ratio = if (max(origW, origH) > maxSide) maxSide.toFloat() / max(origW, origH).toFloat() else 1.0f
+        // Высокое разрешение для полноэкранного детектирования мелких шрифтов HUD/иконок (до 1280px)
+        val maxSide = maxOf(960, minOf(1280, max(origW, origH)))
+        val ratio = maxSide.toFloat() / max(origW, origH).toFloat()
         var targetW = (origW * ratio).toInt()
         var targetH = (origH * ratio).toInt()
         targetW = maxOf(32, ((targetW + 31) / 32) * 32)
@@ -233,9 +234,10 @@ object OcrEngine {
             val probMap = FloatArray(targetH * targetW)
             fb.get(probMap)
 
-            val thresh = 0.30f
-            val boxThresh = 0.50f
-            val minSize = 4
+            // Чувствительный порог для гарантированного захвата мелких подписей под иконками (12-18px)
+            val thresh = 0.20f
+            val boxThresh = 0.35f
+            val minSize = 3
             val unclipRatio = 1.6f
 
             val visited = BooleanArray(targetH * targetW)
@@ -317,9 +319,31 @@ object OcrEngine {
                 return fallbackTextBoundingBoxes(bmp)
             }
 
+            // Подавление перекрывающихся дубликатов (NMS)
+            val mergedBoxes = mutableListOf<Rect>()
+            detectedBoxes.sortByDescending { it.width() * it.height() }
+
+            for (box in detectedBoxes) {
+                var isDuplicate = false
+                for (m in mergedBoxes) {
+                    val inter = Rect()
+                    if (inter.setIntersect(m, box)) {
+                        val interArea = inter.width() * inter.height()
+                        val boxArea = box.width() * box.height()
+                        if (interArea >= boxArea * 0.75f) {
+                            isDuplicate = true
+                            break
+                        }
+                    }
+                }
+                if (!isDuplicate) {
+                    mergedBoxes.add(box)
+                }
+            }
+
             // Сортировка сверху-вниз, слева-направо
-            detectedBoxes.sortBy { it.top * 10000 + it.left }
-            return detectedBoxes
+            mergedBoxes.sortBy { it.top * 10000 + it.left }
+            return mergedBoxes
         } catch (e: Throwable) {
             AppLogger.logError(null, "ONNX_DET_RUN", e)
             return fallbackTextBoundingBoxes(bmp)
@@ -589,7 +613,7 @@ object OcrEngine {
 
     /**
      * Интеллектуальный Fuzzy Matcher с учетом специфики распознавания игровых шрифтов:
-     * Сравнение по подстрокам, эквивалентам 'б'/'в' и расстоянию Левенштейна.
+     * Сравнение по подстрокам, эквивалентам символов (б/в, н/и/м, з/с) и расстоянию Левенштейна.
      */
     private fun isFuzzyMatch(candidate: String, query: String): Boolean {
         val normC = normalizeString(candidate)
@@ -600,21 +624,21 @@ object OcrEngine {
         // 1. Точное или подстрочное совпадение
         if (normC == normQ || normC.contains(normQ) || normQ.contains(normC)) return true
 
-        // 2. Дополнительная замена 'в' <-> 'б' (частая путаница в стилизованных игровых шрифтах с обводкой)
-        val altC = normC.replace('в', 'б')
-        val altQ = normQ.replace('в', 'б')
-        if (altC == altQ || altC.contains(altQ) || altQ.contains(altC)) return true
+        // 2. Каноническая нормализация путаемых кириллических глифов в мелких шрифтах
+        val canonC = normC.replace('в', 'б').replace('и', 'н').replace('м', 'н').replace('з', 'с')
+        val canonQ = normQ.replace('в', 'б').replace('и', 'н').replace('м', 'н').replace('з', 'с')
+        if (canonC == canonQ || canonC.contains(canonQ) || canonQ.contains(canonC)) return true
 
         val qLen = normQ.length
-        if (qLen <= 2) return normC == normQ || altC == altQ
+        if (qLen <= 2) return normC == normQ || canonC == canonQ
 
-        // 3. Расстояние Левенштейна (допуск: 1 ошибка на 4 символа)
-        val maxDist = max(1, qLen / 4)
-        for (i in 0..max(0, altC.length - qLen)) {
-            val sub = altC.substring(i, min(altC.length, i + qLen))
+        // 3. Расстояние Левенштейна (допуск: 1 ошибка на 3-4 символа)
+        val maxDist = max(1, qLen / 3)
+        for (i in 0..max(0, canonC.length - qLen)) {
+            val sub = canonC.substring(i, min(canonC.length, i + qLen))
             var diff = 0
             for (j in 0 until min(sub.length, qLen)) {
-                if (sub[j] != altQ[j]) diff++
+                if (sub[j] != canonQ[j]) diff++
             }
             diff += abs(sub.length - qLen)
             if (diff <= maxDist) return true
@@ -708,45 +732,63 @@ object OcrEngine {
         AppLogger.log(null, "OCR", "Нейросетевой детектор DBNet: выделено ${boxes.size} точных боксов")
 
         val matches = mutableListOf<OcrMatchResult>()
+        val filteredBoxes = boxes.filter { it.width() >= 6 && it.height() >= 6 }
 
-        for (box in boxes) {
-            val bW = box.width()
-            val bH = box.height()
-            if (bW < 6 || bH < 6) continue
+        if (filteredBoxes.isNotEmpty()) {
+            // Быстрое параллельное распознавание через пул потоков
+            val numThreads = minOf(4, Runtime.getRuntime().availableProcessors().coerceAtLeast(2))
+            val threadPool = java.util.concurrent.Executors.newFixedThreadPool(numThreads)
+            val futures = mutableListOf<java.util.concurrent.Future<Pair<Rect, String?>>>()
 
-            val crop = Bitmap.createBitmap(localBmp, box.left, box.top, bW, bH)
-            val rec = recognizeTextWithOnnx(crop)
-            if (crop != localBmp && !crop.isRecycled) crop.recycle()
+            for (box in filteredBoxes) {
+                val f = threadPool.submit(java.util.concurrent.Callable {
+                    val bW = box.width()
+                    val bH = box.height()
+                    val crop = Bitmap.createBitmap(localBmp, box.left, box.top, bW, bH)
+                    val rec = recognizeTextWithOnnx(crop)
+                    if (crop != localBmp && !crop.isRecycled) crop.recycle()
+                    Pair(box, rec)
+                })
+                futures.add(f)
+            }
 
-            if (!rec.isNullOrBlank()) {
-                AppLogger.log(null, "OCR_SCAN", "Бокс [${box.left},${box.top}..${box.right},${box.bottom}]: '$rec'")
-                KEY_VALUE_REGEX.findAll(rec).forEach { match ->
-                    val key = match.groupValues[1].lowercase(Locale.ROOT)
-                    val value = match.groupValues[2]
-                    outVariables?.put(key, value)
-                }
+            threadPool.shutdown()
 
-                val isMatch = cleanQuery.isBlank() || isFuzzyMatch(rec, cleanQuery)
-                if (isMatch) {
-                    val gX = gOffsetX + box.left
-                    val gY = gOffsetY + box.top
-                    val matchResult = OcrMatchResult(
-                        matchedText = rec,
-                        clickX = gX + bW / 2,
-                        clickY = gY + bH / 2,
-                        rectLeft = gX,
-                        rectTop = gY,
-                        rectRight = gX + bW,
-                        rectBottom = gY + bH,
-                        confidence = 1.0f
-                    )
-                    matches.add(matchResult)
-                    if (cleanQuery.isNotBlank()) {
-                        val elapsed = System.currentTimeMillis() - perfStart
-                        AppLogger.log(null, "OCR", "Game OCR Успех: '$rec' (совпало с '$targetQuery') в (${matchResult.clickX}, ${matchResult.clickY}) за ${elapsed}мс")
-                        if (localBmp != srcBmp && !localBmp.isRecycled) localBmp.recycle()
-                        if (srcBmp != bitmap && !srcBmp.isRecycled) srcBmp.recycle()
-                        return listOf(matchResult)
+            for (future in futures) {
+                val (box, rec) = try { future.get() } catch (_: Throwable) { continue }
+                if (!rec.isNullOrBlank()) {
+                    AppLogger.log(null, "OCR_SCAN", "Бокс [${box.left},${box.top}..${box.right},${box.bottom}]: '$rec'")
+                    KEY_VALUE_REGEX.findAll(rec).forEach { match ->
+                        val key = match.groupValues[1].lowercase(Locale.ROOT)
+                        val value = match.groupValues[2]
+                        outVariables?.put(key, value)
+                    }
+
+                    val isMatch = cleanQuery.isBlank() || isFuzzyMatch(rec, cleanQuery)
+                    if (isMatch) {
+                        val bW = box.width()
+                        val bH = box.height()
+                        val gX = gOffsetX + box.left
+                        val gY = gOffsetY + box.top
+                        val matchResult = OcrMatchResult(
+                            matchedText = rec,
+                            clickX = gX + bW / 2,
+                            clickY = gY + bH / 2,
+                            rectLeft = gX,
+                            rectTop = gY,
+                            rectRight = gX + bW,
+                            rectBottom = gY + bH,
+                            confidence = 1.0f
+                        )
+                        matches.add(matchResult)
+                        if (cleanQuery.isNotBlank()) {
+                            val elapsed = System.currentTimeMillis() - perfStart
+                            AppLogger.log(null, "OCR", "Game OCR Успех: '$rec' (совпало с '$targetQuery') в (${matchResult.clickX}, ${matchResult.clickY}) за ${elapsed}мс")
+                            threadPool.shutdownNow()
+                            if (localBmp != srcBmp && !localBmp.isRecycled) localBmp.recycle()
+                            if (srcBmp != bitmap && !srcBmp.isRecycled) srcBmp.recycle()
+                            return listOf(matchResult)
+                        }
                     }
                 }
             }
