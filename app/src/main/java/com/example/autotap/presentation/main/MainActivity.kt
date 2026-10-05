@@ -535,20 +535,89 @@ class MainActivity : AppCompatActivity() {
                 }
                 layoutParams = android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.MATCH_PARENT, dp(36))
                 setOnClickListener {
-                    val (newCount, activated) = com.example.autotap.core.license.LicenseManager.registerAdWatched(this@MainActivity)
-                    if (activated) {
-                        android.widget.Toast.makeText(this@MainActivity, "Поздравляем! Вам начислено 12 часов PRO-доступа!", android.widget.Toast.LENGTH_LONG).show()
-                        dialog.dismiss()
-                    } else {
-                        tvAdProgress.text = "Просмотрено роликов: $newCount из 5"
-                        android.widget.Toast.makeText(this@MainActivity, "Ролик засчитан ($newCount/5). Осталось: ${5 - newCount}", android.widget.Toast.LENGTH_SHORT).show()
+                    if (isAdActive) {
+                        android.widget.Toast.makeText(this@MainActivity, "PRO-доступ уже активен!", android.widget.Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
                     }
-                    updateStatus()
+                    isEnabled = false
+                    text = "ЗАГРУЗКА..."
+                    com.example.autotap.infrastructure.monetization.YandexAdsManager.showRewardedAd(
+                        activity = this@MainActivity,
+                        forceTestMode = false,
+                        onRewarded = {
+                            val (newCount, activated) = com.example.autotap.core.license.LicenseManager.registerAdWatched(this@MainActivity)
+                            if (activated) {
+                                android.widget.Toast.makeText(this@MainActivity, "Поздравляем! Вам начислено 12 часов PRO-доступа!", android.widget.Toast.LENGTH_LONG).show()
+                                dialog.dismiss()
+                            } else {
+                                tvAdProgress.text = "Просмотрено роликов: $newCount из 5"
+                                android.widget.Toast.makeText(this@MainActivity, "Ролик засчитан ($newCount/5). Осталось: ${5 - newCount}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            isEnabled = true
+                            text = "СМОТРЕТЬ РОЛИК (+1)"
+                            updateStatus()
+                        },
+                        onStatusMessage = { status ->
+                            runOnUiThread {
+                                tvAdProgress.text = status
+                                isEnabled = true
+                                text = "СМОТРЕТЬ РОЛИК (+1)"
+                            }
+                        }
+                    )
                 }
             }
+
+            val btnTestWatchAd = android.widget.Button(this).apply {
+                text = "ТЕСТОВЫЙ РОЛИК (YANDEX TEST)"
+                textSize = 8.5f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                includeFontPadding = false
+                minHeight = 0; minimumHeight = 0
+                setPadding(0, 0, 0, 0)
+                setTextColor(android.graphics.Color.parseColor("#60A5FA"))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(android.graphics.Color.parseColor("#1E293B"))
+                    cornerRadius = dpF(8f)
+                    setStroke(dp(1), android.graphics.Color.parseColor("#3B82F6"))
+                }
+                layoutParams = android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.MATCH_PARENT, dp(32)).apply {
+                    topMargin = dp(6)
+                }
+                setOnClickListener {
+                    isEnabled = false
+                    text = "ЗАГРУЗКА ТЕСТА..."
+                    com.example.autotap.infrastructure.monetization.YandexAdsManager.showRewardedAd(
+                        activity = this@MainActivity,
+                        forceTestMode = true,
+                        onRewarded = {
+                            val (newCount, activated) = com.example.autotap.core.license.LicenseManager.registerAdWatched(this@MainActivity)
+                            if (activated) {
+                                android.widget.Toast.makeText(this@MainActivity, "Тестовый просмотр засчитан! PRO-доступ активен!", android.widget.Toast.LENGTH_LONG).show()
+                                dialog.dismiss()
+                            } else {
+                                tvAdProgress.text = "Тестовый ролик засчитан: $newCount из 5"
+                                android.widget.Toast.makeText(this@MainActivity, "Тестовый ролик засчитан ($newCount/5)", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            isEnabled = true
+                            text = "ТЕСТОВЫЙ РОЛИК (YANDEX TEST)"
+                            updateStatus()
+                        },
+                        onStatusMessage = { status ->
+                            runOnUiThread {
+                                tvAdProgress.text = status
+                                isEnabled = true
+                                text = "ТЕСТОВЫЙ РОЛИК (YANDEX TEST)"
+                            }
+                        }
+                    )
+                }
+            }
+
             adCard.addView(tvAdTitle)
             adCard.addView(tvAdProgress)
             adCard.addView(btnWatchAd)
+            adCard.addView(btnTestWatchAd)
             root.addView(adCard)
 
             val btnClose = android.widget.Button(this).apply {

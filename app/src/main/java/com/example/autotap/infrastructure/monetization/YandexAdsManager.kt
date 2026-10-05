@@ -1,0 +1,144 @@
+package com.example.autotap.infrastructure.monetization
+
+import android.app.Activity
+import android.content.Context
+import com.example.autotap.core.logger.AppLogger
+import com.yandex.mobile.ads.common.AdRequestConfiguration
+import com.yandex.mobile.ads.common.AdRequestError
+import com.yandex.mobile.ads.common.ImpressionData
+import com.yandex.mobile.ads.common.MobileAds
+import com.yandex.mobile.ads.rewarded.Reward
+import com.yandex.mobile.ads.rewarded.RewardedAd
+import com.yandex.mobile.ads.rewarded.RewardedAdEventListener
+import com.yandex.mobile.ads.rewarded.RewardedAdLoadListener
+import com.yandex.mobile.ads.rewarded.RewardedAdLoader
+
+/**
+ * Менеджер монетизации и рекламы с вознаграждением Yandex Mobile Ads SDK для RuStore.
+ *
+ * Особенности:
+ *  1. Рабочий промышленный блок рекламы RuStore / Yandex: "R-M-20133804-1" (AutoTap PRO gift).
+ *  2. Официальный тестовый блок Yandex: "demo-rewarded-yandex" для мгновенного тестирования на телефоне без ожидания модерации.
+ *  3. Автоматический фоллбэк на тестовый блок при отсутствии заглавного филла.
+ */
+object YandexAdsManager {
+
+    // Рабочий блок RuStore / Yandex Ads из кабинета пользователя
+    const val PROD_REWARDED_AD_UNIT_ID = "R-M-20133804-1"
+
+    // Тестовый официальный блок Yandex Mobile Ads
+    const val DEMO_REWARDED_AD_UNIT_ID = "demo-rewarded-yandex"
+
+    @Volatile
+    private var isInitialized = false
+
+    fun initialize(context: Context) {
+        if (isInitialized) return
+        synchronized(this) {
+            if (isInitialized) return
+            try {
+                MobileAds.initialize(context.applicationContext) {
+                    AppLogger.log(null, "YANDEX_ADS", "Yandex Mobile Ads SDK инициализирован для RuStore")
+                }
+                isInitialized = true
+            } catch (e: Throwable) {
+                AppLogger.logError(null, "YANDEX_ADS_INIT", e)
+            }
+        }
+    }
+
+    /**
+     * Показывает рекламу с вознаграждением (Rewarded Ad).
+     */
+    fun showRewardedAd(
+        activity: Activity,
+        forceTestMode: Boolean = false,
+        onRewarded: () -> Unit,
+        onStatusMessage: (String) -> Unit
+    ) {
+        initialize(activity)
+
+        val primaryUnitId = if (forceTestMode) DEMO_REWARDED_AD_UNIT_ID else PROD_REWARDED_AD_UNIT_ID
+        AppLogger.log(null, "YANDEX_ADS", "Запрос показа рекламы: unitId=$primaryUnitId")
+        onStatusMessage("Загрузка рекламного видеоролика Yandex...")
+
+        loadAndShowInternal(
+            activity = activity,
+            adUnitId = primaryUnitId,
+            isFallback = false,
+            forceTestMode = forceTestMode,
+            onRewarded = onRewarded,
+            onStatusMessage = onStatusMessage
+        )
+    }
+
+    private fun loadAndShowInternal(
+        activity: Activity,
+        adUnitId: String,
+        isFallback: Boolean,
+        forceTestMode: Boolean,
+        onRewarded: () -> Unit,
+        onStatusMessage: (String) -> Unit
+    ) {
+        val loader = RewardedAdLoader(activity)
+        val config = AdRequestConfiguration.Builder(adUnitId).build()
+
+        loader.setAdLoadListener(object : RewardedAdLoadListener {
+            override fun onAdLoaded(rewardedAd: RewardedAd) {
+                AppLogger.log(null, "YANDEX_ADS", "Рекламный ролик успешно загружен: $adUnitId")
+                onStatusMessage("Реклама готова! Показ...")
+
+                rewardedAd.setAdEventListener(object : RewardedAdEventListener {
+                    override fun onAdShown() {
+                        AppLogger.log(null, "YANDEX_ADS", "Рекламный ролик отображен на экране")
+                    }
+
+                    override fun onAdDismissed() {
+                        AppLogger.log(null, "YANDEX_ADS", "Пользователь закрыл рекламный ролик")
+                    }
+
+                    override fun onRewarded(reward: Reward) {
+                        AppLogger.log(null, "YANDEX_ADS", "Вознаграждение зачислено: type=${reward.type}, amount=${reward.amount}")
+                        onRewarded()
+                    }
+
+                    override fun onAdFailedToShow(adError: com.yandex.mobile.ads.common.AdError) {
+                        AppLogger.log(null, "YANDEX_ADS", "Ошибка показа рекламы: ${adError.description}")
+                        onStatusMessage("Ошибка показа видео: ${adError.description}")
+                    }
+
+                    override fun onAdClicked() {
+                        AppLogger.log(null, "YANDEX_ADS", "Клик по рекламе")
+                    }
+
+                    override fun onAdImpression(impressionData: ImpressionData?) {
+                        AppLogger.log(null, "YANDEX_ADS", "Фиксация показа рекламы (Impression)")
+                    }
+                })
+
+                rewardedAd.show(activity)
+            }
+
+            override fun onAdFailedToLoad(error: AdRequestError) {
+                AppLogger.log(null, "YANDEX_ADS", "Сбой загрузки $adUnitId: ${error.description} (code=${error.code})")
+
+                if (!isFallback && adUnitId == PROD_REWARDED_AD_UNIT_ID) {
+                    AppLogger.log(null, "YANDEX_ADS", "Фоллбэк на тестовый блок $DEMO_REWARDED_AD_UNIT_ID")
+                    onStatusMessage("Загрузка тестового видеоролика Yandex...")
+                    loadAndShowInternal(
+                        activity = activity,
+                        adUnitId = DEMO_REWARDED_AD_UNIT_ID,
+                        isFallback = true,
+                        forceTestMode = forceTestMode,
+                        onRewarded = onRewarded,
+                        onStatusMessage = onStatusMessage
+                    )
+                } else {
+                    onStatusMessage("Не удалось загрузить рекламный ролик (${error.description}). Попробуйте тестовый режим.")
+                }
+            }
+        })
+
+        loader.loadAd(config)
+    }
+}

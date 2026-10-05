@@ -110,6 +110,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
     implementation("com.google.mediapipe:tasks-vision:0.10.29")
+    implementation("com.yandex.android:mobileads:7.10.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
