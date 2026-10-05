@@ -428,7 +428,7 @@
             android:layout_height="match_parent"
             android:layout_weight="1.1"
             android:gravity="center"
-            android:text="🎬 ДЕМО"
+            android:text="ДЕМО"
             android:textColor="#818CF8"
             android:textSize="11.5sp"
             android:textStyle="bold"

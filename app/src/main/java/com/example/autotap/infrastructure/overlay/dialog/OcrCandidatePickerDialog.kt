@@ -59,7 +59,7 @@ class OcrCandidatePickerDialog(
             visibility = View.GONE
         }
         val tvBadgeIcon = TextView(context).apply {
-            text = "👁 ВАРИАНТЫ (${candidates.size})"
+            text = "ВАРИАНТЫ (${candidates.size})"
             textSize = 9.5f
             typeface = Typeface.DEFAULT_BOLD
             includeFontPadding = false
@@ -179,7 +179,7 @@ class OcrCandidatePickerDialog(
 
         // Toggle Minimize / Inspect Screen
         val btnHide = Button(context).apply {
-            text = "👁 СВЕРНУТЬ"
+            text = "СВЕРНУТЬ"
             textSize = 7.5f
             typeface = Typeface.DEFAULT_BOLD
             includeFontPadding = false
@@ -208,7 +208,7 @@ class OcrCandidatePickerDialog(
 
         if (onRescanRequested != null) {
             val btnRescan = Button(context).apply {
-                text = "🔄 ПЕРЕСКАНИРОВАТЬ"
+                text = "ПЕРЕСКАНИРОВАТЬ"
                 textSize = 7.5f
                 typeface = Typeface.DEFAULT_BOLD
                 includeFontPadding = false
@@ -232,7 +232,7 @@ class OcrCandidatePickerDialog(
         }
 
         val btnClose = Button(context).apply {
-            text = "✕"
+            text = "X"
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
             includeFontPadding = false

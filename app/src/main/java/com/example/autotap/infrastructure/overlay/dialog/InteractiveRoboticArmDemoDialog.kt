@@ -227,7 +227,7 @@ class InteractiveRoboticArmDemoDialog(
 
         // Header Title
         val tvTitleHeader = TextView(context).apply {
-            text = "🎬 ДЕМОНСТРАЦИЯ АВТОМАТИЗАЦИИ РОБОРУКИ"
+            text = "ДЕМОНСТРАЦИЯ АВТОМАТИЗАЦИИ РОБОРУКИ"
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
             includeFontPadding = false
@@ -236,7 +236,7 @@ class InteractiveRoboticArmDemoDialog(
         controlsBar.addView(tvTitleHeader, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
         val btnPlayPause = Button(context).apply {
-            text = "⏸ ПАУЗА"
+            text = "ПАУЗА"
             textSize = 8.5f
             typeface = Typeface.DEFAULT_BOLD
             includeFontPadding = false
@@ -250,7 +250,7 @@ class InteractiveRoboticArmDemoDialog(
             setPadding(dp(8), dp(4), dp(8), dp(4))
             setOnClickListener {
                 isPlaying = !isPlaying
-                text = if (isPlaying) "⏸ ПАУЗА" else "▶ ПУСК"
+                text = if (isPlaying) "ПАУЗА" else "ПУСК"
             }
         }
         controlsBar.addView(btnPlayPause, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)).apply {
@@ -258,7 +258,7 @@ class InteractiveRoboticArmDemoDialog(
         })
 
         val btnRecMode = Button(context).apply {
-            text = "📺 ЗАПИСЬ (15c)"
+            text = "ЗАПИСЬ (15с)"
             textSize = 8.5f
             typeface = Typeface.DEFAULT_BOLD
             includeFontPadding = false
@@ -284,7 +284,7 @@ class InteractiveRoboticArmDemoDialog(
         })
 
         val btnClose = Button(context).apply {
-            text = "✕"
+            text = "X"
             textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
             includeFontPadding = false
