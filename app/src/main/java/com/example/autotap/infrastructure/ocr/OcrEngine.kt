@@ -16,13 +16,17 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Специализированный легковесный OCR-движок для интерфейсов и мобильных игр на базе Pure ONNX.
+ * Высокоточный промышленный OCR-движок для интерфейсов и мобильных игр на базе Pure ONNX.
  *
- * Архитектура и технологии:
- *  1. Multi-Octave Text Line & Word Detector: извлекает целые фразы и слова любой высоты (12px..140px+).
- *  2. Game-Font Preprocessor: адаптивный контраст и нормализация подложки.
- *  3. Pure ONNX PP-OCRv4 SVTR Inference (cyrillic_rec.onnx + cyrillic_dict.txt) в строгом RGB формате.
- *  4. Fast CTC Beam Decoder с поддержкой точной кириллицы (RU) и латиницы (EN).
+ * Архитектура:
+ *  1. Deep Neural Text Detector (PaddleOCR v4 DBNet ONNX `ch_PP-OCRv4_det.onnx`):
+ *     Сегментация и точная локализация строк текста без ложных срабатываний на текстурах/игровом фоне.
+ *  2. Game-Font Preprocessor:
+ *     Адаптивная нормализация контраста, удаление артефактов обводки и безопасный паддинг глифов.
+ *  3. Pure ONNX PP-OCRv4 SVTR Recognition (`cyrillic_rec.onnx` + `cyrillic_dict.txt`):
+ *     Инференс кириллицы (RU) и латиницы (EN) в RGB NCHW с CTC декодером.
+ *  4. Intelligent Homoglyph & Fuzzy Matcher:
+ *     Устойчивость к стилизованным игровым шрифтам, переносам строк и опечаткам.
  */
 object OcrEngine {
     private val ortEnv: OrtEnvironment by lazy { OrtEnvironment.getEnvironment() }
@@ -34,12 +38,35 @@ object OcrEngine {
     @Volatile
     private var cachedRecSession: OrtSession? = null
     @Volatile
+    private var cachedDetSession: OrtSession? = null
+    @Volatile
     private var cachedDictionary: List<String>? = null
 
     private fun getContext(): Context? {
         return explicitContext
             ?: AppLogger.appContext
             ?: com.example.autotap.infrastructure.accessibility.AutoTapAccessibilityService.instance
+    }
+
+    private fun getDetSession(): OrtSession? {
+        cachedDetSession?.let { return it }
+        synchronized(sessionLock) {
+            cachedDetSession?.let { return it }
+            val ctx = getContext() ?: return null
+            return try {
+                val opts = OrtSession.SessionOptions().apply {
+                    setIntraOpNumThreads(2)
+                }
+                val modelBytes = ctx.assets.open("models/ch_PP-OCRv4_det.onnx").use { it.readBytes() }
+                val session = ortEnv.createSession(modelBytes, opts)
+                cachedDetSession = session
+                AppLogger.log(null, "ONNX_DET", "Нейросетевой DBNet детектор текста инициализирован")
+                session
+            } catch (e: Throwable) {
+                AppLogger.logError(null, "ONNX_DET_INIT", e)
+                null
+            }
+        }
     }
 
     private fun getRecSession(): OrtSession? {
@@ -56,7 +83,7 @@ object OcrEngine {
                 cachedRecSession = session
                 session
             } catch (e: Throwable) {
-                AppLogger.logError(null, "ONNX_INIT", e)
+                AppLogger.logError(null, "ONNX_REC_INIT", e)
                 null
             }
         }
@@ -95,29 +122,36 @@ object OcrEngine {
     }
 
     /**
-     * Предобработка игрового шрифта (удаление обводки/тени и нормализация контраста).
+     * Предобработка игрового шрифта:
+     * Добавление безопасного паддинга, динамическое растяжение контраста и очистка шумов.
      */
     private fun enhanceGameFontCrop(bitmap: Bitmap): Bitmap {
         val w = bitmap.width
         val h = bitmap.height
         if (w < 4 || h < 4) return bitmap
 
-        val pixels = IntArray(w * h)
-        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        // 1. Добавление защитного паддинга (4px по краям), чтобы крайние штрихи букв не срезались
+        val padX = 4
+        val padY = 2
+        val padded = Bitmap.createBitmap(w + padX * 2, h + padY * 2, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(padded)
+        canvas.drawBitmap(bitmap, padX.toFloat(), padY.toFloat(), null)
+
+        val pw = padded.width
+        val ph = padded.height
+        val pixels = IntArray(pw * ph)
+        padded.getPixels(pixels, 0, pw, 0, 0, pw, ph)
 
         var minLum = 255
         var maxLum = 0
-        val lums = IntArray(w * h)
         for (i in pixels.indices) {
             val p = pixels[i]
             val lum = (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000
-            lums[i] = lum
             if (lum < minLum) minLum = lum
             if (lum > maxLum) maxLum = lum
         }
 
-        if (maxLum - minLum in 15..150) {
-            val enhanced = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        if (maxLum - minLum in 15..160) {
             val range = max(1, maxLum - minLum)
             for (i in pixels.indices) {
                 val p = pixels[i]
@@ -127,10 +161,277 @@ object OcrEngine {
                 val b = (((p and 0xFF) - minLum) * 255 / range).coerceIn(0, 255)
                 pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
             }
-            enhanced.setPixels(pixels, 0, w, 0, 0, w, h)
-            return enhanced
+            padded.setPixels(pixels, 0, pw, 0, 0, pw, ph)
         }
-        return bitmap
+        return padded
+    }
+
+    /**
+     * Инференс нейросетевого детектора текста DBNet (Pure ONNX `ch_PP-OCRv4_det.onnx`).
+     * Выделяет точные боксы строк текста и отфильтровывает фон и текстуры.
+     */
+    fun detectTextBoundingBoxesWithDbNet(bmp: Bitmap): List<Rect> {
+        val session = getDetSession() ?: return fallbackTextBoundingBoxes(bmp)
+        val origW = bmp.width
+        val origH = bmp.height
+        if (origW < 8 || origH < 8) return listOf(Rect(0, 0, origW, origH))
+
+        val maxSide = 960
+        val ratio = if (max(origW, origH) > maxSide) maxSide.toFloat() / max(origW, origH).toFloat() else 1.0f
+        var targetW = (origW * ratio).toInt()
+        var targetH = (origH * ratio).toInt()
+        targetW = maxOf(32, ((targetW + 31) / 32) * 32)
+        targetH = maxOf(32, ((targetH + 31) / 32) * 32)
+
+        val scaleW = targetW.toFloat() / origW.toFloat()
+        val scaleH = targetH.toFloat() / origH.toFloat()
+
+        val scaledBmp = Bitmap.createScaledBitmap(bmp, targetW, targetH, true)
+        val pixels = IntArray(targetW * targetH)
+        scaledBmp.getPixels(pixels, 0, targetW, 0, 0, targetW, targetH)
+        if (scaledBmp != bmp && !scaledBmp.isRecycled) {
+            scaledBmp.recycle()
+        }
+
+        val floatBuffer = FloatBuffer.allocate(1 * 3 * targetH * targetW)
+        val mean = floatArrayOf(0.485f, 0.456f, 0.406f)
+        val std = floatArrayOf(0.229f, 0.224f, 0.225f)
+
+        for (c in 0 until 3) {
+            val m = mean[c]
+            val s = std[c]
+            for (y in 0 until targetH) {
+                val rowOff = y * targetW
+                for (x in 0 until targetW) {
+                    val p = pixels[rowOff + x]
+                    val raw = when (c) {
+                        0 -> (p shr 16) and 0xFF // R
+                        1 -> (p shr 8) and 0xFF  // G
+                        else -> p and 0xFF       // B
+                    }
+                    val norm = (raw / 255.0f - m) / s
+                    floatBuffer.put(norm)
+                }
+            }
+        }
+        floatBuffer.flip()
+
+        var tensor: OnnxTensor? = null
+        var results: OrtSession.Result? = null
+        try {
+            tensor = OnnxTensor.createTensor(ortEnv, floatBuffer, longArrayOf(1, 3, targetH.toLong(), targetW.toLong()))
+            val inputName = session.inputNames.iterator().next()
+            results = session.run(Collections.singletonMap(inputName, tensor))
+
+            val outputTensor = results[0] as? OnnxTensor ?: return fallbackTextBoundingBoxes(bmp)
+            val fb = outputTensor.floatBuffer
+            val probMap = FloatArray(targetH * targetW)
+            fb.get(probMap)
+
+            val thresh = 0.30f
+            val boxThresh = 0.50f
+            val minSize = 4
+            val unclipRatio = 1.6f
+
+            val visited = BooleanArray(targetH * targetW)
+            val detectedBoxes = mutableListOf<Rect>()
+
+            val queue = IntArray(targetH * targetW)
+
+            for (y in 0 until targetH) {
+                val rowOff = y * targetW
+                for (x in 0 until targetW) {
+                    val idx = rowOff + x
+                    if (probMap[idx] >= thresh && !visited[idx]) {
+                        var minX = x; var maxX = x
+                        var minY = y; var maxY = y
+                        var sumScore = 0.0f
+                        var count = 0
+
+                        var head = 0; var tail = 0
+                        queue[tail++] = idx
+                        visited[idx] = true
+
+                        while (head < tail) {
+                            val currIdx = queue[head++]
+                            val cy = currIdx / targetW
+                            val cx = currIdx % targetW
+                            count++
+                            sumScore += probMap[currIdx]
+
+                            if (cx < minX) minX = cx
+                            if (cx > maxX) maxX = cx
+                            if (cy < minY) minY = cy
+                            if (cy > maxY) maxY = cy
+
+                            // 4-связное соседство
+                            if (cx > 0) {
+                                val n = currIdx - 1
+                                if (!visited[n] && probMap[n] >= thresh) { visited[n] = true; queue[tail++] = n }
+                            }
+                            if (cx < targetW - 1) {
+                                val n = currIdx + 1
+                                if (!visited[n] && probMap[n] >= thresh) { visited[n] = true; queue[tail++] = n }
+                            }
+                            if (cy > 0) {
+                                val n = currIdx - targetW
+                                if (!visited[n] && probMap[n] >= thresh) { visited[n] = true; queue[tail++] = n }
+                            }
+                            if (cy < targetH - 1) {
+                                val n = currIdx + targetW
+                                if (!visited[n] && probMap[n] >= thresh) { visited[n] = true; queue[tail++] = n }
+                            }
+                        }
+
+                        val avgScore = sumScore / max(1, count)
+                        val bw = maxX - minX + 1
+                        val bh = maxY - minY + 1
+
+                        if (avgScore >= boxThresh && bw >= minSize && bh >= minSize) {
+                            val area = bw * bh
+                            val perimeter = 2 * (bw + bh)
+                            val distance = (area * unclipRatio) / max(1, perimeter)
+
+                            val unclipL = max(0, (minX - distance).toInt())
+                            val unclipT = max(0, (minY - distance).toInt())
+                            val unclipR = min(targetW - 1, (maxX + distance).toInt())
+                            val unclipB = min(targetH - 1, (maxY + distance).toInt())
+
+                            val origL = (unclipL / scaleW).toInt().coerceIn(0, origW - 1)
+                            val origT = (unclipT / scaleH).toInt().coerceIn(0, origH - 1)
+                            val origR = (unclipR / scaleW).toInt().coerceIn(origL + 1, origW)
+                            val origB = (unclipB / scaleH).toInt().coerceIn(origT + 1, origH)
+
+                            detectedBoxes.add(Rect(origL, origT, origR, origB))
+                        }
+                    }
+                }
+            }
+
+            if (detectedBoxes.isEmpty()) {
+                return fallbackTextBoundingBoxes(bmp)
+            }
+
+            // Сортировка сверху-вниз, слева-направо
+            detectedBoxes.sortBy { it.top * 10000 + it.left }
+            return detectedBoxes
+        } catch (e: Throwable) {
+            AppLogger.logError(null, "ONNX_DET_RUN", e)
+            return fallbackTextBoundingBoxes(bmp)
+        } finally {
+            try { tensor?.close() } catch (_: Throwable) {}
+            try { results?.close() } catch (_: Throwable) {}
+        }
+    }
+
+    /**
+     * Эвристический запасной детектор боксов (если нейросетевой DBNet недоступен).
+     */
+    private fun fallbackTextBoundingBoxes(bmp: Bitmap): List<Rect> {
+        val w = bmp.width
+        val h = bmp.height
+        if (w < 16 || h < 16) return listOf(Rect(0, 0, w, h))
+
+        val scale = if (max(w, h) > 720) 720f / max(w, h).toFloat() else 1f
+        val sw = (w * scale).toInt().coerceAtLeast(16)
+        val sh = (h * scale).toInt().coerceAtLeast(16)
+
+        val scaledBmp = if (scale < 1f) Bitmap.createScaledBitmap(bmp, sw, sh, false) else bmp
+        val pixels = IntArray(sw * sh)
+        scaledBmp.getPixels(pixels, 0, sw, 0, 0, sw, sh)
+        if (scaledBmp != bmp && !scaledBmp.isRecycled) scaledBmp.recycle()
+
+        val lums = IntArray(sw * sh)
+        for (i in pixels.indices) {
+            val p = pixels[i]
+            lums[i] = (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000
+        }
+
+        val edges = BooleanArray(sw * sh)
+        for (y in 1 until sh - 1) {
+            val rowOff = y * sw
+            for (x in 1 until sw - 1) {
+                val gx = abs(lums[rowOff + x + 1] - lums[rowOff + x - 1])
+                val gy = abs(lums[(y + 1) * sw + x] - lums[(y - 1) * sw + x])
+                if (gx + gy > 42) {
+                    edges[rowOff + x] = true
+                }
+            }
+        }
+
+        val dilated = BooleanArray(sw * sh)
+        val kRadius = (6 * scale).toInt().coerceIn(3, 8)
+        for (y in 0 until sh) {
+            val rowOff = y * sw
+            var count = 0
+            for (x in 0 until min(sw, kRadius * 2)) {
+                if (edges[rowOff + x]) count++
+            }
+            for (x in 0 until sw) {
+                if (count > 0) dilated[rowOff + x] = true
+                val removeX = x - kRadius
+                if (removeX >= 0 && edges[rowOff + removeX]) count--
+                val addX = x + kRadius + 1
+                if (addX < sw && edges[rowOff + addX]) count++
+            }
+        }
+
+        val visited = BooleanArray(sw * sh)
+        val rawBoxes = mutableListOf<Rect>()
+        val invScale = 1f / scale
+
+        for (y in 0 until sh step 2) {
+            val rowOff = y * sw
+            for (x in 0 until sw step 2) {
+                val idx = rowOff + x
+                if (dilated[idx] && !visited[idx]) {
+                    var minX = x; var maxX = x
+                    var minY = y; var maxY = y
+                    var compPixels = 0
+
+                    val queueX = IntArray(2048)
+                    val queueY = IntArray(2048)
+                    var head = 0; var tail = 0
+
+                    queueX[tail] = x; queueY[tail] = y; tail++
+                    visited[idx] = true
+
+                    while (head < tail && tail < 2040) {
+                        val cx = queueX[head]; val cy = queueY[head]; head++
+                        compPixels++
+                        if (cx < minX) minX = cx
+                        if (cx > maxX) maxX = cx
+                        if (cy < minY) minY = cy
+                        if (cy > maxY) maxY = cy
+
+                        val neighbors = intArrayOf(cx - 2, cy, cx + 2, cy, cx, cy - 2, cx, cy + 2)
+                        for (ni in 0 until 8 step 2) {
+                            val nx = neighbors[ni]; val ny = neighbors[ni + 1]
+                            if (nx in 0 until sw && ny in 0 until sh) {
+                                val nIdx = ny * sw + nx
+                                if (dilated[nIdx] && !visited[nIdx]) {
+                                    visited[nIdx] = true
+                                    queueX[tail] = nx; queueY[tail] = ny; tail++
+                                }
+                            }
+                        }
+                    }
+
+                    val bw = maxX - minX + 1
+                    val bh = maxY - minY + 1
+                    if (bw in 8..600 && bh in 6..120 && compPixels >= 6) {
+                        val origL = ((minX - 4) * invScale).toInt().coerceIn(0, w - 1)
+                        val origT = ((minY - 3) * invScale).toInt().coerceIn(0, h - 1)
+                        val origR = ((maxX + 5) * invScale).toInt().coerceIn(origL + 1, w)
+                        val origB = ((maxY + 4) * invScale).toInt().coerceIn(origT + 1, h)
+                        rawBoxes.add(Rect(origL, origT, origR, origB))
+                    }
+                }
+            }
+        }
+
+        rawBoxes.sortBy { it.top * 10000 + it.left }
+        return if (rawBoxes.isNotEmpty()) rawBoxes else listOf(Rect(0, 0, w, h))
     }
 
     /**
@@ -220,8 +521,7 @@ object OcrEngine {
     }
 
     /**
-     * Постобработка: замена ошибочных латинских символов-двойников на русскую кириллицу
-     * в словах, содержащих кириллические буквы (например, "ИГPATЬ" -> "ИГРАТЬ", "HAЧATЬ" -> "НАЧАТЬ").
+     * Постобработка: замена ошибочных латинских символов-двойников на русскую кириллицу.
      */
     private fun postProcessRussianText(text: String): String {
         if (text.isBlank()) return text
@@ -257,149 +557,13 @@ object OcrEngine {
     }
 
     /**
-     * Полноэкранный детектор связных фраз и строк слов (Horizontal Text Line Merging).
-     */
-    private fun extractWordBoundingBoxes(bmp: Bitmap): List<Rect> {
-        val w = bmp.width
-        val h = bmp.height
-        if (w < 16 || h < 16) return listOf(Rect(0, 0, w, h))
-
-        val scale = if (max(w, h) > 960) 960f / max(w, h).toFloat() else 1f
-        val sw = (w * scale).toInt().coerceAtLeast(16)
-        val sh = (h * scale).toInt().coerceAtLeast(16)
-
-        val scaledBmp = if (scale < 1f) Bitmap.createScaledBitmap(bmp, sw, sh, false) else bmp
-        val pixels = IntArray(sw * sh)
-        scaledBmp.getPixels(pixels, 0, sw, 0, 0, sw, sh)
-        if (scaledBmp != bmp && !scaledBmp.isRecycled) scaledBmp.recycle()
-
-        val lums = IntArray(sw * sh)
-        for (i in pixels.indices) {
-            val p = pixels[i]
-            lums[i] = (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000
-        }
-
-        val edges = BooleanArray(sw * sh)
-        for (y in 1 until sh - 1) {
-            val rowOff = y * sw
-            for (x in 1 until sw - 1) {
-                val gx = abs(lums[rowOff + x + 1] - lums[rowOff + x - 1])
-                val gy = abs(lums[(y + 1) * sw + x] - lums[(y - 1) * sw + x])
-                if (gx + gy > 32) {
-                    edges[rowOff + x] = true
-                }
-            }
-        }
-
-        val dilated = BooleanArray(sw * sh)
-        val kRadius = (10 * scale).toInt().coerceIn(4, 14)
-        for (y in 0 until sh) {
-            val rowOff = y * sw
-            var count = 0
-            for (x in 0 until min(sw, kRadius * 2)) {
-                if (edges[rowOff + x]) count++
-            }
-            for (x in 0 until sw) {
-                if (count > 0) dilated[rowOff + x] = true
-                val removeX = x - kRadius
-                if (removeX >= 0 && edges[rowOff + removeX]) count--
-                val addX = x + kRadius + 1
-                if (addX < sw && edges[rowOff + addX]) count++
-            }
-        }
-
-        val visited = BooleanArray(sw * sh)
-        val rawBoxes = mutableListOf<Rect>()
-        val invScale = 1f / scale
-
-        for (y in 0 until sh step 2) {
-            val rowOff = y * sw
-            for (x in 0 until sw step 2) {
-                val idx = rowOff + x
-                if (dilated[idx] && !visited[idx]) {
-                    var minX = x; var maxX = x
-                    var minY = y; var maxY = y
-                    var compPixels = 0
-
-                    val queueX = IntArray(4096)
-                    val queueY = IntArray(4096)
-                    var head = 0; var tail = 0
-
-                    queueX[tail] = x; queueY[tail] = y; tail++
-                    visited[idx] = true
-
-                    while (head < tail && tail < 4080) {
-                        val cx = queueX[head]; val cy = queueY[head]; head++
-                        compPixels++
-                        if (cx < minX) minX = cx
-                        if (cx > maxX) maxX = cx
-                        if (cy < minY) minY = cy
-                        if (cy > maxY) maxY = cy
-
-                        val neighbors = intArrayOf(cx - 2, cy, cx + 2, cy, cx, cy - 2, cx, cy + 2)
-                        for (ni in 0 until 8 step 2) {
-                            val nx = neighbors[ni]; val ny = neighbors[ni + 1]
-                            if (nx in 0 until sw && ny in 0 until sh) {
-                                val nIdx = ny * sw + nx
-                                if (dilated[nIdx] && !visited[nIdx]) {
-                                    visited[nIdx] = true
-                                    queueX[tail] = nx; queueY[tail] = ny; tail++
-                                }
-                            }
-                        }
-                    }
-
-                    val bw = maxX - minX + 1
-                    val bh = maxY - minY + 1
-                    if (bw >= 10 && bh in 8..240 && compPixels >= 6) {
-                        val origL = ((minX - 6) * invScale).toInt().coerceIn(0, w - 1)
-                        val origT = ((minY - 4) * invScale).toInt().coerceIn(0, h - 1)
-                        val origR = ((maxX + 7) * invScale).toInt().coerceIn(origL + 1, w)
-                        val origB = ((maxY + 5) * invScale).toInt().coerceIn(origT + 1, h)
-                        rawBoxes.add(Rect(origL, origT, origR, origB))
-                    }
-                }
-            }
-        }
-
-        // Горизонтальное слияние соседних слов в единые фразы одной строки
-        val lineMergedBoxes = mutableListOf<Rect>()
-        rawBoxes.sortBy { it.top * 10000 + it.left }
-
-        for (box in rawBoxes) {
-            var merged = false
-            for (i in lineMergedBoxes.indices) {
-                val m = lineMergedBoxes[i]
-                val sameLine = abs(m.centerY() - box.centerY()) <= max(m.height(), box.height()) * 0.6f
-                val horizontalClose = box.left >= m.left && (box.left - m.right) <= max(m.height(), box.height()) * 1.8f
-                val intersects = Rect.intersects(m, box)
-
-                if (intersects || (sameLine && horizontalClose)) {
-                    lineMergedBoxes[i] = Rect(
-                        min(m.left, box.left),
-                        min(m.top, box.top),
-                        max(m.right, box.right),
-                        max(m.bottom, box.bottom)
-                    )
-                    merged = true
-                    break
-                }
-            }
-            if (!merged) {
-                lineMergedBoxes.add(box)
-            }
-        }
-
-        lineMergedBoxes.sortBy { it.top * 10000 + it.left }
-        return if (lineMergedBoxes.isNotEmpty()) lineMergedBoxes else listOf(Rect(0, 0, w, h))
-    }
-
-    /**
-     * Нормализация строки с заменой сходных символов (RU/EN гомоглифы и регистр).
+     * Нормализация строки для нечеткого поиска:
+     * Очистка от спецсимволов и приведение кириллических/латинских гомоглифов к единому виду.
      */
     private fun normalizeString(s: String): String {
-        return s.trim()
+        val clean = s.trim()
             .lowercase(Locale.ROOT)
+            .replace(Regex("""[^\p{L}\p{N}]+"""), "") // Оставляем только буквы и цифры
             .replace('ё', 'е')
             .replace('a', 'а')
             .replace('o', 'о')
@@ -408,31 +572,44 @@ object OcrEngine {
             .replace('c', 'с')
             .replace('x', 'х')
             .replace('t', 'т')
-            .replace('b', 'в')
             .replace('k', 'к')
             .replace('m', 'м')
             .replace('h', 'н')
             .replace('y', 'у')
+            .replace('b', 'б') // Латинская 'b' мапится на 'б'
+            .replace('v', 'в')
+            .replace('w', 'в')
+        return clean
     }
 
     /**
-     * Расчет расстояния Левенштейна для нечеткого поиска по стилизованным шрифтам.
+     * Интеллектуальный Fuzzy Matcher с учетом специфики распознавания игровых шрифтов:
+     * Сравнение по подстрокам, эквивалентам 'б'/'в' и расстоянию Левенштейна.
      */
     private fun isFuzzyMatch(candidate: String, query: String): Boolean {
-        val normC = normalizeString(candidate).replace(" ", "")
-        val normQ = normalizeString(query).replace(" ", "")
+        val normC = normalizeString(candidate)
+        val normQ = normalizeString(query)
         if (normQ.isEmpty()) return true
-        if (normC.contains(normQ)) return true
+        if (normC.isEmpty()) return false
+
+        // 1. Точное или подстрочное совпадение
+        if (normC == normQ || normC.contains(normQ) || normQ.contains(normC)) return true
+
+        // 2. Дополнительная замена 'в' <-> 'б' (частая путаница в стилизованных игровых шрифтах с обводкой)
+        val altC = normC.replace('в', 'б')
+        val altQ = normQ.replace('в', 'б')
+        if (altC == altQ || altC.contains(altQ) || altQ.contains(altC)) return true
 
         val qLen = normQ.length
-        if (qLen <= 2) return normC == normQ
+        if (qLen <= 2) return normC == normQ || altC == altQ
 
-        val maxDist = if (qLen <= 5) 1 else 2
-        for (i in 0..max(0, normC.length - qLen)) {
-            val sub = normC.substring(i, min(normC.length, i + qLen))
+        // 3. Расстояние Левенштейна (допуск: 1 ошибка на 4 символа)
+        val maxDist = max(1, qLen / 4)
+        for (i in 0..max(0, altC.length - qLen)) {
+            val sub = altC.substring(i, min(altC.length, i + qLen))
             var diff = 0
             for (j in 0 until min(sub.length, qLen)) {
-                if (sub[j] != normQ[j]) diff++
+                if (sub[j] != altQ[j]) diff++
             }
             diff += abs(sub.length - qLen)
             if (diff <= maxDist) return true
@@ -491,8 +668,8 @@ object OcrEngine {
         val gOffsetX = roi?.left?.coerceIn(0, srcBmp.width - 1) ?: 0
         val gOffsetY = roi?.top?.coerceIn(0, srcBmp.height - 1) ?: 0
 
-        // 2. Прямое распознавание выделенной области ROI целиком (если ROI задан)
-        if (roi != null && localBmp.width >= 16 && localBmp.height >= 12) {
+        // 2. Прямое распознавание выделенной области ROI целиком (если ROI задан компактным окном)
+        if (roi != null && localBmp.width in 16..400 && localBmp.height in 12..200) {
             val directRec = recognizeTextWithOnnx(localBmp)
             if (!directRec.isNullOrBlank()) {
                 AppLogger.log(null, "OCR_ROI_DIRECT", "Прямое распознавание ROI: '$directRec'")
@@ -521,9 +698,9 @@ object OcrEngine {
             }
         }
 
-        // 3. Полноэкранный поиск по текстовым линиям и фразам
-        val boxes = extractWordBoundingBoxes(localBmp)
-        AppLogger.log(null, "OCR", "Детектор текстовых линий: выделено ${boxes.size} боксов")
+        // 3. Нейросетевой детектор текстовых линий DBNet
+        val boxes = detectTextBoundingBoxesWithDbNet(localBmp)
+        AppLogger.log(null, "OCR", "Нейросетевой детектор DBNet: выделено ${boxes.size} точных боксов")
 
         val matches = mutableListOf<OcrMatchResult>()
 
@@ -602,3 +779,4 @@ object OcrEngine {
         return null
     }
 }
+
