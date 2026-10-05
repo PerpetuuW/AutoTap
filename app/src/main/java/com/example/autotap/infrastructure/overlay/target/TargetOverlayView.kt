@@ -74,7 +74,7 @@ class TargetOverlayView(
         addView(circleContainer, circleLp)
 
 
-        // [V20.7] tvCornerBadge — аккуратный бейдж номера шага в стиле M3 (#38BDF8, 16dp)
+        // [V20.7] tvCornerBadge — аккуратный бейдж номера шага в стиле M3 (#38BDF8)
         tvCornerBadge = TextView(context).apply {
             textSize = 9f
             typeface = Typeface.MONOSPACE
@@ -87,15 +87,17 @@ class TargetOverlayView(
                 setColor("#E60B0814".toColorInt())
                 setStroke(dpF(1.2f).toInt(), "#38BDF8".toColorInt())
             }
-            val pX = dp(5)
+            val pX = dp(4)
             val pY = dp(1)
             setPadding(pX, pY, pX, pY)
+            minHeight = dp(16)
+            minWidth = dp(16)
             visibility = View.GONE
             elevation = dpF(2f)
         }
-        val badgeLp = LayoutParams(LayoutParams.WRAP_CONTENT, dp(15), Gravity.TOP or Gravity.END).apply {
-            topMargin = dp(2)
-            marginEnd = dp(2)
+        val badgeLp = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(1)
+            marginEnd = dp(1)
         }
         addView(tvCornerBadge, badgeLp)
     }

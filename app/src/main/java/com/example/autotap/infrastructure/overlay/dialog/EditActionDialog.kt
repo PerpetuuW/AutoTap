@@ -1211,7 +1211,29 @@ class EditActionDialog(
         val layoutTimings = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         layoutTimingsRef = layoutTimings
         val (etDelay, _) = createNumericInputWithSteppers(layoutTimings, "Пауза шага (мс):", action.delayMs.toString(), 50L)
-        val (etHold, _) = createNumericInputWithSteppers(layoutTimings, "Длительность нажатия (мс):", action.holdDurationMs.toString(), 20L)
+        val (etHold, _) = createNumericInputWithSteppers(layoutTimings, "Длительность нажатия (мс):", action.holdDurationMs.coerceAtMost(action.delayMs).toString(), 20L)
+
+        // Инвариант: длительность нажатия не может превышать периодичность шага
+        etHold.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val d = etDelay.text.toString().toLongOrNull() ?: action.delayMs
+                val h = etHold.text.toString().toLongOrNull() ?: action.holdDurationMs
+                if (h > d && d > 0L) {
+                    etHold.setText(d.toString())
+                    Toast.makeText(context, "Длительность нажатия ограничена периодичностью ($d мс)", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        etDelay.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val d = etDelay.text.toString().toLongOrNull() ?: action.delayMs
+                val h = etHold.text.toString().toLongOrNull() ?: action.holdDurationMs
+                if (h > d && d > 0L) {
+                    etHold.setText(d.toString())
+                }
+            }
+        }
+
         val (etRepeats, _) = createNumericInputWithSteppers(layoutTimings, "Повторения (0 = бесконечно):", action.repeatCount.toString(), 1L)
         val (etRadius, _) = createNumericInputWithSteppers(layoutTimings, "Разброс радиуса (px):", action.randomRadiusPx.toString(), 1L)
         contentLayout.addView(layoutTimings)
@@ -1402,6 +1424,8 @@ class EditActionDialog(
             val jumpM = etJumpMatch.text.toString().toIntOrNull()?.let { if (it > 0) it else null }
             val jumpT = etJumpTimeout.text.toString().toIntOrNull()?.let { if (it > 0) it else null }
             val subTarget = if (selectedType == ActionType.SUBROUTINE) etSubroutineName.text.toString().trim() else action.subroutineTarget
+            val d = maxOf(10L, etDelay.text.toString().toLongOrNull() ?: action.delayMs)
+            val h = (etHold.text.toString().toLongOrNull() ?: action.holdDurationMs).coerceIn(10L, d)
             val currentAct = action.copy(
                 type = selectedType,
                 isNeuralEngine = isNeuralEngine,
@@ -1411,8 +1435,8 @@ class EditActionDialog(
                 colorDeltaEMode = isDeltaEMode, isShapeOnlyMode = isShapeOnly,
                 pinchStartDistance = etPinchStart.text.toString().toFloatOrNull() ?: action.pinchStartDistance,
                 pinchEndDistance = etPinchEnd.text.toString().toFloatOrNull() ?: action.pinchEndDistance,
-                delayMs = etDelay.text.toString().toLongOrNull() ?: action.delayMs,
-                holdDurationMs = etHold.text.toString().toLongOrNull() ?: action.holdDurationMs,
+                delayMs = d,
+                holdDurationMs = h,
                 jumpToStepOnMatch = jumpM, jumpToStepOnTimeout = jumpT,
                 subroutineTarget = subTarget, subroutineTag = subTarget,
                 targetScriptOrQuery = when (selectedType) { ActionType.SUBROUTINE -> subTarget; ActionType.OCR -> etOcrQuery.text.toString().trim(); else -> action.targetScriptOrQuery },
@@ -1450,6 +1474,8 @@ class EditActionDialog(
                 val jumpM = etJumpMatch.text.toString().toIntOrNull()?.let { if (it > 0) it else null }
                 val jumpT = etJumpTimeout.text.toString().toIntOrNull()?.let { if (it > 0) it else null }
                 val subTarget = if (selectedType == ActionType.SUBROUTINE) etSubroutineName.text.toString().trim() else action.subroutineTarget
+                val d = maxOf(10L, etDelay.text.toString().toLongOrNull() ?: action.delayMs)
+                val h = (etHold.text.toString().toLongOrNull() ?: action.holdDurationMs).coerceIn(10L, d)
                 val updated = action.copy(
                     type = selectedType,
                     templatePath = effectivePrimary,
@@ -1457,8 +1483,8 @@ class EditActionDialog(
                     isNeuralEngine = isNeuralEngine,
                     pinchStartDistance = etPinchStart.text.toString().toFloatOrNull() ?: action.pinchStartDistance,
                     pinchEndDistance = etPinchEnd.text.toString().toFloatOrNull() ?: action.pinchEndDistance,
-                    delayMs = etDelay.text.toString().toLongOrNull() ?: action.delayMs,
-                    holdDurationMs = etHold.text.toString().toLongOrNull() ?: action.holdDurationMs,
+                    delayMs = d,
+                    holdDurationMs = h,
                     repeatCount = etRepeats.text.toString().toIntOrNull() ?: 1,
                     randomRadiusPx = etRadius.text.toString().toIntOrNull() ?: 0,
                     aiTimeoutSeconds = etAiTimeout.text.toString().toIntOrNull() ?: (if (selectedMultiPaths.size > 1) 0 else 5),

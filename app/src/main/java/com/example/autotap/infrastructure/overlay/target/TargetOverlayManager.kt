@@ -198,15 +198,18 @@ class TargetOverlayManager(
             actionsList[idx] = updated
             val sz = dp(if (updated.type == ActionType.TRIGGER) 52f else 38f)
             val halfSz = sz / 2f
+            val safePad = dp(4f)
+            val totalW = sz + safePad * 2
+            val totalH = sz + safePad * 2
 
             targetViews[updated.id]?.let { tv ->
                 tv.bindAction(updated, isNumbersHidden)
                 val lp = tv.layoutParams as? WindowManager.LayoutParams
                 if (lp != null) {
-                    lp.width = sz
-                    lp.height = sz
-                    lp.x = (updated.posX - halfSz).toInt()
-                    lp.y = (updated.posY - halfSz).toInt()
+                    lp.width = totalW
+                    lp.height = totalH
+                    lp.x = (updated.posX - halfSz - safePad).toInt()
+                    lp.y = (updated.posY - halfSz - safePad).toInt()
                     overlayWindowManager.updateViewSafe(tv, lp)
                 }
             }
@@ -217,8 +220,8 @@ class TargetOverlayManager(
                 if (lp != null && updated.endX != null && updated.endY != null) {
                     val endSz = dp(38f)
                     val endHalfSz = endSz / 2f
-                    lp.x = (updated.endX - endHalfSz).toInt()
-                    lp.y = (updated.endY - endHalfSz).toInt()
+                    lp.x = (updated.endX - endHalfSz - safePad).toInt()
+                    lp.y = (updated.endY - endHalfSz - safePad).toInt()
                     overlayWindowManager.updateViewSafe(etv, lp)
                 }
             }
@@ -482,8 +485,8 @@ class TargetOverlayManager(
                             val idx = actionsList.indexOfFirst { it.id == currentId }
                             if (idx != -1) {
                                 val oldAct = actionsList[idx]
-                                val newStartX = lp.x.toFloat() + halfSz
-                                val newStartY = lp.y.toFloat() + halfSz
+                                val newStartX = lp.x.toFloat() + halfSz + safePad
+                                val newStartY = lp.y.toFloat() + halfSz + safePad
                                 val deltaX = newStartX - oldAct.posX
                                 val deltaY = newStartY - oldAct.posY
 
@@ -504,8 +507,8 @@ class TargetOverlayManager(
 
                                 endTargetViews[currentId]?.let { etv ->
                                     val elp = etv.layoutParams as WindowManager.LayoutParams
-                                    elp.x = ((newEndX ?: 0f) - halfSz).toInt()
-                                    elp.y = ((newEndY ?: 0f) - halfSz).toInt()
+                                    elp.x = ((newEndX ?: 0f) - halfSz - safePad).toInt()
+                                    elp.y = ((newEndY ?: 0f) - halfSz - safePad).toInt()
                                     overlayWindowManager.updateViewSafe(etv, elp)
                                 }
                                 waypointViews[currentId]?.forEachIndexed { i, wpView ->

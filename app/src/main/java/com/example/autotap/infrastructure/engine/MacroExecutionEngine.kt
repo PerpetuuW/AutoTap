@@ -174,8 +174,9 @@ class MacroExecutionEngine(
                         when (action.type) {
                             ActionType.CLICK -> {
                                 val (gx, gy) = safetyGovernor.computeGaussianOffset(action.randomRadiusPx)
+                                val effHold = action.holdDurationMs.coerceIn(20L, maxOf(20L, action.delayMs))
                                 withContext(Dispatchers.IO) {
-                                    gestureGateway.performClick(action.posX + gx, action.posY + gy, action.holdDurationMs.coerceAtLeast(30L))
+                                    gestureGateway.performClick(action.posX + gx, action.posY + gy, effHold)
                                 }
                                 totalExecutedSteps++
                             }
