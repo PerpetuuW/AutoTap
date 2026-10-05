@@ -29,6 +29,9 @@ object YandexAdsManager {
     // Тестовый официальный блок Yandex Mobile Ads
     const val DEMO_REWARDED_AD_UNIT_ID = "demo-rewarded-yandex"
 
+    // Минимальное время просмотра рекламного ролика (15 секунд) для защиты от преждевременного выхода
+    private const val MIN_WATCH_DURATION_MS = 15_000L
+
     private const val PREFS_NAME = "autotap_ads_prefs"
     private const val KEY_TEST_DEVICE_MODE = "pref_test_device_mode"
 
@@ -99,6 +102,9 @@ object YandexAdsManager {
         val loader = RewardedAdLoader(activity)
         val config = AdRequestConfiguration.Builder(adUnitId).build()
 
+        val rewardClaimed = java.util.concurrent.atomic.AtomicBoolean(false)
+        var adStartTimestamp = 0L
+
         loader.setAdLoadListener(object : RewardedAdLoadListener {
             override fun onAdLoaded(rewardedAd: RewardedAd) {
                 AppLogger.log(null, "YANDEX_ADS", "Рекламный ролик успешно загружен: $adUnitId")
@@ -106,16 +112,34 @@ object YandexAdsManager {
 
                 rewardedAd.setAdEventListener(object : RewardedAdEventListener {
                     override fun onAdShown() {
-                        AppLogger.log(null, "YANDEX_ADS", "Рекламный ролик отображен на экране")
+                        adStartTimestamp = System.currentTimeMillis()
+                        AppLogger.log(null, "YANDEX_ADS", "Рекламный ролик отображен на экране (старт: $adStartTimestamp)")
                     }
 
                     override fun onAdDismissed() {
-                        AppLogger.log(null, "YANDEX_ADS", "Пользователь закрыл рекламный ролик")
+                        val durationMs = if (adStartTimestamp > 0L) System.currentTimeMillis() - adStartTimestamp else 0L
+                        AppLogger.log(null, "YANDEX_ADS", "Пользователь закрыл рекламный ролик (время просмотра: ${durationMs}мс)")
+                        if (adStartTimestamp > 0L && durationMs < MIN_WATCH_DURATION_MS && !rewardClaimed.get()) {
+                            onStatusMessage("Просмотр завершен слишком рано (${durationMs / 1000}с < 15с). Награда не зачислена.")
+                        }
                     }
 
                     override fun onRewarded(reward: Reward) {
-                        AppLogger.log(null, "YANDEX_ADS", "Вознаграждение зачислено: type=${reward.type}, amount=${reward.amount}")
-                        onRewarded()
+                        val durationMs = if (adStartTimestamp > 0L) System.currentTimeMillis() - adStartTimestamp else MIN_WATCH_DURATION_MS
+                        AppLogger.log(null, "YANDEX_ADS", "Событие SDK onRewarded: время просмотра ${durationMs}мс")
+
+                        if (adStartTimestamp > 0L && durationMs < MIN_WATCH_DURATION_MS) {
+                            AppLogger.log(null, "YANDEX_ADS", "Защита 15с: Награда отклонена (просмотрено всего ${durationMs / 1000}с)")
+                            onStatusMessage("Просмотр завершен раньше 15 секунд! Награда не зачислена.")
+                            return
+                        }
+
+                        if (rewardClaimed.compareAndSet(false, true)) {
+                            AppLogger.log(null, "YANDEX_ADS", "Вознаграждение зачислено (1 ролик, ${durationMs / 1000}с): type=${reward.type}, amount=${reward.amount}")
+                            onRewarded()
+                        } else {
+                            AppLogger.log(null, "YANDEX_ADS", "Предотвращено повторное зачисление рекламы за один показ")
+                        }
                     }
 
                     override fun onAdFailedToShow(adError: com.yandex.mobile.ads.common.AdError) {
